@@ -1,0 +1,185 @@
+# ============================================================
+#  村民守卫战PLUS (Hilltop Village) — 游戏参数配置文件
+#  game-settings.yml
+# ============================================================
+#  此文件存储所有可通过 GUI 或命令修改的游戏参数。
+#  使用 /hilltop config 在游戏内通过 GUI 界面编辑。
+#  使用 /hilltop reloadconfig 重新加载此文件。
+# ============================================================
+
+# 游戏世界名称
+world-name: world
+
+# 村庄核心坐标
+core:
+  x: 0.0
+  y: 100.0
+  z: 0.0
+
+# 最少/最多玩家数
+min-players: 2
+max-players: 6
+# 胜利所需波次
+victory-waves: 20
+# 波次间隔（秒）
+wave-interval-seconds: 30
+
+# ============================================================
+#  重锤系统 (Hammer)
+# ============================================================
+hammer:
+  # 重锤使用的物品材料（原版 Material 名称）
+  material: IRON_AXE
+  # ItemsAdder 物品命名空间ID（格式: namespace:id）
+  # 仅当 use-itemsadder 为 true 时生效
+  itemsadder-id: ""
+  # 自定义模型数据值（配合资源包使用，0 表示不使用）
+  custom-model-data: 0
+  # 是否启用 ItemsAdder 模型（true/false）
+  use-itemsadder: false
+  # 基础伤害值
+  base-damage: 20.0
+  # AOE 效果半径（格）
+  effect-radius: 5.0
+  # 余震减速持续时长（tick，20 tick = 1 秒）
+  aftershock-ticks: 60
+  # 猛击激活超时时间（tick，超时未落地则取消）
+  smash-timeout-ticks: 100
+  # 铁砧特效显示时长（tick）
+  visual-display-ticks: 20
+  # === 三档伤害倍率分级 ===
+  # 低档：下落高度小于此值
+  damage-low-threshold: 5.0
+  # 中档：下落高度在低档和此值之间
+  damage-medium-threshold: 10.0
+  # 低档伤害倍率
+  damage-low-multiplier: 1.5
+  # 中档伤害倍率
+  damage-medium-multiplier: 2.0
+  # 高档伤害倍率（超过中档阈值时使用）
+  damage-high-multiplier: 3.0
+
+# ============================================================
+#  能量节点系统 (Nodes)
+# ============================================================
+nodes:
+  # 可用作节点的方块类型列表
+  block-types:
+    - BEACON
+    - ENCHANTING_TABLE
+    - ENDER_CHEST
+    - RESPAWN_ANCHOR
+  # 节点基础生命值
+  base-health: 100.0
+  # 修复节点所需物品
+  repair-item: SLIME_BALL
+  # 每次修复恢复的生命值
+  repair-amount: 50.0
+  # 节点增益效果作用半径（格）
+  buff-radius: 20.0
+  # 自爆对节点伤害倍率
+  self-destruct-multiplier: 3.0
+
+# ============================================================
+#  怪物生成设置 (Spawning)
+# ============================================================
+spawning:
+  # 生成半径最小值（距核心，格）
+  spawn-radius-min: 20
+  # 生成半径最大值（距核心，格）
+  spawn-radius-max: 40
+  # 全局怪物数量上限
+  global-mob-cap: 80
+  # 每名玩家的怪物数量上限
+  mob-cap-per-player: 15
+
+# ============================================================
+#  特殊怪物属性 (Monsters)
+#  每个怪物的独立属性配置
+# ============================================================
+monsters:
+  # 自爆甲虫：靠近能量节点后自爆
+  explode-beetle:
+    display-egg: CAVE_SPIDER_SPAWN_EGG
+    health: 40.0
+    speed: 0.3
+    hook-velocity: 1.0
+    display-name: "自爆甲虫"
+    explode-damage-multiplier: 3.0
+    cooldown-ticks: 0
+    stun-duration-ticks: 0
+    airdrop-mob-count: 0
+  # 钩爪猎手：远程射击将玩家拖拽到身边
+  hook-claw-hunter:
+    display-egg: SKELETON_SPAWN_EGG
+    health: 60.0
+    speed: 0.25
+    hook-velocity: 1.8
+    display-name: "钩爪猎手"
+    explode-damage-multiplier: 0
+    cooldown-ticks: 60
+    stun-duration-ticks: 40
+    airdrop-mob-count: 8
+  # 飞行抛投者：飞行中向地面空投小怪
+  flying-dropper:
+    display-egg: PHANTOM_SPAWN_EGG
+    health: 80.0
+    speed: 0.3
+    hook-velocity: 0
+    display-name: "飞行抛投者"
+    explode-damage-multiplier: 0
+    cooldown-ticks: 160
+    stun-duration-ticks: 3
+    airdrop-mob-count: 10
+
+# ============================================================
+#  波次配置 (Waves)
+#  数字键 = 波次编号
+#  default = 未特别配置的波次使用此模板
+# ============================================================
+waves:
+  default:
+    total-mobs: 10
+    compositions:
+      explode-beetle:
+        count: 4
+        weight: 3
+      hook-claw-hunter:
+        count: 3
+        weight: 2
+      flying-dropper:
+        count: 3
+        weight: 1
+  "1":
+    total-mobs: 8
+    compositions:
+      explode-beetle:
+        count: 6
+        weight: 5
+      hook-claw-hunter:
+        count: 2
+        weight: 1
+  "5":
+    total-mobs: 14
+    compositions:
+      explode-beetle:
+        count: 5
+        weight: 3
+      hook-claw-hunter:
+        count: 4
+        weight: 4
+      flying-dropper:
+        count: 5
+        weight: 2
+  "10":
+    total-mobs: 20
+    compositions:
+      explode-beetle:
+        count: 8
+        weight: 4
+      hook-claw-hunter:
+        count: 6
+        weight: 5
+      flying-dropper:
+        count: 6
+        weight: 3

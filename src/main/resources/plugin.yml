@@ -1,0 +1,46 @@
+name: HilltopVillage
+version: 1.0.0
+main: com.hilltopvillage.HilltopVillagePlugin
+api-version: 1.19
+description: Village Defense PLUS - Cooperative PvE Tower Defense
+authors: [HilltopVillageTeam]
+depend: []
+softdepend: []
+
+commands:
+  hilltop:
+    description: Main command for Hilltop Village plugin
+    usage: /hilltop <start|stop|join|leave|status>
+    aliases: [hv, htv]
+permissions:
+  hilltopvillage.admin:
+    description: Admin commands for Hilltop Village
+    default: op
+    children:
+      hilltopvillage.config.admin: true
+      hilltopvillage.config.rules: true
+      hilltopvillage.config.waves: true
+      hilltopvillage.config.monsters: true
+      hilltopvillage.config.items: true
+      hilltopvillage.config.nodes: true
+  hilltopvillage.config.admin:
+    description: Access to all config menus
+    default: op
+  hilltopvillage.config.rules:
+    description: Configure game rules
+    default: false
+  hilltopvillage.config.waves:
+    description: Configure wave compositions
+    default: false
+  hilltopvillage.config.monsters:
+    description: Configure monster attributes
+    default: false
+  hilltopvillage.config.items:
+    description: Configure hammer and item settings
+    default: false
+  hilltopvillage.config.nodes:
+    description: Configure energy node settings
+    default: false
+  hilltopvillage.player:
+    description: Player commands for Hilltop Village
+    default: true

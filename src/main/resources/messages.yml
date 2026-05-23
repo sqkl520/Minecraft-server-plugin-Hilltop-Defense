@@ -1,0 +1,256 @@
+# ============================================================
+#  村民守卫战PLUS — 语言文件 (messages.yml)
+# ============================================================
+#  支持语言: en (English), zh (中文)
+#  颜色代码使用 & 符号: &a=绿 &c=红 &e=黄 &6=金 &7=灰 &b=青 &r=重置
+#  占位符: {0}, {1}, {2} ...
+#  修改后使用 /hilltop lang <en|zh> 或重启服务器即可生效。
+#
+#  === 消息结构说明 ===
+#  每个语言区块 (en/zh) 下的消息键必须一一对应。
+#  新增语言键时请在 en 和 zh 区块中同步添加。
+# ============================================================
+
+en:
+  # === 通用提示 ===
+  no-permission: "&cNo permission."
+  players-only: "&cThis command can only be used by a player."
+  game-starting: "&aGame starting..."
+  game-stopped: "&cGame stopped."
+  joined-game: "&aJoined the game!"
+  left-game: "&eLeft the game."
+  join-queue: "&aYou have joined the Village Defense queue!"
+  received-hammer: "&6You received the Sacred Hammer!"
+  config-reloaded: "&aGame settings reloaded from game-settings.yml."
+
+  # === 游戏状态显示 ===
+  status-header: "&6=== Hilltop Village Status ==="
+  status-state: "&rState: &f{0}"
+  status-wave: "&rWave: &f{0}"
+  status-players: "&rPlayers: &f{0}"
+  status-mobs: "&rActive Mobs: &f{0}"
+  status-nodes: "&rActive Nodes: &f{0}/{1}"
+
+  # === 命令帮助 (可点击复制) ===
+  usage-header: "&6=== Hilltop Village Commands ==="
+  usage-start: "&e/hilltop start &7- Start the game (admin)"
+  usage-stop: "&e/hilltop stop &7- Stop the game (admin)"
+  usage-join: "&e/hilltop join &7- Join the game"
+  usage-leave: "&e/hilltop leave &7- Leave the game"
+  usage-status: "&e/hilltop status &7- View game status"
+  usage-hammer: "&e/hilltop hammer &7- Get the Sacred Hammer"
+  usage-config: "&e/hilltop config &7- Open game config GUI (admin)"
+  usage-reloadconfig: "&e/hilltop reloadconfig &7- Reload game settings"
+  usage-deploy: "&e/hilltop deploy &7- Open deploy menu (admin)"
+  usage-lang: "&e/hilltop lang <en|zh> &7- Switch language"
+  usage-click-to-copy: "&7Click to copy to chat bar"
+
+  # === 部署命令菜单 ===
+  deploy.cmd-setcore: "&e/hilltop deploy setcore &7- Set core to your position"
+  deploy.cmd-addspawn: "&e/hilltop deploy addspawn &7- Add as monster spawn point"
+  deploy.cmd-listspawns: "&e/hilltop deploy listspawns &7- List all spawn points"
+  deploy.cmd-delspawn: "&e/hilltop deploy delspawn <id> &7- Delete spawn point"
+  deploy.cmd-showparticles: "&e/hilltop deploy showparticles &7- Show spawn point particles (30s)"
+  deploy.cmd-clearspawns: "&c/hilltop deploy clearspawns &7- Clear all spawn points (needs confirm)"
+  deploy.cmd-confirmclear: "&c/hilltop deploy confirmclear &7- Confirm clear all"
+  deploy.cmd-reloadnodes: "&e/hilltop deploy reloadnodes &7- Rescan energy nodes"
+
+  # === 游戏状态显示 ===
+  config:
+    repairitem-set: "&aRepair item set to: &f{0}"
+    invalid-material: "&cInvalid material name: &f{0}"
+    node-added: "&aNode block type added: &f{0}"
+    node-exists: "&eThis block type already exists."
+    node-removed: "&aNode block type removed: &f{0}"
+
+  # === 部署管理 ===
+  deploy:
+    setcore-set: "&aCore location set to your current position."
+    setcore-coords: "&7  X: {0}  Y: {1}  Z: {2}"
+    addspawn-added: "&aSpawn point added at your current position."
+    addspawn-coords: "&7  ID #{0}  X: {1}  Y: {2}  Z: {3}"
+    listspawns-header: "&6=== Spawn Points ({0} total) ==="
+    listspawns-empty: "&eNo spawn points set. Monsters will spawn randomly around the core."
+    listspawns-entry: "&b  #{0}&7  X: {1}  Y: {2}  Z: {3}"
+    listspawns-hint: "&7Use /hilltop deploy delspawn <id> to remove a spawn point."
+    delspawn-usage: "&cUsage: /hilltop deploy delspawn <id>"
+    delspawn-deleted: "&aDeleted spawn point #{0}."
+    delspawn-not-found: "&cID {0} does not exist. Use /hilltop deploy listspawns to view."
+    delspawn-invalid-number: "&cPlease enter a valid number."
+    clearspawns-warning: "&c&lWARNING: This will clear all {0} spawn points!"
+    clearspawns-confirm: "&cEnter /hilltop deploy confirmclear within 15 seconds to confirm."
+    clearspawns-expired: "&7Clear operation timed out and cancelled."
+    clearspawns-already: "&eYou already requested a clear. Enter /hilltop deploy confirmclear to confirm."
+    confirmclear-done: "&aCleared all {0} spawn points. Monsters will now spawn randomly."
+    confirmclear-no-pending: "&cNo pending clear operation. Use /hilltop deploy clearspawns first."
+    reloadnodes-done: "&aNodes reloaded. Current node count: &f{0}"
+    unknown-sub: "&cUnknown subcommand: &f{0}"
+    unknown-sub-hint: "&7Enter /hilltop deploy to view the deploy menu."
+
+    menu-no-permission: "&cYou do not have permission to use the deploy menu."
+    menu-title-line1: "&6&l== HilltopVillage Admin Deploy Menu =="
+    menu-status-label: "&e--- Server Status ---"
+    menu-state: "&7  Game State: &f{0}"
+    menu-core-coords: "&7  Core Location: &f{0}"
+    menu-spawn-count: "&7  Spawn Points: &b{0} &7(Random spawn: &f{1}&7)"
+    menu-nodes: "&7  Known Nodes: &b{0}"
+    menu-operations-label: "&e--- Deploy Operations ---"
+    menu-hint-setcore: "/hilltop deploy setcore &7- Set core to your position"
+    menu-hint-addspawn: "/hilltop deploy addspawn &7- Add spawn point at your position"
+    menu-hint-listspawns: "/hilltop deploy listspawns &7- List all spawn points"
+    menu-hint-delspawn: "/hilltop deploy delspawn <id> &7- Delete a spawn point"
+    menu-hint-showparticles: "/hilltop deploy showparticles &7- Show particle effects (30s)"
+    menu-hint-clearspawns: "/hilltop deploy clearspawns &7- Clear all spawn points"
+    menu-hint-reloadnodes: "/hilltop deploy reloadnodes &7- Rescan energy nodes"
+    menu-hint-confirmclear: "/hilltop deploy confirmclear &7- Confirm clear"
+    menu-game-control-label: "&e--- Game Controls ---"
+    menu-hint-start: "/hilltop start &7- Start game"
+    menu-hint-stop: "/hilltop stop &7- Stop game"
+    menu-hint-status: "/hilltop status &7- View status"
+    menu-tip: "&8Tip: Stand at the desired location, then execute the command to set precise coordinates."
+    menu-random-yes: "&aYes"
+    menu-random-no: "&cNo"
+    menu-core-unset: "&cNot Set"
+
+  # === 游戏状态枚举 ===
+  state:
+    waiting: "&aWaiting"
+    starting: "&eStarting"
+    running: "&cRunning"
+    wave-intermission: "&6Wave Intermission"
+    victory: "&aVictory"
+    defeat: "&4Defeat"
+
+  # === 粒子展示 ===
+  particles:
+    no-spawnpoints: "&eNo spawn points set."
+    showing: "&aDisplaying particle effects for {0} spawn points ({1} seconds)..."
+    hint: "&7Tip: Move your camera to see different spawn point particle colors."
+
+  # === 语言切换 ===
+  lang:
+    switched: "&aLanguage switched to: &f{0}"
+    invalid: "&cInvalid language. Available: en, zh"
+    usage: "&cUsage: /hilltop lang <en|zh>"
+
+zh:
+  # === 通用提示 ===
+  no-permission: "&c你没有权限。"
+  players-only: "&c此命令仅限玩家使用。"
+  game-starting: "&a游戏正在启动..."
+  game-stopped: "&c游戏已停止。"
+  joined-game: "&a已加入游戏！"
+  left-game: "&e已退出游戏。"
+  join-queue: "&a你已加入村民守卫战等待队列！"
+  received-hammer: "&6你获得了神圣之锤！"
+  config-reloaded: "&a游戏设置已从 game-settings.yml 重新加载。"
+
+  # === 游戏状态显示 ===
+  status-header: "&6=== 村民守卫战 状态 ==="
+  status-state: "&r状态: &f{0}"
+  status-wave: "&r波次: &f{0}"
+  status-players: "&r在线玩家: &f{0}"
+  status-mobs: "&r存活怪物: &f{0}"
+  status-nodes: "&r活跃节点: &f{0}/{1}"
+
+  # === 命令帮助 (可点击复制) ===
+  usage-header: "&6=== 村民守卫战 命令帮助 ==="
+  usage-start: "&e/hilltop start &7- 启动游戏 (管理员)"
+  usage-stop: "&e/hilltop stop &7- 停止游戏 (管理员)"
+  usage-join: "&e/hilltop join &7- 加入游戏"
+  usage-leave: "&e/hilltop leave &7- 退出游戏"
+  usage-status: "&e/hilltop status &7- 查看游戏状态"
+  usage-hammer: "&e/hilltop hammer &7- 获取神圣之锤"
+  usage-config: "&e/hilltop config &7- 打开配置中心 (管理员)"
+  usage-reloadconfig: "&e/hilltop reloadconfig &7- 重载游戏设置"
+  usage-deploy: "&e/hilltop deploy &7- 打开部署菜单 (管理员)"
+  usage-lang: "&e/hilltop lang <en|zh> &7- 切换语言"
+  usage-click-to-copy: "&7点击复制到聊天栏"
+
+  # === 部署命令菜单 ===
+  deploy.cmd-setcore: "&e/hilltop deploy setcore &7- 将核心设为你的当前位置"
+  deploy.cmd-addspawn: "&e/hilltop deploy addspawn &7- 添加当前位置为怪物生成点"
+  deploy.cmd-listspawns: "&e/hilltop deploy listspawns &7- 查看所有已设置的生成点"
+  deploy.cmd-delspawn: "&e/hilltop deploy delspawn <编号> &7- 删除指定编号的生成点"
+  deploy.cmd-showparticles: "&e/hilltop deploy showparticles &7- 展示所有生成点粒子效果 (30秒)"
+  deploy.cmd-clearspawns: "&c/hilltop deploy clearspawns &7- 清除所有生成点 (需二次确认)"
+  deploy.cmd-confirmclear: "&c/hilltop deploy confirmclear &7- 确认清除所有生成点"
+  deploy.cmd-reloadnodes: "&e/hilltop deploy reloadnodes &7- 重新扫描能量节点"
+
+  # === 配置管理 ===
+  config:
+    repairitem-set: "&a修复物品已设置为: &f{0}"
+    invalid-material: "&c无效的材料名: &f{0}"
+    node-added: "&a已添加节点方块: &f{0}"
+    node-exists: "&e该材料已存在。"
+    node-removed: "&a已移除节点方块: &f{0}"
+
+  # === 部署管理 ===
+  deploy:
+    setcore-set: "&a核心位置已设置为你当前所在坐标。"
+    setcore-coords: "&7  X: {0}  Y: {1}  Z: {2}"
+    addspawn-added: "&a已将你的当前位置添加为怪物生成点。"
+    addspawn-coords: "&7  编号 #{0}  X: {1}  Y: {2}  Z: {3}"
+    listspawns-header: "&6=== 已设置的生成点 (共 {0} 个) ==="
+    listspawns-empty: "&e暂无预设生成点，怪物将在核心周围随机生成。"
+    listspawns-entry: "&b  #{0}&7  X: {1}  Y: {2}  Z: {3}"
+    listspawns-hint: "&7使用 /hilltop deploy delspawn <编号> 删除指定生成点。"
+    delspawn-usage: "&c用法: /hilltop deploy delspawn <编号>"
+    delspawn-deleted: "&a已删除生成点 #{0}。"
+    delspawn-not-found: "&c编号 {0} 不存在。使用 /hilltop deploy listspawns 查看。"
+    delspawn-invalid-number: "&c请输入有效的数字编号。"
+    clearspawns-warning: "&c&l警告: 此操作将清除所有 {0} 个生成点！"
+    clearspawns-confirm: "&c请在 15 秒内输入 /hilltop deploy confirmclear 确认。"
+    clearspawns-expired: "&7清除操作已超时取消。"
+    clearspawns-already: "&e你已经请求了清除，请输入 /hilltop deploy confirmclear 确认。"
+    confirmclear-done: "&a已清除全部 {0} 个生成点。怪物将回退为随机生成。"
+    confirmclear-no-pending: "&c没有待确认的清除操作。请先使用 /hilltop deploy clearspawns。"
+    reloadnodes-done: "&a已重新扫描能量节点。当前节点数: &f{0}"
+    unknown-sub: "&c未知的子命令: &f{0}"
+    unknown-sub-hint: "&7输入 /hilltop deploy 查看部署菜单。"
+
+    menu-no-permission: "&c你没有权限使用部署菜单。"
+    menu-title-line1: "&6&l== 村民守卫战PLUS 管理员部署菜单 =="
+    menu-status-label: "&e--- 当前服务器状态 ---"
+    menu-state: "&7  游戏状态: &f{0}"
+    menu-core-coords: "&7  核心坐标: &f{0}"
+    menu-spawn-count: "&7  生成点数量: &b{0} &7(可随机生成: &f{1}&7)"
+    menu-nodes: "&7  已知节点: &b{0}"
+    menu-operations-label: "&e--- 部署操作 ---"
+    menu-hint-setcore: "/hilltop deploy setcore &7- 将核心设为你的当前位置"
+    menu-hint-addspawn: "/hilltop deploy addspawn &7- 将你的当前位置添加为怪物生成点"
+    menu-hint-listspawns: "/hilltop deploy listspawns &7- 查看所有已设置的生成点"
+    menu-hint-delspawn: "/hilltop deploy delspawn <编号> &7- 删除指定编号的生成点"
+    menu-hint-showparticles: "/hilltop deploy showparticles &7- 展示所有生成点的粒子效果 (30秒)"
+    menu-hint-clearspawns: "/hilltop deploy clearspawns &7- 清除所有生成点 (需二次确认)"
+    menu-hint-reloadnodes: "/hilltop deploy reloadnodes &7- 重新扫描地图中的能量节点"
+    menu-hint-confirmclear: "/hilltop deploy confirmclear &7- 确认清除所有生成点"
+    menu-game-control-label: "&e--- 游戏控制 ---"
+    menu-hint-start: "/hilltop start &7- 启动游戏"
+    menu-hint-stop: "/hilltop stop &7- 停止游戏"
+    menu-hint-status: "/hilltop status &7- 查看游戏状态"
+    menu-tip: "&8提示: 站在想要的位置，然后执行对应命令即可精准设置坐标。"
+    menu-random-yes: "&a是"
+    menu-random-no: "&c否"
+    menu-core-unset: "&c未设置"
+
+  # === 游戏状态枚举 ===
+  state:
+    waiting: "&a等待中"
+    starting: "&e启动中"
+    running: "&c运行中"
+    wave-intermission: "&6波次间歇"
+    victory: "&a已胜利"
+    defeat: "&4已失败"
+
+  # === 粒子展示 ===
+  particles:
+    no-spawnpoints: "&e没有已设置的生成点。"
+    showing: "&a正在展示所有 {0} 个生成点的粒子效果 (持续 {1} 秒)..."
+    hint: "&7提示: 移动视角查看不同生成点对应的粒子颜色"
+
+  # === 语言切换 ===
+  lang:
+    switched: "&a语言已切换为: &f{0}"
+    invalid: "&c无效的语言。可用语言: en, zh"
+    usage: "&c用法: /hilltop lang <en|zh>"
