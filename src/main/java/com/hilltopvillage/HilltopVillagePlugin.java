@@ -74,7 +74,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener, TabCom
 
         generateCommandsDocument();
 
-        getLogger().info("HilltopVillage - Village Defense PLUS has been enabled!");
+        getLogger().info("Hilltop Village has been enabled!");
     }
 
     @Override
@@ -85,7 +85,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener, TabCom
             gameManager.getDisplayEntityManager().cleanupAll();
         }
 
-        getLogger().info("HilltopVillage has been disabled.");
+        getLogger().info("Hilltop Village has been disabled.");
     }
 
     public LanguageManager getLanguageManager() {
@@ -131,9 +131,12 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener, TabCom
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerQuit(PlayerQuitEvent event) {
-        if (gameManager.getPlayers().contains(event.getPlayer().getUniqueId())) {
-            gameManager.removePlayer(event.getPlayer());
+        Player player = event.getPlayer();
+        if (gameManager.getPlayers().contains(player.getUniqueId())) {
+            gameManager.removePlayer(player);
         }
+        hammerListener.cleanupPlayer(player);
+        fireballListener.cleanupPlayer(player);
     }
 
     @Override
@@ -257,6 +260,14 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener, TabCom
 
             case "lang":
                 handleLangCommand(sender, args);
+                break;
+
+            case "tps":
+                if (!sender.hasPermission("hilltopvillage.admin")) {
+                    sender.sendMessage(languageManager.getFor(player, "no-permission"));
+                    return true;
+                }
+                handleTpsCommand(sender);
                 break;
 
             default:
@@ -556,7 +567,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener, TabCom
             List<String> completions = new ArrayList<>();
             String input = args[0].toLowerCase();
 
-            for (String sub : Arrays.asList("start", "stop", "join", "leave", "status", "hammer", "fireball", "help", "deploy", "config", "reloadconfig", "lang")) {
+            for (String sub : Arrays.asList("start", "stop", "join", "leave", "status", "hammer", "fireball", "help", "deploy", "config", "reloadconfig", "lang", "tps")) {
                 if (sub.startsWith(input)) {
                     boolean isAdmin = sub.equals("start") || sub.equals("stop") || sub.equals("help")
                             || sub.equals("deploy") || sub.equals("config") || sub.equals("reloadconfig");
@@ -782,7 +793,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener, TabCom
         md.append("3. **部署流程**: 建议按照 `setcore → addspawn → reloadnodes → start` 的顺序操作。\n");
         md.append("4. **配置保存**: 使用 GUI 关闭菜单时配置会自动保存，`/hilltop reloadconfig` 用于手动重载外部编辑的配置。\n");
         md.append("5. **粒子展示**: `/hilltop deploy showparticles` 仅展示当前已设置的生成点对应粒子。若没有生成点则不会有任何效果。\n");
-        md.append("6. **多语言**: 使用 `/hilltop lang <en|zh>` 切换语言。所有消息文本可在 `plugins/HilltopVillage/messages.yml` 中自定义编辑。\n");
+        md.append("6. **多语言**: 使用 `/hilltop lang <en|zh>` 切换语言。所有消息文本可在 `plugins/HilltopDefense/messages.yml` 中自定义编辑。\n");
 
         try {
             if (!docFile.getParentFile().exists()) {
@@ -793,5 +804,72 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener, TabCom
         } catch (IOException e) {
             getLogger().severe("无法生成命令文档 commands.md: " + e.getMessage());
         }
+    }
+
+    private void handleTpsCommand(CommandSender sender) {
+        double[] tps = Bukkit.getTPS();
+        double mspt = Bukkit.getAverageTickTime();
+
+        sender.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "=== TPS 诊断 ===");
+        sender.sendMessage(ChatColor.YELLOW + "TPS (1m/5m/15m): "
+                + formatTps(tps[0]) + " / " + formatTps(tps[1]) + " / " + formatTps(tps[2]));
+        sender.sendMessage(ChatColor.YELLOW + "MSPT: " + String.format("%.2f", mspt) + "ms");
+
+        sender.sendMessage(ChatColor.GOLD + "游戏状态: " + ChatColor.WHITE + gameManager.getState());
+        sender.sendMessage(ChatColor.GOLD + "在线玩家: " + ChatColor.WHITE + Bukkit.getOnlinePlayers().size());
+        sender.sendMessage(ChatColor.GOLD + "游戏玩家: " + ChatColor.WHITE + gameManager.getPlayers().size());
+        sender.sendMessage(ChatColor.GOLD + "当前波次: " + ChatColor.WHITE + gameManager.getCurrentWave());
+        sender.sendMessage(ChatColor.GOLD + "存活怪物: " + ChatColor.WHITE + gameManager.getWaveManager().getRemainingMobCount());
+        sender.sendMessage(ChatColor.GOLD + "能量节点: " + ChatColor.WHITE
+                + gameManager.getNodeSystem().getActiveCount() + "/" + gameManager.getNodeSystem().getTotalCount());
+        sender.sendMessage(ChatColor.GOLD + "DisplayEntity清理队列: " + ChatColor.WHITE
+                + gameManager.getDisplayEntityManager().getPendingCleanupCount());
+
+        sender.sendMessage(ChatColor.GOLD + "" + ChatColor.BOLD + "--- 服务器级诊断 ---");
+        for (org.bukkit.World world : Bukkit.getWorlds()) {
+            int entityCount = world.getEntityCount();
+            int loadedChunks = world.getLoadedChunks().length;
+            int tileEntities = 0;
+            try {
+                tileEntities = world.getTileEntityCount();
+            } catch (NoSuchMethodError ignored) {}
+
+            ChatColor color;
+            if (entityCount > 500) {
+                color = ChatColor.RED;
+            } else if (entityCount > 200) {
+                color = ChatColor.YELLOW;
+            } else {
+                color = ChatColor.GREEN;
+            }
+
+            sender.sendMessage(ChatColor.GRAY + "  世界: " + ChatColor.WHITE + world.getName()
+                    + ChatColor.GRAY + " | 实体: " + color + entityCount
+                    + ChatColor.GRAY + " | 区块: " + ChatColor.WHITE + loadedChunks
+                    + ChatColor.GRAY + " | 方块实体: " + ChatColor.WHITE + tileEntities);
+        }
+
+        Runtime runtime = Runtime.getRuntime();
+        long usedMem = (runtime.totalMemory() - runtime.freeMemory()) / 1024 / 1024;
+        long maxMem = runtime.maxMemory() / 1024 / 1024;
+        sender.sendMessage(ChatColor.GOLD + "内存: " + ChatColor.WHITE + usedMem + "MB / " + maxMem + "MB");
+
+        if (mspt > 50) {
+            sender.sendMessage(ChatColor.RED + "警告: MSPT 超过 50ms！TPS 已受影响。");
+            sender.sendMessage(ChatColor.GRAY + "建议: 检查是否有大量实体堆积、区块加载过多、或其他插件消耗过高的 CPU。");
+            sender.sendMessage(ChatColor.GRAY + "可使用 spark profiler 精确定位: /spark profiler start → /spark profiler stop");
+        }
+    }
+
+    private String formatTps(double tps) {
+        ChatColor color;
+        if (tps >= 18.0) {
+            color = ChatColor.GREEN;
+        } else if (tps >= 15.0) {
+            color = ChatColor.YELLOW;
+        } else {
+            color = ChatColor.RED;
+        }
+        return color + String.format("%.1f", Math.min(tps, 20.0));
     }
 }

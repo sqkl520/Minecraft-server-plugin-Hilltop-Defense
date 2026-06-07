@@ -69,12 +69,12 @@ public class GameManager {
         state = GameState.STARTING;
         broadcastMessage(plugin.getConfig().getString("messages.game-start", "&6Game started!"));
 
-        nodeSystem.loadNodesFromWorld();
-        nodeSystem.applyAllBuffs();
-
-        state = GameState.RUNNING;
-        currentWave = 0;
-        startNextWave();
+        nodeSystem.loadNodesFromWorld(() -> {
+            nodeSystem.applyAllBuffs();
+            state = GameState.RUNNING;
+            currentWave = 0;
+            startNextWave();
+        });
     }
 
     public void startNextWave() {
@@ -153,6 +153,8 @@ public class GameManager {
     public void stopGame() {
         state = GameState.WAITING;
         currentWave = 0;
+        nodeSystem.cancelLoadNodesTask();
+        nodeSystem.stopBuffTask();
         waveManager.clearAllMobs();
         playerDataMap.values().forEach(PlayerData::deactivateSmash);
     }

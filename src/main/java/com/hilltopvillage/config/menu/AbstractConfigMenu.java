@@ -54,6 +54,7 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
         buildMenu();
         Bukkit.getScheduler().runTask(plugin, () -> {
             admin.openInventory(inventory);
+            HandlerList.unregisterAll(this);
             Bukkit.getPluginManager().registerEvents(this, plugin);
         });
     }

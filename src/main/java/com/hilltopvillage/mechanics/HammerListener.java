@@ -34,6 +34,8 @@ public class HammerListener implements Listener {
     private final HilltopVillagePlugin plugin;
     private final String hammerName;
     private final Map<UUID, BossBar> chargeBars;
+    private final Map<UUID, Integer> lastChargeTier;
+    private final Map<UUID, Integer> lastBossBarTick;
     private final Set<UUID> recentlyLanded;
 
     public HammerListener(GameManager gameManager) {
@@ -42,6 +44,8 @@ public class HammerListener implements Listener {
         this.hammerName = ChatColor.translateAlternateColorCodes('&',
                 plugin.getConfig().getString("hammer.item-name", "&6&l\u795e\u5723\u91cd\u9524"));
         this.chargeBars = new HashMap<>();
+        this.lastChargeTier = new HashMap<>();
+        this.lastBossBarTick = new HashMap<>();
         this.recentlyLanded = new HashSet<>();
     }
 
@@ -122,12 +126,7 @@ public class HammerListener implements Listener {
         ItemStack item = player.getInventory().getItemInMainHand();
         if (!isHammer(item)) return;
 
-        if (player.isOnGround()) {
-            player.sendMessage(ChatColor.RED + "\u4f60\u5fc5\u987b\u8df3\u8d77\u6765\u624d\u80fd\u6fc0\u6d3b\u731b\u51fb\uff01");
-            player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 0.5f);
-            event.setCancelled(true);
-            return;
-        }
+        if (data.isSmashActive()) return;
 
         data.activateSmash(player.getLocation().getY(), gameManager.getGameWorld().getGameTime());
         player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_FLAP, 0.8f, 1.5f);
@@ -136,16 +135,15 @@ public class HammerListener implements Listener {
         // 复用或创建蓄力 BossBar
         BossBar bar = chargeBars.get(player.getUniqueId());
         if (bar == null) {
-            bar = Bukkit.createBossBar("", BarColor.YELLOW, BarStyle.SOLID);
+            bar = Bukkit.createBossBar(ChatColor.YELLOW + "\u25a0 \u84c4\u529b\u5f00\u59cb", BarColor.YELLOW, BarStyle.SOLID);
             chargeBars.put(player.getUniqueId(), bar);
-        }
-        bar.setTitle(ChatColor.GOLD + "\u25a0 \u731b\u51fb\u84c4\u529b\u4e2d...");
-        bar.setColor(BarColor.YELLOW);
-        bar.setProgress(0.0);
-        if (!bar.getPlayers().contains(player)) {
             bar.addPlayer(player);
         }
+        bar.setTitle(ChatColor.YELLOW + "\u25a0 \u84c4\u529b\u5f00\u59cb");
+        bar.setColor(BarColor.YELLOW);
+        bar.setProgress(0.0);
         bar.setVisible(true);
+        lastChargeTier.put(player.getUniqueId(), 0);
 
         event.setCancelled(true);
     }
@@ -154,6 +152,7 @@ public class HammerListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerMove(PlayerMoveEvent event) {
+        if (!event.hasChangedPosition()) return;
         Player player = event.getPlayer();
         PlayerData data = gameManager.getPlayerData(player);
         if (data == null || !data.isSmashActive()) return;
@@ -162,24 +161,37 @@ public class HammerListener implements Listener {
         Location to = event.getTo();
         boolean isOnGroundNow = isPlayerOnGround(player, to);
 
-        // 更新 BossBar 进度
         BossBar bar = chargeBars.get(player.getUniqueId());
         if (bar != null) {
-            double startY = data.getSmashStartY();
-            double fallDist = startY - currentY;
-            double maxDist = 15.0;
-            double progress = Math.max(0.0, Math.min(1.0, fallDist / maxDist));
-
-            bar.setProgress(progress);
-            if (fallDist >= 10) {
-                bar.setColor(BarColor.RED);
-                bar.setTitle(ChatColor.RED + "\u25a0 \u5929\u964d\u6b63\u4e49\uff01");
-            } else if (fallDist >= 3) {
-                bar.setColor(BarColor.YELLOW);
-                bar.setTitle(ChatColor.GOLD + "\u25a0 \u731b\u51fb\u84c4\u529b\u4e2d...");
+            int currentTick = Bukkit.getCurrentTick();
+            Integer lastTick = lastBossBarTick.get(player.getUniqueId());
+            if (lastTick != null && lastTick == currentTick) {
             } else {
-                bar.setColor(BarColor.YELLOW);
-                bar.setTitle(ChatColor.YELLOW + "\u25a0 \u84c4\u529b\u5f00\u59cb");
+                lastBossBarTick.put(player.getUniqueId(), currentTick);
+
+                GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+                double startY = data.getSmashStartY();
+                double fallDist = startY - currentY;
+                double maxDist = cfg.getHammerHighCharge() * 1.5;
+                double progress = Math.max(0.0, Math.min(1.0, fallDist / maxDist));
+
+                bar.setProgress(progress);
+
+                int tier = getHammerTier(cfg, fallDist);
+                Integer lastTier = lastChargeTier.get(player.getUniqueId());
+                if (lastTier == null || lastTier != tier) {
+                    lastChargeTier.put(player.getUniqueId(), tier);
+                    if (tier == 2) {
+                        bar.setColor(BarColor.RED);
+                        bar.setTitle(ChatColor.RED + "\u25a0 \u5929\u964d\u6b63\u4e49\uff01");
+                    } else if (tier == 1) {
+                        bar.setColor(BarColor.YELLOW);
+                        bar.setTitle(ChatColor.GOLD + "\u25a0 \u731b\u51fb\u84c4\u529b\u4e2d...");
+                    } else {
+                        bar.setColor(BarColor.YELLOW);
+                        bar.setTitle(ChatColor.YELLOW + "\u25a0 \u84c4\u529b\u5f00\u59cb");
+                    }
+                }
             }
         }
 
@@ -188,10 +200,14 @@ public class HammerListener implements Listener {
 
         double fallDistance = startY(player, data, currentY);
         long currentTick = gameManager.getGameWorld().getGameTime();
-        long activateTick = data.getSmashActivateTick();
         long tickLimit = gameManager.getConfigManager().getActiveConfig().getHammerSmashTimeoutTicks();
 
-        if (currentTick - activateTick > tickLimit) {
+        if (currentY < data.getLastSmashY() - 0.01) {
+            data.setSmashActivateTick(currentTick);
+        }
+        data.setLastSmashY(currentY);
+
+        if (currentTick - data.getSmashActivateTick() > tickLimit) {
             data.deactivateSmash();
             removeChargeBar(player);
             return;
@@ -240,17 +256,16 @@ public class HammerListener implements Listener {
         }.runTaskLater(plugin, 10L);
 
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
-        double baseDamage = cfg.getHammerBaseDamage();
-        double multiplier = getDamageMultiplier(fallDistance);
-        double finalDamage = baseDamage * multiplier;
-        double radius = cfg.getHammerEffectRadius();
+        int tier = getHammerTier(cfg, fallDistance);
+        double finalDamage = getTierDamage(cfg, tier);
+        double radius = getTierRadius(cfg, tier);
 
         // 弹起玩家自身
         player.setVelocity(new Vector(0, 0.8 + Math.min(fallDistance * 0.05, 1.2), 0));
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1.0f, 1.2f);
 
         // 伤害提示（汉化）
-        String tierName = getTierName(fallDistance);
+        String tierName = getTierDisplayName(tier);
         String actionBarMsg = ChatColor.GOLD + "\u25a0 \u731b\u51fb\uff01" + ChatColor.YELLOW + " [" + tierName + "] "
                 + ChatColor.RED + String.format("%.1f", finalDamage) + " \u4f24\u5bb3";
         player.sendActionBar(actionBarMsg);
@@ -258,7 +273,7 @@ public class HammerListener implements Listener {
         // 范围伤害（包含玩家弹飞）
         applyAreaDamage(player, player.getLocation(), finalDamage, radius);
         applyAftershock(player.getLocation(), radius);
-        spawnSmashEffect(player.getLocation());
+        spawnSmashEffect(player.getLocation(), fallDistance);
 
         player.getWorld().playSound(player.getLocation(), Sound.ENTITY_GENERIC_EXPLODE, 1.5f, 0.5f);
         player.getWorld().playSound(player.getLocation(), Sound.BLOCK_ANVIL_LAND, 1.0f, 0.8f);
@@ -267,11 +282,19 @@ public class HammerListener implements Listener {
     /* ========== BossBar 管理 ========== */
 
     private void removeChargeBar(Player player) {
-        BossBar bar = chargeBars.get(player.getUniqueId());
+        BossBar bar = chargeBars.remove(player.getUniqueId());
         if (bar != null) {
             bar.setVisible(false);
             bar.removeAll();
         }
+        lastChargeTier.remove(player.getUniqueId());
+        lastBossBarTick.remove(player.getUniqueId());
+    }
+
+    public void cleanupPlayer(Player player) {
+        UUID uuid = player.getUniqueId();
+        removeChargeBar(player);
+        recentlyLanded.remove(uuid);
     }
 
     /* ========== 群体攻击（AOE + 玩家击飞） ========== */
@@ -319,51 +342,67 @@ public class HammerListener implements Listener {
         }
     }
 
+    private void spawnSmashEffect(Location location, double fallDistance) {
+        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        int tier = getHammerTier(cfg, fallDistance);
+        if (tier >= 2) {
+            spawnHighTierEffect(location);
+        } else if (tier >= 1) {
+            spawnMediumTierEffect(location);
+        } else {
+            spawnLowTierEffect(location);
+        }
+    }
+
     /**
-     * 猛击落地粒子特效（夸张原版重锤效果）。
-     * 取消铁砧BlockDisplay，改用多层粒子模拟冲击波：
-     * 1. 中心大爆炸粒子
-     * 2. 环形扩散冲击波 (35个点散射)
-     * 3. 地面碎石飞溅
-     * 4. 上扬烟雾柱
-     * 5. 闪电火花
+     * 低档猛击：轻量尘土 + 小范围烟雾环
      */
-    private void spawnSmashEffect(Location location) {
+    private void spawnLowTierEffect(Location location) {
+        World world = location.getWorld();
+        Location center = location.clone().add(0, 0.1, 0);
+
+        world.spawnParticle(Particle.EXPLOSION_NORMAL, center, 3, 0.8, 0.2, 0.8, 0.1);
+        world.spawnParticle(Particle.CLOUD, center, 15, 1.2, 0.05, 1.2, 0.02);
+
+        for (int i = 0; i < 12; i++) {
+            double angle = (2 * Math.PI / 12) * i;
+            Location ringLoc = center.clone().add(Math.cos(angle) * 1.5, 0, Math.sin(angle) * 1.5);
+            world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, ringLoc, 1, 0.1, 0.05, 0.1, 0.01);
+        }
+
+        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.15, 0), 20,
+                1.2, 0.3, 1.2, 0.2, Material.STONE.createBlockData());
+    }
+
+    /**
+     * 中档猛击：爆炸 + 双环冲击波 + 碎石 + 烟雾柱 + 火花
+     */
+    private void spawnMediumTierEffect(Location location) {
         World world = location.getWorld();
         Location center = location.clone().add(0, 0.15, 0);
 
-        // 中心大爆炸
         world.spawnParticle(Particle.EXPLOSION_LARGE, center, 2, 0.3, 0.3, 0.3, 0);
         world.spawnParticle(Particle.EXPLOSION_NORMAL, center, 10, 1.5, 0.3, 1.5, 0.3);
 
-        // 环形冲击波 (地面扩散)
         for (int i = 0; i < 35; i++) {
             double angle = (2 * Math.PI / 35) * i;
             double dist = 3.5;
-            double x = Math.cos(angle) * dist;
-            double z = Math.sin(angle) * dist;
-            Location ringLoc = center.clone().add(x, 0, z);
+            Location ringLoc = center.clone().add(Math.cos(angle) * dist, 0, Math.sin(angle) * dist);
             world.spawnParticle(Particle.CLOUD, ringLoc, 2, 0.2, 0.05, 0.2, 0.02);
             world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, ringLoc, 1, 0.1, 0.1, 0.1, 0.01);
         }
 
-        // 内环密集冲击波
         for (int i = 0; i < 20; i++) {
             double angle = (2 * Math.PI / 20) * i;
-            double dist = 1.8;
-            double x = Math.cos(angle) * dist;
-            double z = Math.sin(angle) * dist;
-            Location ringLoc = center.clone().add(x, 0.05, z);
+            Location ringLoc = center.clone().add(Math.cos(angle) * 1.8, 0.05, Math.sin(angle) * 1.8);
             world.spawnParticle(Particle.FLAME, ringLoc, 1, 0.1, 0.1, 0.1, 0.02);
         }
 
-        // 地面碎石飞溅
         world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.2, 0), 60,
                 2.5, 0.5, 2.5, 0.3, Material.STONE.createBlockData());
         world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.2, 0), 30,
                 2.0, 0.5, 2.0, 0.2, Material.COBBLESTONE.createBlockData());
 
-        // 上扬烟柱 (多层)
         for (int y = 0; y < 5; y++) {
             double yOff = y * 0.4;
             double spread = 0.3 + y * 0.25;
@@ -373,46 +412,111 @@ public class HammerListener implements Listener {
         world.spawnParticle(Particle.EXPLOSION_LARGE, center.clone().add(0, 1.5, 0),
                 10, 0.8, 0.5, 0.8, 0.05);
 
-        // 闪电火花 (中心密集散射)
         world.spawnParticle(Particle.ELECTRIC_SPARK, center, 25, 1.0, 0.3, 1.0, 0.1);
         world.spawnParticle(Particle.ELECTRIC_SPARK, center.clone().add(0, 0.8, 0), 15, 0.6, 0.4, 0.6, 0.08);
 
-        // 地面尘土 (用 REDSTONE 模拟)
         world.spawnParticle(Particle.REDSTONE, center, 40, 2.0, 0.05, 2.0, 0,
                 new Particle.DustOptions(Color.fromRGB(120, 100, 70), 1.5f));
     }
 
-    /* ========== 伤害分级（汉化） ========== */
+    /**
+     * 高档猛击：巨型爆炸 + 多环扩散 + 闪电 + 龙息 + 火焰旋涡
+     */
+    private void spawnHighTierEffect(Location location) {
+        World world = location.getWorld();
+        Location center = location.clone().add(0, 0.15, 0);
 
-    private double getDamageMultiplier(double fallDistance) {
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
-        if (fallDistance < cfg.getHammerDamageLowThreshold()) {
-            return cfg.getHammerDamageLowMultiplier();
-        } else if (fallDistance <= cfg.getHammerDamageMediumThreshold()) {
-            return cfg.getHammerDamageMediumMultiplier();
-        } else {
-            return cfg.getHammerDamageHighMultiplier();
+        world.spawnParticle(Particle.EXPLOSION_LARGE, center, 5, 0.5, 0.5, 0.5, 0);
+        world.spawnParticle(Particle.EXPLOSION_NORMAL, center, 20, 2.5, 0.5, 2.5, 0.4);
+
+        // 三层环形冲击波
+        for (int ring = 0; ring < 3; ring++) {
+            double dist = 2.0 + ring * 2.5;
+            int count = 20 + ring * 15;
+            for (int i = 0; i < count; i++) {
+                double angle = (2 * Math.PI / count) * i;
+                Location ringLoc = center.clone().add(Math.cos(angle) * dist, ring * 0.15, Math.sin(angle) * dist);
+                world.spawnParticle(Particle.CLOUD, ringLoc, 2, 0.3, 0.1, 0.3, 0.03);
+                world.spawnParticle(ring == 0 ? Particle.FLAME : Particle.CAMPFIRE_COSY_SMOKE,
+                        ringLoc, 2, 0.2, 0.1, 0.2, 0.03);
+            }
         }
+
+        // 大量碎石
+        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.3, 0), 100,
+                4.0, 0.8, 4.0, 0.4, Material.STONE.createBlockData());
+        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.3, 0), 60,
+                3.5, 0.8, 3.5, 0.3, Material.DEEPSLATE.createBlockData());
+
+        // 上扬烟雾柱 (更高更密)
+        for (int y = 0; y < 8; y++) {
+            double yOff = y * 0.5;
+            double spread = 0.4 + y * 0.3;
+            world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, center.clone().add(0, yOff, 0),
+                    12, spread, 0.1, spread, 0.01);
+        }
+        world.spawnParticle(Particle.EXPLOSION_LARGE, center.clone().add(0, 2.5, 0),
+                15, 1.2, 0.8, 1.2, 0.05);
+
+        // 闪电
+        world.spawnParticle(Particle.ELECTRIC_SPARK, center, 50, 2.0, 0.5, 2.0, 0.15);
+        world.spawnParticle(Particle.ELECTRIC_SPARK, center.clone().add(0, 1.5, 0), 30, 1.5, 0.8, 1.5, 0.1);
+
+        // 地面尘土
+        world.spawnParticle(Particle.REDSTONE, center, 80, 3.0, 0.05, 3.0, 0,
+                new Particle.DustOptions(Color.fromRGB(120, 100, 70), 2.0f));
+
+        // 火焰旋涡
+        for (int i = 0; i < 30; i++) {
+            double angle = (2 * Math.PI / 30) * i;
+            double dist = 1.2;
+            Location flameLoc = center.clone().add(Math.cos(angle) * dist, 0.3, Math.sin(angle) * dist);
+            world.spawnParticle(Particle.FLAME, flameLoc, 2, 0.3, 0.2, 0.3, 0.04);
+        }
+
+        // 龙息残留
+        world.spawnParticle(Particle.DRAGON_BREATH, center.clone().add(0, 0.1, 0),
+                5, 1.0, 0.05, 1.0, 0.01);
     }
 
-    private String getTierName(double fallDistance) {
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
-        if (fallDistance < cfg.getHammerDamageLowThreshold()) return "\u4f4e\u6863";
-        else if (fallDistance <= cfg.getHammerDamageMediumThreshold()) return "\u4e2d\u6863";
-        else return "\u9ad8\u6863";
+    /* ========== 伤害分级（每档独立配置） ========== */
+
+    private int getHammerTier(GameConfig cfg, double fallDistance) {
+        if (fallDistance >= cfg.getHammerHighCharge()) return 2;
+        if (fallDistance >= cfg.getHammerMediumCharge()) return 1;
+        return 0;
+    }
+
+    private double getTierDamage(GameConfig cfg, int tier) {
+        return switch (tier) {
+            case 2 -> cfg.getHammerHighDamage();
+            case 1 -> cfg.getHammerMediumDamage();
+            default -> cfg.getHammerLowDamage();
+        };
+    }
+
+    private double getTierRadius(GameConfig cfg, int tier) {
+        return switch (tier) {
+            case 2 -> cfg.getHammerHighRadius();
+            case 1 -> cfg.getHammerMediumRadius();
+            default -> cfg.getHammerLowRadius();
+        };
+    }
+
+    private String getTierDisplayName(int tier) {
+        return switch (tier) {
+            case 2 -> "\u9ad8\u6863";
+            case 1 -> "\u4e2d\u6863";
+            default -> "\u4f4e\u6863";
+        };
     }
 
     /* ========== 落地检测 ========== */
 
     private boolean isPlayerOnGround(Player player, Location to) {
-        if (to.getY() % 1.0 == 0.0 || to.getY() % 0.5 == 0.0) {
-            return player.isOnGround();
-        }
+        if (player.isOnGround()) return true;
 
-        World world = to.getWorld();
         Location below = to.clone().subtract(0, 0.1, 0);
-        if (below.getBlock().getType().isSolid()) return true;
-
-        return player.isOnGround() || player.getFallDistance() == 0.0f;
+        return below.getBlock().getType().isSolid();
     }
 }

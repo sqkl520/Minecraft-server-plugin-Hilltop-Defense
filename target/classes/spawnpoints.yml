@@ -1,0 +1,12 @@
+# Hilltop Village - Spawn Points Configuration
+# This file stores admin-defined monster spawn locations and core position.
+# Use /hilltop deploy to manage these settings in-game.
+
+world: world
+
+core:
+  x: 0.0
+  y: 100.0
+  z: 0.0
+
+spawn-points: []

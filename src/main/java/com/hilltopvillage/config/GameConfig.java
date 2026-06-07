@@ -25,13 +25,23 @@ public class GameConfig {
     private double hammerBaseDamage = 20.0;
     private double hammerEffectRadius = 5.0;
     private int hammerAftershockTicks = 60;
-    private int hammerSmashTimeoutTicks = 100;
+    private int hammerSmashTimeoutTicks = 600;
     private int hammerVisualDisplayTicks = 20;
     private double hammerDamageLowThreshold = 5.0;
     private double hammerDamageMediumThreshold = 10.0;
     private double hammerDamageLowMultiplier = 1.5;
     private double hammerDamageMediumMultiplier = 2.0;
     private double hammerDamageHighMultiplier = 3.0;
+    // 每档独立配置（伤害 / 范围 / 蓄力距离）
+    private double hammerLowDamage = 30.0;
+    private double hammerMediumDamage = 40.0;
+    private double hammerHighDamage = 60.0;
+    private double hammerLowRadius = 4.0;
+    private double hammerMediumRadius = 5.0;
+    private double hammerHighRadius = 6.5;
+    private double hammerLowCharge = 1.0;
+    private double hammerMediumCharge = 5.0;
+    private double hammerHighCharge = 10.0;
 
     private List<Material> nodeBlockTypes = new ArrayList<>(Arrays.asList(
             Material.BEACON, Material.ENCHANTING_TABLE, Material.ENDER_CHEST, Material.RESPAWN_ANCHOR
@@ -59,6 +69,7 @@ public class GameConfig {
     private double fireballExplosionRadius = 4.0;
     private int fireballCooldownTicks = 3;
     private int fireballMaxTravelTicks = 100;
+    private double fireballKnockback = 5.0;
 
     public GameConfig() {
         nodeBuffEffects.put(PotionEffectType.DAMAGE_RESISTANCE, 0);
@@ -260,6 +271,12 @@ public class GameConfig {
         snap.hammerDamageLowThreshold = this.hammerDamageLowThreshold; snap.hammerDamageMediumThreshold = this.hammerDamageMediumThreshold;
         snap.hammerDamageLowMultiplier = this.hammerDamageLowMultiplier; snap.hammerDamageMediumMultiplier = this.hammerDamageMediumMultiplier;
         snap.hammerDamageHighMultiplier = this.hammerDamageHighMultiplier;
+        snap.hammerLowDamage = this.hammerLowDamage; snap.hammerMediumDamage = this.hammerMediumDamage;
+        snap.hammerHighDamage = this.hammerHighDamage;
+        snap.hammerLowRadius = this.hammerLowRadius; snap.hammerMediumRadius = this.hammerMediumRadius;
+        snap.hammerHighRadius = this.hammerHighRadius;
+        snap.hammerLowCharge = this.hammerLowCharge; snap.hammerMediumCharge = this.hammerMediumCharge;
+        snap.hammerHighCharge = this.hammerHighCharge;
         snap.nodeBlockTypes = new ArrayList<>(this.nodeBlockTypes);
         snap.nodeBaseHealth = this.nodeBaseHealth; snap.nodeRepairItem = this.nodeRepairItem;
         snap.nodeRepairAmount = this.nodeRepairAmount; snap.nodeBuffRadius = this.nodeBuffRadius;
@@ -273,6 +290,7 @@ public class GameConfig {
         snap.fireballMaterial = this.fireballMaterial; snap.fireballSpeed = this.fireballSpeed;
         snap.fireballDamage = this.fireballDamage; snap.fireballExplosionRadius = this.fireballExplosionRadius;
         snap.fireballCooldownTicks = this.fireballCooldownTicks; snap.fireballMaxTravelTicks = this.fireballMaxTravelTicks;
+        snap.fireballKnockback = this.fireballKnockback;
         return snap;
     }
 
@@ -320,6 +338,24 @@ public class GameConfig {
     public void setHammerDamageMediumMultiplier(double v) { this.hammerDamageMediumMultiplier = v; }
     public double getHammerDamageHighMultiplier() { return hammerDamageHighMultiplier; }
     public void setHammerDamageHighMultiplier(double v) { this.hammerDamageHighMultiplier = v; }
+    public double getHammerLowDamage() { return hammerLowDamage; }
+    public void setHammerLowDamage(double v) { this.hammerLowDamage = v; }
+    public double getHammerMediumDamage() { return hammerMediumDamage; }
+    public void setHammerMediumDamage(double v) { this.hammerMediumDamage = v; }
+    public double getHammerHighDamage() { return hammerHighDamage; }
+    public void setHammerHighDamage(double v) { this.hammerHighDamage = v; }
+    public double getHammerLowRadius() { return hammerLowRadius; }
+    public void setHammerLowRadius(double v) { this.hammerLowRadius = v; }
+    public double getHammerMediumRadius() { return hammerMediumRadius; }
+    public void setHammerMediumRadius(double v) { this.hammerMediumRadius = v; }
+    public double getHammerHighRadius() { return hammerHighRadius; }
+    public void setHammerHighRadius(double v) { this.hammerHighRadius = v; }
+    public double getHammerLowCharge() { return hammerLowCharge; }
+    public void setHammerLowCharge(double v) { this.hammerLowCharge = v; }
+    public double getHammerMediumCharge() { return hammerMediumCharge; }
+    public void setHammerMediumCharge(double v) { this.hammerMediumCharge = v; }
+    public double getHammerHighCharge() { return hammerHighCharge; }
+    public void setHammerHighCharge(double v) { this.hammerHighCharge = v; }
     public List<Material> getNodeBlockTypes() { return nodeBlockTypes; }
     public void setNodeBlockTypes(List<Material> v) { this.nodeBlockTypes = v; }
     public double getNodeBaseHealth() { return nodeBaseHealth; }
@@ -358,6 +394,8 @@ public class GameConfig {
     public void setFireballCooldownTicks(int v) { this.fireballCooldownTicks = v; }
     public int getFireballMaxTravelTicks() { return fireballMaxTravelTicks; }
     public void setFireballMaxTravelTicks(int v) { this.fireballMaxTravelTicks = v; }
+    public double getFireballKnockback() { return fireballKnockback; }
+    public void setFireballKnockback(double v) { this.fireballKnockback = v; }
 
     public WaveConfig getWaveConfig(int waveNumber) {
         return waves.getOrDefault(waveNumber, defaultWave);

@@ -1,0 +1,214 @@
+# ============================================================
+#  Hilltop Village — 主配置文件
+#  config.yml
+# ============================================================
+#  此文件存储插件核心运行参数。
+#  修改后需要重启服务器或使用 /hilltop reloadconfig 生效。
+# ============================================================
+
+# --- 语言设置 ---
+# 可选值: zh (中文), en (English)
+language: zh
+
+# --- 游戏基础设置 ---
+game:
+  # 游戏所在的世界名称
+  world-name: world
+  # 村庄核心坐标（默认值，可通过 /hilltop deploy setcore 设定）
+  core:
+    x: 0.0
+    y: 100.0
+    z: 0.0
+  # 最少玩家数（低于此数无法开始游戏）
+  min-players: 2
+  # 最多玩家数（超出此数无法加入）
+  max-players: 6
+  # 大厅等待时间（秒）
+  lobby-wait-seconds: 60
+  # 波次间隔时间（秒）
+  wave-interval-seconds: 30
+  # 节点修复间隔（秒）
+  repair-interval-seconds: 15
+  # 胜利所需波次数
+  victory-waves: 20
+
+# --- 重锤机制设置 ---
+hammer:
+  # 重锤使用的物品材料（Minecraft 材料名）
+  item-material: IRON_AXE
+  # 重锤显示名称（支持颜色代码 &）
+  item-name: "&6&l神圣重锤"
+  # 技能触发方式
+  skill-activation: RIGHT_CLICK_AIR
+  # 三档伤害倍率（根据下落高度判定）
+  damage-tiers:
+    low:
+      min-fall-distance: 0
+      max-fall-distance: 4
+      multiplier: 1.5
+    medium:
+      min-fall-distance: 5
+      max-fall-distance: 10
+      multiplier: 2.0
+    high:
+      min-fall-distance: 11
+      max-fall-distance: 256
+      multiplier: 3.0
+  # 基础伤害值
+  base-damage: 20.0
+  # AOE 效果半径（格）
+  effect-radius: 5.0
+  # 余震减速持续时间（tick，20 tick = 1秒）
+  aftershock-duration-ticks: 60
+  # 余震减速等级
+  aftershock-slowness-level: 2
+  # 猛击激活超时时间（tick）
+  smash-timeout-ticks: 100
+  # 视觉效果显示时长（tick）
+  visual-display-ticks: 20
+
+# --- 能量节点系统 ---
+nodes:
+  # 可作为能量节点的方块类型列表
+  block-types:
+    - BEACON           # 信标
+    - ENCHANTING_TABLE # 附魔台
+    - ENDER_CHEST      # 末影箱
+    - RESPAWN_ANCHOR   # 重生锚
+  # 节点基础生命值
+  base-health: 100.0
+  # 修复消耗物品
+  repair-cost-item: SLIME_BALL
+  # 修复物品显示名称
+  repair-cost-name: "&a世界树汁液"
+  # 每次修复消耗物品数量
+  repair-cost-amount: 1
+  # 每次修复恢复生命值
+  repair-amount-per-cost: 50.0
+  # 节点增益效果半径
+  buff-radius: 20.0
+  # BUFF 效果列表（效果类型: 等级）
+  buff-effects:
+    DAMAGE_RESISTANCE: # 抗性提升
+      amplifier: 1
+    REGENERATION:      # 生命恢复
+      amplifier: 0
+  # 自爆对节点伤害倍率
+  self-destruct-damage-multiplier: 3.0
+  # 自爆甲虫爆炸威力
+  explode-beetle-explosion-power: 4.0
+
+# --- 特殊怪物设置 ---
+monsters:
+  # 自爆甲虫：靠近节点自爆
+  explode-beetle:
+    type: CAVE_SPIDER
+    name: "&c自爆甲虫"
+    health: 40.0
+    speed: 0.35
+    explosion-power: 4.0
+    explosion-damage-to-nodes: 40.0
+    spawn-weight: 3
+  # 钩爪猎手：远程钩抓玩家
+  hook-claw-hunter:
+    type: SKELETON
+    name: "&5钩爪猎手"
+    health: 60.0
+    speed: 0.25
+    projectile-speed: 1.8
+    projectile-damage: 0.0
+    stun-duration-ticks: 40
+    min-shoot-distance: 8.0
+    max-shoot-distance: 30.0
+    required-y-difference: 4.0
+    spawn-weight: 2
+  # 飞行抛投者：空投僵尸
+  flying-dropper:
+    type: PHANTOM
+    name: "&b飞行抛投者"
+    health: 80.0
+    speed: 0.30
+    airdrop-interval-ticks: 160
+    airdrop-count: 3
+    airdrop-mob-type: ZOMBIE
+    spawn-weight: 1
+
+# --- 波次组合配置 ---
+waves:
+  # 默认波次（未特别配置时使用）
+  default:
+    total-mobs: 15
+    compositions:
+      - type: ZOMBIE
+        count: 6
+        spawn-weight: 3
+      - type: SKELETON
+        count: 4
+        spawn-weight: 2
+      - type: explode_beetle
+        count: 2
+        spawn-weight: 1
+      - type: hook_claw_hunter
+        count: 2
+        spawn-weight: 1
+      - type: flying_dropper
+        count: 1
+        spawn-weight: 1
+  # 第1波
+  "1":
+    total-mobs: 10
+    compositions:
+      - type: ZOMBIE
+        count: 8
+      - type: SKELETON
+        count: 2
+  # 第5波
+  "5":
+    total-mobs: 20
+    compositions:
+      - type: ZOMBIE
+        count: 10
+      - type: SKELETON
+        count: 5
+      - type: explode_beetle
+        count: 3
+      - type: hook_claw_hunter
+        count: 2
+  # 第10波
+  "10":
+    total-mobs: 30
+    compositions:
+      - type: ZOMBIE
+        count: 12
+      - type: SKELETON
+        count: 6
+      - type: explode_beetle
+        count: 5
+      - type: hook_claw_hunter
+        count: 4
+      - type: flying_dropper
+        count: 3
+
+# --- 怪物生成设置 ---
+spawning:
+  # 生成半径最小值（格）
+  spawn-radius-min: 20
+  # 生成半径最大值（格）
+  spawn-radius-max: 40
+  # 生成 Y 偏移
+  spawn-y-offset: 0
+  # 每玩家人数上限
+  mob-cap-per-player: 15
+  # 全局怪物数量上限
+  global-mob-cap: 80
+
+# --- 广播消息设置 ---
+messages:
+  game-start: "&6[村民守卫战PLUS] &e游戏开始！保护村庄核心！"
+  game-over-victory: "&6[村民守卫战PLUS] &a恭喜！你们成功守护了村庄！"
+  game-over-defeat: "&6[村民守卫战PLUS] &c村庄沦陷了...游戏结束。"
+  wave-start: "&6[村民守卫战PLUS] &e第 &c{wave} &e波来袭！"
+  wave-complete: "&6[村民守卫战PLUS] &a第 &c{wave} &a波已击退！"
+  node-destroyed: "&c一座能量节点被摧毁了！"
+  node-repaired: "&a一座能量节点已修复！"
+  hammer-activated: "&6&l天降正义！"

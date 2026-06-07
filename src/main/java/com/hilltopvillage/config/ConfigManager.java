@@ -83,6 +83,16 @@ public class ConfigManager {
         settingsYaml.set("hammer.aftershock-ticks", activeConfig.getHammerAftershockTicks());
         settingsYaml.set("hammer.smash-timeout-ticks", activeConfig.getHammerSmashTimeoutTicks());
         settingsYaml.set("hammer.visual-display-ticks", activeConfig.getHammerVisualDisplayTicks());
+        settingsYaml.set("hammer.tier.low.charge", activeConfig.getHammerLowCharge());
+        settingsYaml.set("hammer.tier.low.damage", activeConfig.getHammerLowDamage());
+        settingsYaml.set("hammer.tier.low.radius", activeConfig.getHammerLowRadius());
+        settingsYaml.set("hammer.tier.medium.charge", activeConfig.getHammerMediumCharge());
+        settingsYaml.set("hammer.tier.medium.damage", activeConfig.getHammerMediumDamage());
+        settingsYaml.set("hammer.tier.medium.radius", activeConfig.getHammerMediumRadius());
+        settingsYaml.set("hammer.tier.high.charge", activeConfig.getHammerHighCharge());
+        settingsYaml.set("hammer.tier.high.damage", activeConfig.getHammerHighDamage());
+        settingsYaml.set("hammer.tier.high.radius", activeConfig.getHammerHighRadius());
+        // 旧版兼容字段
         settingsYaml.set("hammer.damage-low-threshold", activeConfig.getHammerDamageLowThreshold());
         settingsYaml.set("hammer.damage-medium-threshold", activeConfig.getHammerDamageMediumThreshold());
         settingsYaml.set("hammer.damage-low-multiplier", activeConfig.getHammerDamageLowMultiplier());
@@ -112,6 +122,7 @@ public class ConfigManager {
         settingsYaml.set("fireball.explosion-radius", activeConfig.getFireballExplosionRadius());
         settingsYaml.set("fireball.cooldown-ticks", activeConfig.getFireballCooldownTicks());
         settingsYaml.set("fireball.max-travel-ticks", activeConfig.getFireballMaxTravelTicks());
+        settingsYaml.set("fireball.knockback", activeConfig.getFireballKnockback());
 
         settingsYaml.set("monsters", null);
         for (Map.Entry<String, GameConfig.MonsterConfig> entry : activeConfig.getMonsters().entrySet()) {
@@ -220,6 +231,15 @@ public class ConfigManager {
         if (settingsYaml.contains("hammer.damage-low-multiplier")) activeConfig.setHammerDamageLowMultiplier(settingsYaml.getDouble("hammer.damage-low-multiplier"));
         if (settingsYaml.contains("hammer.damage-medium-multiplier")) activeConfig.setHammerDamageMediumMultiplier(settingsYaml.getDouble("hammer.damage-medium-multiplier"));
         if (settingsYaml.contains("hammer.damage-high-multiplier")) activeConfig.setHammerDamageHighMultiplier(settingsYaml.getDouble("hammer.damage-high-multiplier"));
+        if (settingsYaml.contains("hammer.tier.low.charge")) activeConfig.setHammerLowCharge(settingsYaml.getDouble("hammer.tier.low.charge"));
+        if (settingsYaml.contains("hammer.tier.low.damage")) activeConfig.setHammerLowDamage(settingsYaml.getDouble("hammer.tier.low.damage"));
+        if (settingsYaml.contains("hammer.tier.low.radius")) activeConfig.setHammerLowRadius(settingsYaml.getDouble("hammer.tier.low.radius"));
+        if (settingsYaml.contains("hammer.tier.medium.charge")) activeConfig.setHammerMediumCharge(settingsYaml.getDouble("hammer.tier.medium.charge"));
+        if (settingsYaml.contains("hammer.tier.medium.damage")) activeConfig.setHammerMediumDamage(settingsYaml.getDouble("hammer.tier.medium.damage"));
+        if (settingsYaml.contains("hammer.tier.medium.radius")) activeConfig.setHammerMediumRadius(settingsYaml.getDouble("hammer.tier.medium.radius"));
+        if (settingsYaml.contains("hammer.tier.high.charge")) activeConfig.setHammerHighCharge(settingsYaml.getDouble("hammer.tier.high.charge"));
+        if (settingsYaml.contains("hammer.tier.high.damage")) activeConfig.setHammerHighDamage(settingsYaml.getDouble("hammer.tier.high.damage"));
+        if (settingsYaml.contains("hammer.tier.high.radius")) activeConfig.setHammerHighRadius(settingsYaml.getDouble("hammer.tier.high.radius"));
 
         List<String> nodeTypes = settingsYaml.getStringList("nodes.block-types");
         if (!nodeTypes.isEmpty()) {
@@ -249,6 +269,7 @@ public class ConfigManager {
         if (settingsYaml.contains("fireball.explosion-radius")) activeConfig.setFireballExplosionRadius(settingsYaml.getDouble("fireball.explosion-radius"));
         if (settingsYaml.contains("fireball.cooldown-ticks")) activeConfig.setFireballCooldownTicks(settingsYaml.getInt("fireball.cooldown-ticks"));
         if (settingsYaml.contains("fireball.max-travel-ticks")) activeConfig.setFireballMaxTravelTicks(settingsYaml.getInt("fireball.max-travel-ticks"));
+        if (settingsYaml.contains("fireball.knockback")) activeConfig.setFireballKnockback(settingsYaml.getDouble("fireball.knockback"));
 
         ConfigurationSection monsterSection = settingsYaml.getConfigurationSection("monsters");
         if (monsterSection != null) {

@@ -19,7 +19,7 @@ public class MainConfigMenu extends AbstractConfigMenu {
     private final ConfigManager configManager;
 
     public MainConfigMenu(Player admin, ConfigManager configManager) {
-        super(admin, ChatColor.DARK_GRAY + "村民守卫战PLUS — 配置中心", 54, HilltopVillagePlugin.getPlugin(HilltopVillagePlugin.class));
+        super(admin, ChatColor.DARK_GRAY + "峰上村庄守卫战 — 配置中心", 54, HilltopVillagePlugin.getPlugin(HilltopVillagePlugin.class));
         this.configManager = configManager;
     }
 

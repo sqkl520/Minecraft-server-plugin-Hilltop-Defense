@@ -2,7 +2,7 @@
 
 > ⚠️ **这是一个初中生用AI做的插件，有任何问题建议欢迎提交Issues，如果您喜欢这个项目，就收藏关注一下吧！**
 
-# HilltopVillage —— 村民守卫战PLUS
+# Hilltop Village
 
 一个面向 Minecraft 服务器的合作 PvE 塔防插件。玩家需要团结协作，保护村庄核心，抵御一波波不断增强的怪物进攻。
 
@@ -133,14 +133,16 @@ JAR 文件将生成在 `target/` 目录。
 
 ## 许可证
 
-MIT License
+本项目采用 [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/)。
+
+任何使用、修改或分发，都必须保留项目根目录下的 `LICENSE` 和 `NOTICE` 文件，并确保其内容完整。
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=你的用户名%2FHilltopVillage&type=date&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=你的用户名/HilltopVillage&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=你的用户名/HilltopVillage&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=你的用户名/HilltopVillage&type=date&legend=top-left" />
-  </picture>
+<a href="https://www.star-history.com/?repos=sqkl520%2FMinecraft-server-plugin-Hilltop-Defense&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=sqkl520/Minecraft-server-plugin-Hilltop-Defense&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=sqkl520/Minecraft-server-plugin-Hilltop-Defense&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=sqkl520/Minecraft-server-plugin-Hilltop-Defense&type=date&legend=top-left" />
+ </picture>
 </a>

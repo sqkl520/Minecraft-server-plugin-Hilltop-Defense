@@ -96,7 +96,7 @@ public class NumericInputHandler implements Listener {
                 if (stringPending.callback != null) {
                     final String value = msg;
                     Bukkit.getScheduler().runTask(
-                            Bukkit.getPluginManager().getPlugin("HilltopVillage"),
+                            Bukkit.getPluginManager().getPlugin("HilltopDefense"),
                             () -> stringPending.callback.accept(value));
                 }
             }
@@ -114,7 +114,7 @@ public class NumericInputHandler implements Listener {
             event.getPlayer().sendMessage(ChatColor.GRAY + "已取消。");
             if (pending.onCancel != null) {
                 Bukkit.getScheduler().runTask(
-                        Bukkit.getPluginManager().getPlugin("HilltopVillage"),
+                        Bukkit.getPluginManager().getPlugin("HilltopDefense"),
                         pending.onCancel);
             }
             return;
@@ -124,7 +124,7 @@ public class NumericInputHandler implements Listener {
             double value = Double.parseDouble(msg);
             if (pending.callback != null) {
                 Bukkit.getScheduler().runTask(
-                        Bukkit.getPluginManager().getPlugin("HilltopVillage"),
+                        Bukkit.getPluginManager().getPlugin("HilltopDefense"),
                         () -> pending.callback.accept(value));
             }
         } catch (NumberFormatException e) {
