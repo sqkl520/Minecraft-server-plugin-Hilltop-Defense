@@ -2,7 +2,7 @@ package com.hilltopvillage.util;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import org.bukkit.ChatColor;
-import org.bukkit.configuration.file.FileConfiguration;
+import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 import org.bukkit.entity.Player;
 
@@ -18,12 +18,12 @@ import java.util.UUID;
 
 /**
  * 多语言管理器 - 从 messages.yml 加载消息，支持 en/zh 切换。
+ * JAR 内嵌文件为主，磁盘文件为覆盖层，确保新 key 始终可用。
  */
 public class LanguageManager {
 
     private final HilltopVillagePlugin plugin;
     private File messagesFile;
-    private FileConfiguration messagesConfig;
 
     /** 全局默认语言 */
     private String defaultLocale = "zh";
@@ -36,82 +36,87 @@ public class LanguageManager {
 
     public LanguageManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
-        loadDefaults();
         reload();
     }
 
     // ---- 加载 ----
 
-    private void loadDefaults() {
-        // Save default messages.yml from resources
+    public void reload() {
         File dataFolder = plugin.getDataFolder();
         if (!dataFolder.exists()) dataFolder.mkdirs();
-
         messagesFile = new File(dataFolder, "messages.yml");
-        if (!messagesFile.exists()) {
-            // Copy from resources
-            try (InputStream in = plugin.getResource("messages.yml")) {
-                if (in != null) {
-                    java.nio.file.Files.copy(in, messagesFile.toPath());
-                } else {
-                    messagesFile.createNewFile();
-                }
-            } catch (IOException e) {
-                plugin.getLogger().warning("Could not create default messages.yml: " + e.getMessage());
-            }
-        }
-    }
 
-    public void reload() {
-        messagesConfig = YamlConfiguration.loadConfiguration(messagesFile);
-
-        // Merge with built-in defaults (from jar)
-        InputStream defStream = plugin.getResource("messages.yml");
-        if (defStream != null) {
-            try (Reader reader = new InputStreamReader(defStream, StandardCharsets.UTF_8)) {
-                YamlConfiguration defConfig = YamlConfiguration.loadConfiguration(reader);
-                messagesConfig.setDefaults(defConfig);
+        // 1. 从 JAR 加载完整默认值（永远有所有 key）
+        YamlConfiguration jarConfig = new YamlConfiguration();
+        InputStream jarStream = plugin.getResource("messages.yml");
+        if (jarStream != null) {
+            try (Reader reader = new InputStreamReader(jarStream, StandardCharsets.UTF_8)) {
+                jarConfig = YamlConfiguration.loadConfiguration(reader);
             } catch (IOException e) {
-                plugin.getLogger().warning("Could not load default messages.yml from jar: " + e.getMessage());
+                plugin.getLogger().warning("Cannot load jar messages.yml: " + e.getMessage());
             }
         }
 
-        // Read locale from config
-        String savedLocale = plugin.getConfig().getString("language", "zh");
-        if (savedLocale != null && (savedLocale.equals("en") || savedLocale.equals("zh"))) {
-            defaultLocale = savedLocale;
-        }
+        // 2. 加载磁盘文件（旧版/管理员自定义，可能缺 key，但自定义优先）
+        YamlConfiguration diskConfig = messagesFile.exists()
+                ? YamlConfiguration.loadConfiguration(messagesFile)
+                : new YamlConfiguration();
 
-        // Pre-cache messages (merge file + jar defaults)
+        // 3. 构建缓存：JAR 为基础，磁盘值覆盖
         messageCache.clear();
         for (String locale : new String[]{"en", "zh"}) {
             Map<String, String> map = new HashMap<>();
-            org.bukkit.configuration.ConfigurationSection section = messagesConfig.getConfigurationSection(locale);
-            if (section != null) {
-                for (String key : section.getKeys(true)) {
-                    if (messagesConfig.isString(locale + "." + key)) {
-                        map.put(key, messagesConfig.getString(locale + "." + key));
+
+            // 先从 JAR 加载（保证所有 key 都有值）
+            ConfigurationSection jarSection = jarConfig.getConfigurationSection(locale);
+            if (jarSection != null) {
+                for (String key : jarSection.getKeys(true)) {
+                    String path = locale + "." + key;
+                    if (jarConfig.isString(path)) {
+                        map.put(key, jarConfig.getString(path));
                     }
                 }
             }
-            // Also load from jar defaults (for newly added keys)
-            if (messagesConfig.getDefaults() != null) {
-                org.bukkit.configuration.ConfigurationSection defSection = messagesConfig.getDefaults().getConfigurationSection(locale);
-                if (defSection != null) {
-                    for (String key : defSection.getKeys(true)) {
-                        if (!map.containsKey(key)) {
-                            String defPath = locale + "." + key;
-                            if (messagesConfig.getDefaults().isString(defPath)) {
-                                map.put(key, messagesConfig.getDefaults().getString(defPath));
-                            }
-                        }
+
+            // 再用磁盘文件覆盖（管理员自定义生效）
+            ConfigurationSection diskSection = diskConfig.getConfigurationSection(locale);
+            if (diskSection != null) {
+                for (String key : diskSection.getKeys(true)) {
+                    String path = locale + "." + key;
+                    if (diskConfig.isString(path)) {
+                        map.put(key, diskConfig.getString(path));
                     }
                 }
             }
+
             messageCache.put(locale, map);
         }
 
-        plugin.getLogger().info("LanguageManager loaded. Default locale: " + defaultLocale);
+        // 4. 把 JAR 里缺失的 key 补写到磁盘文件（方便管理员查看/编辑全量 key）
+        boolean dirty = false;
+        for (String key : jarConfig.getKeys(true)) {
+            if (!diskConfig.contains(key)) {
+                diskConfig.set(key, jarConfig.get(key));
+                dirty = true;
+            }
+        }
+        if (dirty || !messagesFile.exists()) {
+            try {
+                diskConfig.save(messagesFile);
+            } catch (IOException e) {
+                plugin.getLogger().warning("Cannot save messages.yml: " + e.getMessage());
+            }
+        }
+
+        // 5. 读取全局语言设置
+        String savedLocale = plugin.getConfig().getString("language", "zh");
+        if ("en".equals(savedLocale) || "zh".equals(savedLocale)) {
+            defaultLocale = savedLocale;
+        }
+
+        plugin.getLogger().info("LanguageManager loaded " +
+                messageCache.getOrDefault("en", Map.of()).size() + " EN keys, " +
+                messageCache.getOrDefault("zh", Map.of()).size() + " ZH keys. Locale: " + defaultLocale);
     }
 
     // ---- 语言切换 ----

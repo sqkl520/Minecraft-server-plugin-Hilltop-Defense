@@ -2,7 +2,7 @@ name: HilltopVillage
 version: 1.0.0
 main: com.hilltopvillage.HilltopVillagePlugin
 api-version: 1.19
-description: Village Defense PLUS - Cooperative PvE Tower Defense
+description: Hilltop Village - Cooperative PvE Tower Defense
 authors: [HilltopVillageTeam]
 depend: []
 softdepend: []

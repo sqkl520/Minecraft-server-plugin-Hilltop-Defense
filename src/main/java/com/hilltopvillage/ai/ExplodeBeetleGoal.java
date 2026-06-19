@@ -3,6 +3,7 @@ package com.hilltopvillage.ai;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
+import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.mechanics.NodeSystem;
 import org.bukkit.*;
@@ -99,15 +100,15 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
         Location nodeLoc = targetNode.getLocation();
         World world = nodeLoc.getWorld();
 
-        world.createExplosion(nodeLoc,
-                (float) gameManager.getPlugin().getConfig()
-                        .getDouble("monsters.explode-beetle.explosion-power", 4.0),
-                false, false, beetle);
+        // 统一从 GameConfig / MonsterConfig 读取，确保配置中心 GUI 修改后生效
+        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig.MonsterConfig monsterCfg = cfg.getMonsters().get("explode-beetle");
+        double explodePower = monsterCfg != null ? monsterCfg.getExplodeDamageMultiplier() : 3.0;
 
-        double nodeDamage = gameManager.getPlugin().getConfig()
-                .getDouble("monsters.explode-beetle.explosion-damage-to-nodes", 40.0);
-        double multiplier = gameManager.getPlugin().getConfig()
-                .getDouble("nodes.self-destruct-damage-multiplier", 3.0);
+        world.createExplosion(nodeLoc, (float) explodePower, false, false, beetle);
+
+        double nodeDamage = 40.0; // 基础节点伤害
+        double multiplier = cfg.getNodeSelfDestructMultiplier();
 
         gameManager.getNodeSystem().damageNode(nodeLoc, nodeDamage * multiplier);
         gameManager.getDisplayEntityManager().spawnNodeDestroyEffect(nodeLoc);

@@ -3,6 +3,7 @@ package com.hilltopvillage.ai;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
+import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import org.bukkit.*;
 import org.bukkit.entity.Mob;
@@ -172,8 +173,9 @@ public class HookClawHunterGoal implements Goal<Mob> {
         Location targetLoc = currentTarget.getLocation().clone().add(0, 1.0, 0);
 
         Vector velocity = targetLoc.toVector().subtract(hunterLoc.toVector()).normalize();
-        double speed = gameManager.getPlugin().getConfig()
-                .getDouble("monsters.hook-claw-hunter.projectile-speed", 1.8);
+        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig.MonsterConfig monsterCfg = cfg.getMonsters().get("hook-claw-hunter");
+        double speed = monsterCfg != null ? monsterCfg.getHookVelocity() : 1.8;
         velocity.multiply(speed);
 
         Snowball projectile = hunter.getWorld().spawn(hunterLoc, Snowball.class);
@@ -216,8 +218,9 @@ public class HookClawHunterGoal implements Goal<Mob> {
             hitPlayer.teleport(teleportDest);
         }
 
-        int stunDuration = gameManager.getPlugin().getConfig()
-                .getInt("monsters.hook-claw-hunter.stun-duration-ticks", 40);
+        GameConfig cfg2 = gameManager.getConfigManager().getActiveConfig();
+        GameConfig.MonsterConfig monsterCfg2 = cfg2.getMonsters().get("hook-claw-hunter");
+        int stunDuration = monsterCfg2 != null ? monsterCfg2.getStunDurationTicks() : 40;
 
         hitPlayer.addPotionEffect(new PotionEffect(
                 PotionEffectType.BLINDNESS, stunDuration, 0, false, true, true));

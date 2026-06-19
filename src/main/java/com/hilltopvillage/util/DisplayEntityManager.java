@@ -18,15 +18,19 @@ public class DisplayEntityManager {
 
     private final HilltopVillagePlugin plugin;
     private final Queue<ScheduledDisplay> cleanupQueue;
+    private BukkitRunnable cleanupTask;
+    private boolean cleanupTaskRunning;
 
     public DisplayEntityManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
         this.cleanupQueue = new ConcurrentLinkedQueue<>();
-        startCleanupTask();
+        this.cleanupTaskRunning = false;
     }
 
-    private void startCleanupTask() {
-        new BukkitRunnable() {
+    private void ensureCleanupTaskRunning() {
+        if (cleanupTaskRunning) return;
+        cleanupTaskRunning = true;
+        cleanupTask = new BukkitRunnable() {
             @Override
             public void run() {
                 long currentTick = plugin.getServer().getCurrentTick();
@@ -43,8 +47,13 @@ public class DisplayEntityManager {
                         break;
                     }
                 }
+                if (cleanupQueue.isEmpty()) {
+                    cleanupTaskRunning = false;
+                    cancel();
+                }
             }
-        }.runTaskTimer(plugin, 1L, 5L);
+        };
+        cleanupTask.runTaskTimer(plugin, 1L, 5L);
     }
 
     public void spawnHammerImpact(Location location, int displayDurationTicks) {
@@ -100,6 +109,7 @@ public class DisplayEntityManager {
     private void scheduleCleanup(org.bukkit.entity.Display display, int durationTicks) {
         long removeAt = plugin.getServer().getCurrentTick() + durationTicks;
         cleanupQueue.add(new ScheduledDisplay(display, removeAt));
+        ensureCleanupTaskRunning();
     }
 
     public void cleanupAll() {

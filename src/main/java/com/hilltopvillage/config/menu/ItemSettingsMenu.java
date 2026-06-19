@@ -3,6 +3,7 @@ package com.hilltopvillage.config.menu;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.config.ConfigManager;
 import com.hilltopvillage.config.GameConfig;
+import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -11,14 +12,8 @@ import org.bukkit.event.inventory.ClickType;
 import org.bukkit.plugin.Plugin;
 
 /**
- * 玩法物品设置（54格大箱子）。
- * 统一管理重锤和烈焰蛋的所有可配置属性。
- *
- * 布局：
- *   Row 1 (0-8):   标题
- *   Row 2 (9-17):  物品标签切换 (重锤 / 烈焰蛋)
- *   Row 3-5 (18-44): 当前选中物品的配置项
- *   Row 6 (45-53): 返回 / 关闭
+ * Gameplay item settings (54-slot large chest).
+ * Manages all configurable properties for Sacred Hammer and Fireball.
  */
 public class ItemSettingsMenu extends AbstractConfigMenu {
 
@@ -26,12 +21,11 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
     private final AbstractConfigMenu parent;
     private final Plugin plugin;
 
-    /** 当前编辑的物品类型 */
     private enum Page { HAMMER, FIREBALL }
     private Page currentPage = Page.HAMMER;
 
-    public ItemSettingsMenu(Player admin, ConfigManager configManager, AbstractConfigMenu parent) {
-        super(admin, ChatColor.DARK_GRAY + "玩法物品设置", 54, HilltopVillagePlugin.getPlugin(HilltopVillagePlugin.class));
+    public ItemSettingsMenu(Player admin, ConfigManager configManager, AbstractConfigMenu parent, LanguageManager lang) {
+        super(admin, lang.getFor(admin, "config.menu.items.title"), 54, HilltopVillagePlugin.getPlugin(HilltopVillagePlugin.class), lang);
         this.configManager = configManager;
         this.parent = parent;
         this.plugin = HilltopVillagePlugin.getPlugin(HilltopVillagePlugin.class);
@@ -43,17 +37,17 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
         inventory.clear();
         GameConfig cfg = configManager.getActiveConfig();
 
-        setItem(4, Material.NETHERITE_AXE, ChatColor.GOLD + "" + ChatColor.BOLD + "玩法物品设置");
+        setItem(4, Material.NETHERITE_AXE, lang.getFor(admin, "config.menu.items.header"));
 
-        // ---- 物品标签切换 (Row 2: 10-11) ----
+        // ---- Item tab switch (Row 2: 10-11) ----
         setClickableItem(10, Material.NETHERITE_AXE,
-                (currentPage == Page.HAMMER ? ChatColor.GREEN : ChatColor.GRAY) + "神圣重锤",
+                (currentPage == Page.HAMMER ? ChatColor.GREEN : ChatColor.GRAY) + lang.getFor(admin, "config.menu.items.hammer-tab"),
                 ct -> { currentPage = Page.HAMMER; reopen(); },
-                ChatColor.GRAY + "右键激活猛击，高处落下触发天降正义");
+                lang.getFor(admin, "config.menu.items.hammer-tab-desc"));
         setClickableItem(11, Material.FIRE_CHARGE,
-                (currentPage == Page.FIREBALL ? ChatColor.GREEN : ChatColor.GRAY) + "烈焰蛋",
+                (currentPage == Page.FIREBALL ? ChatColor.GREEN : ChatColor.GRAY) + lang.getFor(admin, "config.menu.items.fireball-tab"),
                 ct -> { currentPage = Page.FIREBALL; reopen(); },
-                ChatColor.GRAY + "右键投掷，命中后爆炸");
+                lang.getFor(admin, "config.menu.items.fireball-tab-desc"));
 
         if (currentPage == Page.HAMMER) {
             buildHammerPage(cfg);
@@ -62,119 +56,117 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
         }
 
         setBackButton(ct -> navigateBack());
-        setCloseButton();
         fillEmpty();
     }
 
-    /* ================================================================
-     *  重锤设置页
-     * ================================================================ */
     private void buildHammerPage(GameConfig cfg) {
-        setItem(13, Material.NETHERITE_AXE, ChatColor.GREEN + "当前编辑: 神圣重锤");
+        setItem(13, Material.NETHERITE_AXE, lang.getFor(admin, "config.menu.items.editing-hammer"));
 
-        // Row 3: 基础战斗参数
-        addDblItem(19, Material.IRON_SWORD, "基础伤害", cfg.getHammerBaseDamage(),
-                1, 200, 5, cfg::getHammerBaseDamage, cfg::setHammerBaseDamage,
-                "猛击造成的核心伤害值");
+        // Row 3: Global params
+        addIntItem(19, Material.CLOCK, lang.getFor(admin, "config.menu.items.hammer.smash-timeout"), cfg.getHammerSmashTimeoutTicks(),
+                20, 1200, 20, () -> cfg.getHammerSmashTimeoutTicks(), v -> cfg.setHammerSmashTimeoutTicks(v),
+                lang.getFor(admin, "config.menu.items.hammer.smash-timeout-desc"));
 
-        addDblItem(21, Material.SLIME_BALL, "效果半径(格)", cfg.getHammerEffectRadius(),
-                1, 30, 1, cfg::getHammerEffectRadius, cfg::setHammerEffectRadius,
-                "AOE伤害的作用范围");
-
-        addIntItem(23, Material.COBWEB, "余震时长(tick)", cfg.getHammerAftershockTicks(),
+        addIntItem(21, Material.COBWEB, lang.getFor(admin, "config.menu.items.hammer.aftershock"), cfg.getHammerAftershockTicks(),
                 10, 200, 10, () -> cfg.getHammerAftershockTicks(), v -> cfg.setHammerAftershockTicks(v),
-                "落地后怪物减速的持续时间");
+                lang.getFor(admin, "config.menu.items.hammer.aftershock-desc"));
 
-        addIntItem(25, Material.CLOCK, "猛击超时(tick)", cfg.getHammerSmashTimeoutTicks(),
-                20, 400, 20, () -> cfg.getHammerSmashTimeoutTicks(), v -> cfg.setHammerSmashTimeoutTicks(v),
-                "右键激活后允许落地的最大时间窗口");
+        // Row 4: Low + Medium tier
+        setItem(28, Material.GREEN_WOOL, lang.getFor(admin, "config.menu.items.hammer.low-tier"));
+        addDblItem(29, Material.FEATHER, lang.getFor(admin, "config.menu.items.hammer.low-charge"), cfg.getHammerLowCharge(),
+                0.5, 30, 0.5, cfg::getHammerLowCharge, cfg::setHammerLowCharge,
+                lang.getFor(admin, "config.menu.items.hammer.low-charge-desc"));
+        addDblItem(30, Material.IRON_SWORD, lang.getFor(admin, "config.menu.items.hammer.low-damage"), cfg.getHammerLowDamage(),
+                1, 500, 5, cfg::getHammerLowDamage, cfg::setHammerLowDamage,
+                lang.getFor(admin, "config.menu.items.hammer.low-damage-desc"));
+        addDblItem(31, Material.SLIME_BALL, lang.getFor(admin, "config.menu.items.hammer.low-radius"), cfg.getHammerLowRadius(),
+                1, 30, 1, cfg::getHammerLowRadius, cfg::setHammerLowRadius,
+                lang.getFor(admin, "config.menu.items.hammer.low-radius-desc"));
 
-        // Row 4: 三档伤害
-        setItem(28, Material.YELLOW_STAINED_GLASS_PANE, ChatColor.YELLOW + "" + ChatColor.BOLD + "-- 三档伤害倍率 --");
+        setItem(32, Material.YELLOW_WOOL, lang.getFor(admin, "config.menu.items.hammer.med-tier"));
+        addDblItem(33, Material.FEATHER, lang.getFor(admin, "config.menu.items.hammer.med-charge"), cfg.getHammerMediumCharge(),
+                0.5, 50, 0.5, cfg::getHammerMediumCharge, cfg::setHammerMediumCharge,
+                lang.getFor(admin, "config.menu.items.hammer.med-charge-desc"));
+        addDblItem(34, Material.IRON_SWORD, lang.getFor(admin, "config.menu.items.hammer.med-damage"), cfg.getHammerMediumDamage(),
+                1, 500, 5, cfg::getHammerMediumDamage, cfg::setHammerMediumDamage,
+                lang.getFor(admin, "config.menu.items.hammer.med-damage-desc"));
+        addDblItem(35, Material.SLIME_BALL, lang.getFor(admin, "config.menu.items.hammer.med-radius"), cfg.getHammerMediumRadius(),
+                1, 30, 1, cfg::getHammerMediumRadius, cfg::setHammerMediumRadius,
+                lang.getFor(admin, "config.menu.items.hammer.med-radius-desc"));
 
-        addDblItem(29, Material.GREEN_WOOL, "低档阈值(格)", cfg.getHammerDamageLowThreshold(),
-                1, 50, 1, cfg::getHammerDamageLowThreshold, cfg::setHammerDamageLowThreshold,
-                "下落距离小于此值为低档");
+        // Row 5: High tier + Model
+        setItem(37, Material.RED_WOOL, lang.getFor(admin, "config.menu.items.hammer.high-tier"));
+        addDblItem(38, Material.FEATHER, lang.getFor(admin, "config.menu.items.hammer.high-charge"), cfg.getHammerHighCharge(),
+                0.5, 100, 0.5, cfg::getHammerHighCharge, cfg::setHammerHighCharge,
+                lang.getFor(admin, "config.menu.items.hammer.high-charge-desc"));
+        addDblItem(39, Material.IRON_SWORD, lang.getFor(admin, "config.menu.items.hammer.high-damage"), cfg.getHammerHighDamage(),
+                1, 500, 5, cfg::getHammerHighDamage, cfg::setHammerHighDamage,
+                lang.getFor(admin, "config.menu.items.hammer.high-damage-desc"));
+        addDblItem(40, Material.SLIME_BALL, lang.getFor(admin, "config.menu.items.hammer.high-radius"), cfg.getHammerHighRadius(),
+                1, 30, 1, cfg::getHammerHighRadius, cfg::setHammerHighRadius,
+                lang.getFor(admin, "config.menu.items.hammer.high-radius-desc"));
 
-        addDblItem(30, Material.LIME_DYE, "低档倍率(x)", cfg.getHammerDamageLowMultiplier(),
-                0.5, 10, 0.5, cfg::getHammerDamageLowMultiplier, cfg::setHammerDamageLowMultiplier,
-                "低档伤害倍率");
+        setItem(43, Material.PAINTING, lang.getFor(admin, "config.menu.items.hammer.model"));
+        addMaterialCycle(44, lang.getFor(admin, "config.menu.items.hammer.mat"), cfg.getHammerMaterial(),
+                cfg::setHammerMaterial, HAMMER_MAT_LIST, lang.getFor(admin, "config.menu.items.hammer.mat-desc"));
 
-        addDblItem(31, Material.YELLOW_WOOL, "中档阈值(格)", cfg.getHammerDamageMediumThreshold(),
-                1, 50, 1, cfg::getHammerDamageMediumThreshold, cfg::setHammerDamageMediumThreshold,
-                "下落距离在此范围内为中档");
-
-        addDblItem(32, Material.ORANGE_DYE, "中档倍率(x)", cfg.getHammerDamageMediumMultiplier(),
-                0.5, 10, 0.5, cfg::getHammerDamageMediumMultiplier, cfg::setHammerDamageMediumMultiplier,
-                "中档伤害倍率");
-
-        addDblItem(33, Material.RED_DYE, "高档倍率(x)", cfg.getHammerDamageHighMultiplier(),
-                0.5, 10, 0.5, cfg::getHammerDamageHighMultiplier, cfg::setHammerDamageHighMultiplier,
-                "高档伤害倍率");
-
-        // Row 5: 模型与材质
-        setItem(37, Material.PAINTING, ChatColor.GOLD + "" + ChatColor.BOLD + "-- 模型与材质 --");
-
-        addMaterialCycle(38, "锤子材质", cfg.getHammerMaterial(),
-                cfg::setHammerMaterial, HAMMER_MAT_LIST, "点击循环切换基础材质");
-
-        addIntItem(39, Material.ITEM_FRAME, "自定义模型数据", cfg.getHammerCustomModelData(),
+        addIntItem(52, Material.ITEM_FRAME, lang.getFor(admin, "config.menu.items.hammer.custom-model"), cfg.getHammerCustomModelData(),
                 0, 999999, 1, () -> cfg.getHammerCustomModelData(), cfg::setHammerCustomModelData,
-                "配合资源包使用，0=不使用");
+                lang.getFor(admin, "config.menu.items.hammer.custom-model-desc"));
 
-        addStrItem(40, Material.NAME_TAG, "ItemsAdder模型ID", cfg.getHammerItemsAdderId(),
-                cfg::setHammerItemsAdderId, "输入命名空间ID (如 myplugin:heavy_hammer) | 留空不使用");
+        addStrItem(53, Material.NAME_TAG, lang.getFor(admin, "config.menu.items.hammer.ia-model"), cfg.getHammerItemsAdderId(),
+                cfg::setHammerItemsAdderId, lang.getFor(admin, "config.menu.items.enter-model-id"));
     }
 
-    /* ================================================================
-     *  烈焰蛋设置页
-     * ================================================================ */
     private void buildFireballPage(GameConfig cfg) {
-        setItem(13, Material.FIRE_CHARGE, ChatColor.GREEN + "当前编辑: 烈焰蛋");
+        setItem(13, Material.FIRE_CHARGE, lang.getFor(admin, "config.menu.items.editing-fireball"));
 
-        // Row 3: 基础战斗参数
-        addDblItem(19, Material.IRON_SWORD, "爆炸伤害", cfg.getFireballDamage(),
+        addDblItem(19, Material.IRON_SWORD, lang.getFor(admin, "config.menu.items.fireball.damage"), cfg.getFireballDamage(),
                 1, 200, 5, cfg::getFireballDamage, cfg::setFireballDamage,
-                "命中后对周围怪物造成的核心伤害");
+                lang.getFor(admin, "config.menu.items.fireball.damage-desc"));
 
-        addDblItem(21, Material.SLIME_BALL, "爆炸半径(格)", cfg.getFireballExplosionRadius(),
+        addDblItem(21, Material.SLIME_BALL, lang.getFor(admin, "config.menu.items.fireball.radius"), cfg.getFireballExplosionRadius(),
                 1, 20, 1, cfg::getFireballExplosionRadius, cfg::setFireballExplosionRadius,
-                "爆炸伤害的作用范围");
+                lang.getFor(admin, "config.menu.items.fireball.radius-desc"));
 
-        addDblItem(23, Material.FEATHER, "飞行速度", cfg.getFireballSpeed(),
+        addDblItem(23, Material.FEATHER, lang.getFor(admin, "config.menu.items.fireball.speed"), cfg.getFireballSpeed(),
                 0.5, 5, 0.5, cfg::getFireballSpeed, cfg::setFireballSpeed,
-                "投射物的飞行速度倍率");
+                lang.getFor(admin, "config.menu.items.fireball.speed-desc"));
 
-        addIntItem(25, Material.CLOCK, "冷却时间(tick)", cfg.getFireballCooldownTicks(),
-                0, 600, 5, () -> cfg.getFireballCooldownTicks(), v -> cfg.setFireballCooldownTicks(v),
-                "两次投掷之间的最小间隔");
+        addIntItem(25, Material.REDSTONE, lang.getFor(admin, "config.menu.items.fireball.cooldown"), cfg.getFireballCooldownTicks(),
+                0, 600, 1, () -> cfg.getFireballCooldownTicks(), v -> cfg.setFireballCooldownTicks(v),
+                lang.getFor(admin, "config.menu.items.fireball.cooldown-desc"));
 
-        // Row 4: 射程与材质
-        addIntItem(29, Material.ENDER_PEARL, "最大飞行(tick)", cfg.getFireballMaxTravelTicks(),
+        addDblItem(28, Material.FEATHER, lang.getFor(admin, "config.menu.items.fireball.knockback"), cfg.getFireballKnockback(),
+                0.5, 20, 0.5, cfg::getFireballKnockback, cfg::setFireballKnockback,
+                lang.getFor(admin, "config.menu.items.fireball.knockback-desc"));
+
+        addIntItem(30, Material.ENDER_PEARL, lang.getFor(admin, "config.menu.items.fireball.max-travel"), cfg.getFireballMaxTravelTicks(),
                 10, 600, 10, () -> cfg.getFireballMaxTravelTicks(), v -> cfg.setFireballMaxTravelTicks(v),
-                "投射物飞行最大时长，超时自动消失");
+                lang.getFor(admin, "config.menu.items.fireball.max-travel-desc"));
 
-        setItem(33, Material.PAINTING, ChatColor.GOLD + "" + ChatColor.BOLD + "-- 材质 --");
+        addDblItem(32, Material.STRING, lang.getFor(admin, "config.menu.items.fireball.proximity-fuse"), cfg.getFireballProximityFuse(),
+                0, 5, 0.5, cfg::getFireballProximityFuse, cfg::setFireballProximityFuse,
+                lang.getFor(admin, "config.menu.items.fireball.proximity-fuse-desc"));
 
-        addMaterialCycle(34, "烈焰蛋材质", cfg.getFireballMaterial(),
-                cfg::setFireballMaterial, FIREBALL_MAT_LIST, "点击循环切换基础材质");
+        setItem(33, Material.PAINTING, lang.getFor(admin, "config.menu.items.fireball.mat-section"));
+
+        addMaterialCycle(34, lang.getFor(admin, "config.menu.items.fireball.mat"), cfg.getFireballMaterial(),
+                cfg::setFireballMaterial, FIREBALL_MAT_LIST, lang.getFor(admin, "config.menu.items.fireball.mat-desc"));
     }
 
-    /* ================================================================
-     *  通用可调节项辅助方法
-     * ================================================================ */
+    /* === General adjustable item helpers === */
 
-    /** 添加 double 可调节项（左键+步长 / 右键-步长 / Shift自定义） */
     private void addDblItem(int slot, Material icon, String name, double current,
                             double min, double max, double step,
                             java.util.function.DoubleSupplier getter,
                             java.util.function.DoubleConsumer setter,
                             String... extraLore) {
         java.util.List<String> loreLines = new java.util.ArrayList<>();
-        loreLines.add(formatValue("当前值", current));
+        loreLines.add(formatValue(lang.getFor(admin, "config.menu.common.current-value"), current));
         loreLines.add("");
-        loreLines.add(ChatColor.YELLOW + "左键 +" + fmtStep(step) + " | 右键 -" + fmtStep(step));
-        loreLines.add(ChatColor.AQUA + "Shift+点击 自定义输入");
+        loreLines.add(lang.getFor(admin, "config.menu.common.left-click") + fmtStep(step) + " | " + lang.getFor(admin, "config.menu.common.right-click") + fmtStep(step));
+        loreLines.add(lang.getFor(admin, "config.menu.common.shift-custom"));
         for (String l : extraLore) loreLines.add(ChatColor.DARK_GRAY + l);
 
         setClickableItemWithData(slot, icon, ChatColor.GREEN + name, loreLines,
@@ -182,9 +174,9 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
                     if (clickType == ClickType.SHIFT_LEFT || clickType == ClickType.SHIFT_RIGHT) {
                         admin.closeInventory();
                         NumericInputHandler.requestNumber(plugin, admin,
-                                "设置" + name + " (当前: " + String.format("%.1f", getter.getAsDouble()) + ")",
+                                lang.getFor(admin, "config.menu.common.setting-prefix") + name + " (" + lang.getFor(admin, "config.menu.common.current") + String.format("%.1f", getter.getAsDouble()) + ")",
                                 v -> { setter.accept(v); reopen(); },
-                                this::reopen);
+                                this::reopen, lang);
                     } else if (clickType == ClickType.RIGHT) {
                         double val = getter.getAsDouble() - step;
                         if (val >= min) setter.accept(val);
@@ -197,7 +189,6 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
                 });
     }
 
-    /** 添加 int 可调节项 */
     private void addIntItem(int slot, Material icon, String name, int current,
                              int min, int max, int step,
                              java.util.function.IntSupplier getter,
@@ -209,32 +200,30 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
                 extraLore);
     }
 
-    /** 添加字符串输入项 */
     private void addStrItem(int slot, Material icon, String name, String current,
                             java.util.function.Consumer<String> setter, String prompt) {
-        String display = (current != null && !current.isEmpty()) ? current : "未设置";
+        String display = (current != null && !current.isEmpty()) ? current : lang.getFor(admin, "config.menu.common.unset");
         Material i = (current != null && !current.isEmpty()) ? Material.NAME_TAG : Material.BARRIER;
         setClickableItem(slot, i, ChatColor.GREEN + name,
                 ct -> {
                     admin.closeInventory();
                     NumericInputHandler.requestString(plugin, admin, prompt,
                             v -> { setter.accept(v != null ? v : ""); reopen(); },
-                            this::reopen);
+                            this::reopen, lang);
                 },
-                ChatColor.GRAY + "当前: " + ChatColor.AQUA + display,
-                ChatColor.YELLOW + "点击编辑");
+                lang.getFor(admin, "config.menu.common.current") + ChatColor.AQUA + display,
+                lang.getFor(admin, "config.menu.common.click-edit"));
     }
 
-    /** 添加材质循环切换项 */
     private void addMaterialCycle(int slot, String name, Material current,
                                    java.util.function.Consumer<Material> setter,
                                    Material[] cycle, String... lore) {
-        String curName = (current != null) ? formatMat(current) : "无";
+        String curName = (current != null) ? formatMat(current) : lang.getFor(admin, "config.menu.common.none");
         Material icon = (current != null && current != Material.AIR) ? current : Material.BARRIER;
         java.util.List<String> loreLines = new java.util.ArrayList<>();
-        loreLines.add(ChatColor.GRAY + "当前: " + ChatColor.AQUA + curName);
+        loreLines.add(lang.getFor(admin, "config.menu.common.current") + ChatColor.AQUA + curName);
         loreLines.add("");
-        loreLines.add(ChatColor.YELLOW + "点击循环切换");
+        loreLines.add(lang.getFor(admin, "config.menu.common.click-cycle"));
         for (String l : lore) loreLines.add(ChatColor.DARK_GRAY + l);
 
         setClickableItemWithData(slot, icon, ChatColor.GREEN + name, loreLines,
@@ -254,17 +243,16 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
     }
 
     private String formatMat(Material m) {
-        if (m == null) return "无";
-        return m.name().toLowerCase().replace('_', ' ');
+        if (m == null) return lang.getFor(admin, "config.menu.common.none");
+        String key = "config.menu.mat." + m.name().toLowerCase().replace('_', '-');
+        String translated = lang.getFor(admin, key);
+        return translated.equals(key) ? m.name().toLowerCase().replace('_', ' ') : translated;
     }
 
     private String fmtStep(double s) {
         return (s == Math.floor(s)) ? String.valueOf((int) s) : String.format("%.1f", s);
     }
 
-    /* ================================================================
-     *  材质循环列表
-     * ================================================================ */
     private static final Material[] HAMMER_MAT_LIST = {
         Material.NETHERITE_AXE, Material.DIAMOND_AXE, Material.IRON_AXE,
         Material.GOLDEN_AXE, Material.STONE_AXE, Material.WOODEN_AXE
@@ -274,9 +262,6 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
         Material.GUNPOWDER, Material.FIREWORK_ROCKET
     };
 
-    /* ================================================================
-     *  导航
-     * ================================================================ */
     private void navigateBack() {
         admin.closeInventory();
         Bukkit.getScheduler().runTaskLater(plugin, () -> {

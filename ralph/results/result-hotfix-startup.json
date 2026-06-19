@@ -1,0 +1,11 @@
+{
+  "status": "completed",
+  "bug": "plugin-disabled-on-enable",
+  "root_cause": "GameManager 构造函数中 configManager 初始化顺序错误：nodeSystem（第45行）在构造函数中调用 loadConfig() → getConfigManager().getActiveConfig()，但 configManager 在第48行才初始化，导致 NullPointerException → 插件 onEnable() 崩溃 → Bukkit 禁用插件",
+  "fix": "将 configManager 初始化移至 nodeSystem 之前（第44行之后）",
+  "modified_files": [
+    "src/main/java/com/hilltopvillage/core/GameManager.java"
+  ],
+  "compile_result": "BUILD SUCCESS",
+  "changelog_updated": true
+}

@@ -1,9 +1,9 @@
 package com.hilltopvillage.mechanics;
 
+import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import org.bukkit.*;
 import org.bukkit.block.Block;
-import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.entity.Player;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -20,6 +20,8 @@ public class NodeSystem {
     private double baseHealth;
     private double buffRadius;
     private final Map<PotionEffectType, Integer> buffEffects;
+    private String nodeDestroyedMessage;
+    private String nodeRepairedMessage;
     private BukkitRunnable buffTask;
 
     public NodeSystem(GameManager gameManager) {
@@ -32,68 +34,125 @@ public class NodeSystem {
     }
 
     private void loadConfig() {
-        List<String> blockTypeNames = gameManager.getPlugin().getConfig()
-                .getStringList("nodes.block-types");
-        for (String name : blockTypeNames) {
-            try {
-                nodeBlockTypes.add(Material.valueOf(name.toUpperCase()));
-            } catch (IllegalArgumentException e) {
-                gameManager.getPlugin().getLogger().warning("Invalid node block type: " + name);
-            }
-        }
+        // 统一从 GameConfig 读取，确保配置中心 GUI 修改后立即生效
+        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+
+        nodeBlockTypes.clear();
+        nodeBlockTypes.addAll(cfg.getNodeBlockTypes());
 
         if (nodeBlockTypes.isEmpty()) {
             nodeBlockTypes.add(Material.BEACON);
             nodeBlockTypes.add(Material.ENCHANTING_TABLE);
         }
 
-        this.baseHealth = gameManager.getPlugin().getConfig()
-                .getDouble("nodes.base-health", 100.0);
-        this.buffRadius = gameManager.getPlugin().getConfig()
-                .getDouble("nodes.buff-radius", 20.0);
+        this.baseHealth = cfg.getNodeBaseHealth();
+        this.buffRadius = cfg.getNodeBuffRadius();
 
-        ConfigurationSection buffSection = gameManager.getPlugin().getConfig()
-                .getConfigurationSection("nodes.buff-effects");
-        if (buffSection != null) {
-            for (String key : buffSection.getKeys(false)) {
-                try {
-                    PotionEffectType type = PotionEffectType.getByName(key);
-                    if (type != null) {
-                        int amplifier = buffSection.getInt(key + ".amplifier", 0);
-                        buffEffects.put(type, amplifier);
-                    }
-                } catch (Exception ignored) {}
-            }
-        }
+        buffEffects.clear();
+        buffEffects.putAll(cfg.getNodeBuffEffects());
 
         if (buffEffects.isEmpty()) {
             buffEffects.put(PotionEffectType.DAMAGE_RESISTANCE, 1);
             buffEffects.put(PotionEffectType.REGENERATION, 0);
         }
+
+        this.nodeDestroyedMessage = cfg.getNodeDestroyedMessage();
+        this.nodeRepairedMessage = cfg.getNodeRepairedMessage();
     }
 
+    private static final int LOAD_NODE_BATCH_SIZE = 2000;
+    private BukkitRunnable loadNodeTask = null;
+
     public void loadNodesFromWorld() {
+        loadNodesFromWorld(null);
+    }
+
+    public void loadNodesFromWorld(Runnable onComplete) {
+        if (loadNodeTask != null) {
+            loadNodeTask.cancel();
+        }
         nodes.clear();
         World world = gameManager.getGameWorld();
         Location core = gameManager.getCoreLocation();
 
-        int searchRadius = 80;
-        int minY = core.getBlockY() - 30;
-        int maxY = core.getBlockY() + 30;
+        int searchRadius = gameManager.getPlugin().getConfig().getInt("nodes.search-radius", 40);
+        int minY = Math.max(core.getBlockY() - 20, world.getMinHeight());
+        int maxY = Math.min(core.getBlockY() + 20, world.getMaxHeight());
 
-        for (int x = core.getBlockX() - searchRadius; x <= core.getBlockX() + searchRadius; x++) {
-            for (int z = core.getBlockZ() - searchRadius; z <= core.getBlockZ() + searchRadius; z++) {
-                for (int y = minY; y <= maxY; y++) {
-                    Block block = world.getBlockAt(x, y, z);
+        int startX = core.getBlockX() - searchRadius;
+        int endX = core.getBlockX() + searchRadius;
+        int startZ = core.getBlockZ() - searchRadius;
+        int endZ = core.getBlockZ() + searchRadius;
+
+        int[] posX = {startX};
+        int[] posY = {minY};
+        int[] posZ = {startZ};
+        int[] lastChunkX = {Integer.MIN_VALUE};
+        int[] lastChunkZ = {Integer.MIN_VALUE};
+        boolean[] chunkLoaded = {false};
+
+        loadNodeTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                int processed = 0;
+
+                while (processed < LOAD_NODE_BATCH_SIZE) {
+                    if (posX[0] > endX) {
+                        gameManager.getPlugin().getLogger().info("Loaded " + nodes.size() + " energy nodes.");
+                        if (onComplete != null) {
+                            onComplete.run();
+                        }
+                        cancel();
+                        return;
+                    }
+
+                    int chunkX = posX[0] >> 4;
+                    int chunkZ = posZ[0] >> 4;
+
+                    if (chunkX != lastChunkX[0] || chunkZ != lastChunkZ[0]) {
+                        lastChunkX[0] = chunkX;
+                        lastChunkZ[0] = chunkZ;
+                        chunkLoaded[0] = world.isChunkLoaded(chunkX, chunkZ);
+                    }
+
+                    if (!chunkLoaded[0]) {
+                        posZ[0]++;
+                        if (posZ[0] > endZ) {
+                            posZ[0] = startZ;
+                            posX[0]++;
+                        }
+                        processed++;
+                        continue;
+                    }
+
+                    Block block = world.getBlockAt(posX[0], posY[0], posZ[0]);
                     if (isNodeBlock(block)) {
                         Location loc = block.getLocation().clone();
                         nodes.put(loc, new NodeData(loc, baseHealth));
                     }
+
+                    posY[0]++;
+                    if (posY[0] > maxY) {
+                        posY[0] = minY;
+                        posZ[0]++;
+                    }
+                    if (posZ[0] > endZ) {
+                        posZ[0] = startZ;
+                        posX[0]++;
+                    }
+                    processed++;
                 }
             }
-        }
+        };
 
-        gameManager.getPlugin().getLogger().info("Loaded " + nodes.size() + " energy nodes.");
+        loadNodeTask.runTaskTimer(gameManager.getPlugin(), 0L, 2L);
+    }
+
+    public void cancelLoadNodesTask() {
+        if (loadNodeTask != null) {
+            loadNodeTask.cancel();
+            loadNodeTask = null;
+        }
     }
 
     public boolean isNodeBlock(Block block) {
@@ -122,8 +181,7 @@ public class NodeSystem {
             node.getLocation().getWorld().playEffect(node.getLocation(), Effect.ENDER_SIGNAL, 0);
             node.getLocation().getWorld().playSound(node.getLocation(), Sound.BLOCK_BEACON_DEACTIVATE, 1.0f, 0.5f);
 
-            gameManager.broadcastMessage(
-                    gameManager.getPlugin().getConfig().getString("messages.node-destroyed", "&cAn energy node has been destroyed!"));
+            gameManager.broadcastMessage(nodeDestroyedMessage);
         }
 
         return actualDamage;
@@ -138,8 +196,7 @@ public class NodeSystem {
             node.setHealth(repairAmount);
 
             gameManager.getPlayerData(player).addNodeRepaired();
-            gameManager.broadcastMessage(
-                    gameManager.getPlugin().getConfig().getString("messages.node-repaired", "&aAn energy node has been repaired!"));
+            gameManager.broadcastMessage(nodeRepairedMessage);
 
             node.getLocation().getWorld().playSound(node.getLocation(), Sound.BLOCK_BEACON_ACTIVATE, 1.0f, 0.8f);
             return true;

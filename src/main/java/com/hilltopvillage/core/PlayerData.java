@@ -10,6 +10,7 @@ public class PlayerData {
     private boolean smashActive;
     private double smashStartY;
     private long smashActivateTick;
+    private double lastSmashY;
     private int kills;
     private int deaths;
     private int nodesRepaired;
@@ -38,12 +39,14 @@ public class PlayerData {
         this.smashActive = true;
         this.smashStartY = startY;
         this.smashActivateTick = tick;
+        this.lastSmashY = startY;
     }
 
     public void deactivateSmash() {
         this.smashActive = false;
         this.smashStartY = 0.0;
         this.smashActivateTick = 0;
+        this.lastSmashY = 0;
     }
 
     public double getSmashStartY() {
@@ -53,6 +56,10 @@ public class PlayerData {
     public long getSmashActivateTick() {
         return smashActivateTick;
     }
+
+    public double getLastSmashY() { return lastSmashY; }
+    public void setLastSmashY(double v) { this.lastSmashY = v; }
+    public void setSmashActivateTick(long v) { this.smashActivateTick = v; }
 
     public int getKills() {
         return kills;

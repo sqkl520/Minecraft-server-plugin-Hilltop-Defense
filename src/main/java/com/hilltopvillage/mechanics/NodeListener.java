@@ -37,8 +37,6 @@ public class NodeListener implements Listener {
 
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityExplode(EntityExplodeEvent event) {
-        if (!gameManager.isGameRunning()) return;
-
         List<Block> blocksToRemove = new java.util.ArrayList<>();
 
         for (Block block : event.blockList()) {
@@ -59,7 +57,6 @@ public class NodeListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerInteract(PlayerInteractEvent event) {
-        if (!gameManager.isGameRunning()) return;
         if (event.getHand() != EquipmentSlot.HAND) return;
         if (event.getAction() != Action.RIGHT_CLICK_BLOCK) return;
 

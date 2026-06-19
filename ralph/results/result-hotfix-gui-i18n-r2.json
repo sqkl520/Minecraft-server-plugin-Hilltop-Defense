@@ -1,0 +1,11 @@
+{
+  "storyId": "hotfix-gui-i18n-r2",
+  "passes": true,
+  "summary": "替换3处硬编码i18n：WaveSettingsMenu权重标签、留空清除提示、MainConfigMenu权限分隔符，均改用lang.getFor()读取；messages.yml同步补充en/zh键值。",
+  "lessons": [],
+  "filesChanged": [
+    "src/main/java/com/hilltopvillage/config/menu/WaveSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/MainConfigMenu.java",
+    "src/main/resources/messages.yml"
+  ]
+}

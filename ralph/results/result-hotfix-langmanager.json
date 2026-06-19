@@ -1,0 +1,13 @@
+{
+  "storyId": "hotfix-langmanager",
+  "passes": true,
+  "summary": "彻底重写 LanguageManager.reload()：JAR 内嵌文件为主、磁盘文件为覆盖层，删除依赖 setDefaults()/getDefaults() 的旧逻辑和 loadDefaults() 方法，解决 /hilltop deploy 显示 key 名而非翻译文字",
+  "lessons": [
+    "坑: Bukkit YamlConfiguration.setDefaults()/getDefaults() 在某些 Paper 版本下不可靠，遍历不到通过 setDefaults 注入的 key → 解决: 直接持有两个独立 YamlConfiguration 实例（jarConfig/diskConfig），先遍历 JAR 建底层 map，再遍历磁盘覆盖，完全绕开 Bukkit defaults API",
+    "坑: 磁盘旧版 messages.yml 缺少新 key，reload() 依赖磁盘文件遍历时漏掉新 key → 解决: 始终以 JAR 资源为权威来源，磁盘仅作覆盖层"
+  ],
+  "filesChanged": [
+    "src/main/java/com/hilltopvillage/util/LanguageManager.java",
+    "CHANGELOG.md"
+  ]
+}

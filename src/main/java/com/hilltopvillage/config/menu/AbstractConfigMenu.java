@@ -1,5 +1,6 @@
 package com.hilltopvillage.config.menu;
 
+import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.Material;
@@ -31,12 +32,14 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
     protected final String title;
     protected final int size;
     protected final Plugin plugin;
+    protected final LanguageManager lang;
 
-    public AbstractConfigMenu(Player admin, String title, int size, Plugin plugin) {
+    public AbstractConfigMenu(Player admin, String title, int size, Plugin plugin, LanguageManager lang) {
         this.admin = admin;
         this.title = title;
         this.size = size;
         this.plugin = plugin;
+        this.lang = lang;
         this.clickActions = new HashMap<>();
         this.inventory = Bukkit.createInventory(this, size, title);
     }
@@ -54,6 +57,7 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
         buildMenu();
         Bukkit.getScheduler().runTask(plugin, () -> {
             admin.openInventory(inventory);
+            HandlerList.unregisterAll(this);
             Bukkit.getPluginManager().registerEvents(this, plugin);
         });
     }
@@ -104,17 +108,14 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
     }
 
     protected void setBackButton(ClickAction onBack) {
-        setClickableItem(size - 5, Material.RED_STAINED_GLASS_PANE,
-                ChatColor.RED + "返回上一页",
+        setClickableItem(8, Material.RED_STAINED_GLASS_PANE,
+                lang.getFor(admin, "config.menu.common.back"),
                 onBack,
-                ChatColor.GRAY + "点击返回上级菜单");
+                lang.getFor(admin, "config.menu.common.back-lore"));
     }
 
     protected void setCloseButton() {
-        setClickableItem(size - 1, Material.BARRIER,
-                ChatColor.RED + "关闭菜单",
-                ct -> admin.closeInventory(),
-                ChatColor.GRAY + "点击关闭配置菜单");
+        // Close button removed — no-op kept for subclass compatibility
     }
 
     protected void fillBorders() {

@@ -1,0 +1,24 @@
+{
+  "storyId": "hotfix-config-i18n",
+  "passes": true,
+  "summary": "修复 /hilltop lang en 后配置中心 GUI 仍显示中文：所有 6 个菜单类 + NumericInputHandler 中硬编码中文全部改为 LanguageManager.getFor(player, key) 动态翻译，新增 ~200 条 config.menu.* i18n key",
+  "lessons": [
+    "坑1: 所有 config/menu/ 下的 GUI 类都没有 LanguageManager 注入 → 解决: 通过 AbstractConfigMenu 构造函数统一注入 lang，所有子类 propagagate",
+    "坑2: NumericInputHandler 的静态方法无法访问 player/language → 解决: 所有 request* 方法新增 LanguageManager 参数，PendingInput/PendingStringInput 内部类保存 lang 引用",
+    "坑3: formatMaterialName/getMobDisplayName 等辅助方法也硬编码中文 → 解决: 改为使用 translateMaterial() 通过 i18n key 查询，未匹配到的 key 回退到英文 Material 名",
+    "坑4: messages.yml 中大量 config.menu.* key 需要中英双语 → 解决: 新增 ~200 条 key，按菜单模块分组，材质名单独一节 config.menu.mat.*"
+  ],
+  "filesChanged": [
+    "src/main/resources/messages.yml",
+    "src/main/java/com/hilltopvillage/config/menu/AbstractConfigMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/MainConfigMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/GameRulesMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/NodeSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/MonsterSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/WaveSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/ItemSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/NumericInputHandler.java",
+    "src/main/java/com/hilltopvillage/command/HilltopCommandHandler.java",
+    "CHANGELOG.md"
+  ]
+}

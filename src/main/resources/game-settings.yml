@@ -1,5 +1,5 @@
 # ============================================================
-#  村民守卫战PLUS (Hilltop Village) — 游戏参数配置文件
+#  Hilltop Village — 游戏参数配置文件
 #  game-settings.yml
 # ============================================================
 #  此文件存储所有可通过 GUI 或命令修改的游戏参数。
@@ -37,27 +37,57 @@ hammer:
   custom-model-data: 0
   # 是否启用 ItemsAdder 模型（true/false）
   use-itemsadder: false
-  # 基础伤害值
+  # 基础伤害值（旧版兼容，v1.1+ 推荐使用下方 tier 节点）
   base-damage: 20.0
-  # AOE 效果半径（格）
+  # AOE 效果半径（旧版兼容）
   effect-radius: 5.0
   # 余震减速持续时长（tick，20 tick = 1 秒）
   aftershock-ticks: 60
   # 猛击激活超时时间（tick，超时未落地则取消）
-  smash-timeout-ticks: 100
+  smash-timeout-ticks: 600
   # 铁砧特效显示时长（tick）
   visual-display-ticks: 20
-  # === 三档伤害倍率分级 ===
-  # 低档：下落高度小于此值
+  # === 三档独立配置（每档设定自己的蓄力距离 / 伤害 / 范围） ===
+  tier:
+    low:
+      charge: 1.0     # 触发低档所需的下落距离（格）
+      damage: 30.0    # 低档造成伤害
+      radius: 4.0     # 低档AOE范围（格）
+    medium:
+      charge: 5.0     # 触发中档所需的下落距离（格）
+      damage: 40.0    # 中档造成伤害
+      radius: 5.0     # 中档AOE范围（格）
+    high:
+      charge: 10.0    # 触发高档所需的下落距离（格）
+      damage: 60.0    # 高档造成伤害
+      radius: 6.5     # 高档AOE范围（格）
+  # === 旧版倍率字段（向后兼容，v1.1+ 不使用） ===
   damage-low-threshold: 5.0
-  # 中档：下落高度在低档和此值之间
   damage-medium-threshold: 10.0
-  # 低档伤害倍率
   damage-low-multiplier: 1.5
-  # 中档伤害倍率
   damage-medium-multiplier: 2.0
-  # 高档伤害倍率（超过中档阈值时使用）
   damage-high-multiplier: 3.0
+
+# ============================================================
+#  烈焰蛋系统 (Fireball)
+# ============================================================
+fireball:
+  # 烈焰蛋使用的物品材料
+  material: FIRE_CHARGE
+  # 投射物飞行速度
+  speed: 1.5
+  # 爆炸伤害值
+  damage: 15.0
+  # 爆炸半径（格）
+  explosion-radius: 4.0
+  # 冷却时间（tick，20 tick = 1 秒，0 = 无冷却）
+  cooldown-ticks: 3
+  # 最大飞行时长（tick，超时自动消失）
+  max-travel-ticks: 100
+  # 击退强度（对怪物和自身均生效）
+  knockback: 5.0
+  # 近炸检测半径（格，0=禁用，投射物附近进入此范围的实体会触发爆炸）
+  proximity-fuse: 1.5
 
 # ============================================================
 #  能量节点系统 (Nodes)

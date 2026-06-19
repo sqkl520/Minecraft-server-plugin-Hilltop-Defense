@@ -16,6 +16,8 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
 
+import org.bukkit.scheduler.BukkitRunnable;
+
 import java.util.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 
@@ -24,6 +26,7 @@ public class WaveManager {
     private final GameManager gameManager;
     private final List<LivingEntity> activeMobs;
     private final Random random;
+    private static final int SPAWN_BATCH_SIZE = 2;
 
     public WaveManager(GameManager gameManager) {
         this.gameManager = gameManager;
@@ -32,11 +35,18 @@ public class WaveManager {
     }
 
     public void spawnWave(int waveNumber) {
+        spawnWave(waveNumber, null);
+    }
+
+    public void spawnWave(int waveNumber, Runnable onComplete) {
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
         GameConfig.WaveConfig waveConfig = cfg.getWaveConfig(waveNumber);
 
         int globalCap = cfg.getGlobalMobCap();
-        if (activeMobs.size() >= globalCap) return;
+        if (activeMobs.size() >= globalCap) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
 
         int remaining = waveConfig.getTotalMobs() * gameManager.getPlayers().size();
         int mobsPerPlayerCap = cfg.getMobCapPerPlayer();
@@ -46,18 +56,36 @@ public class WaveManager {
         int totalWeight = waveConfig.getTotalWeight();
         if (totalWeight <= 0) {
             spawnDefaultWave(waveNumber);
+            if (onComplete != null) onComplete.run();
             return;
         }
 
-        for (int i = 0; i < remaining; i++) {
-            String selectedType = weightSelect(waveConfig, totalWeight);
-            if (selectedType == null) continue;
+        int[] remainingRef = {remaining};
+        int[] spawnedCount = {0};
 
-            Location spawnLoc = getRandomSpawnLocation();
-            if (spawnLoc == null) continue;
+        new BukkitRunnable() {
+            @Override
+            public void run() {
+                int batchCount = 0;
 
-            spawnCustomMob(selectedType, spawnLoc);
-        }
+                while (batchCount < SPAWN_BATCH_SIZE && spawnedCount[0] < remainingRef[0]) {
+                    String selectedType = weightSelect(waveConfig, totalWeight);
+                    if (selectedType != null) {
+                        Location spawnLoc = getRandomSpawnLocation();
+                        if (spawnLoc != null) {
+                            spawnCustomMob(selectedType, spawnLoc);
+                        }
+                    }
+                    spawnedCount[0]++;
+                    batchCount++;
+                }
+
+                if (spawnedCount[0] >= remainingRef[0]) {
+                    if (onComplete != null) onComplete.run();
+                    cancel();
+                }
+            }
+        }.runTaskTimer(gameManager.getPlugin(), 0L, 3L);
     }
 
     private String weightSelect(GameConfig.WaveConfig waveConfig, int totalWeight) {

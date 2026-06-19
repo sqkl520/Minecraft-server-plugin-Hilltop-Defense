@@ -1,0 +1,17 @@
+{
+  "storyId": "hotfix-gui-i18n",
+  "passes": true,
+  "summary": "修复15处 GUI i18n 违规：WaveSettingsMenu 波次标签/错误消息/lore标签/prompt/cycle hint/armor hint，MonsterSettingsMenu 三处 requestString prompt，NodeSettingsMenu 命令提示文本，MainConfigMenu 权限说明 lore 破折号分隔。",
+  "lessons": [
+    "坑1: getArmorHint(String label) 原方法带参数但 label 未使用 → 解决: 直接改为无参 getArmorHint()，从 lang 获取 key",
+    "坑2: messages.yml 的 zh 区块 block-types-cmd2/cmd3 已有相同 key，添加新 display 后缀 key 避免覆盖",
+    "坑3: MainConfigMenu 权限说明 lore 原来拼接 rules-noperm 的文本并去色，改为独立 permission-admin-desc key 更干净"
+  ],
+  "filesChanged": [
+    "src/main/resources/messages.yml",
+    "src/main/java/com/hilltopvillage/config/menu/WaveSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/MonsterSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/NodeSettingsMenu.java",
+    "src/main/java/com/hilltopvillage/config/menu/MainConfigMenu.java"
+  ]
+}

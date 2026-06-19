@@ -1,11 +1,11 @@
 package com.hilltopvillage.config.menu;
 
+import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
-import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.plugin.Plugin;
@@ -19,58 +19,59 @@ public class NumericInputHandler implements Listener {
     private static final ConcurrentHashMap<UUID, PendingInput> pendingInputs = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, PendingStringInput> pendingStringInputs = new ConcurrentHashMap<>();
 
-    public static void requestNumber(Plugin plugin, Player player, String prompt, Consumer<Double> callback) {
-        requestNumber(plugin, player, prompt, callback, null);
+    public static void requestNumber(Plugin plugin, Player player, String prompt, Consumer<Double> callback, LanguageManager lang) {
+        requestNumber(plugin, player, prompt, callback, null, lang);
     }
 
-    public static void requestNumber(Plugin plugin, Player player, String prompt, Consumer<Double> callback, Runnable onCancel) {
+    public static void requestNumber(Plugin plugin, Player player, String prompt, Consumer<Double> callback, Runnable onCancel, LanguageManager lang) {
         player.closeInventory();
         player.sendMessage("");
-        player.sendMessage(ChatColor.GOLD + "请在聊天栏输入数值:");
-        player.sendMessage(ChatColor.GRAY + prompt);
-        player.sendMessage(ChatColor.RED + "输入 'cancel' 取消");
+        player.sendMessage(lang.getFor(player, "config.menu.input.number-prompt"));
+        player.sendMessage(prompt);
+        player.sendMessage(lang.getFor(player, "config.menu.input.cancel-hint"));
         player.sendMessage("");
 
-        pendingInputs.put(player.getUniqueId(), new PendingInput(callback, onCancel, player.getUniqueId()));
+        pendingInputs.put(player.getUniqueId(), new PendingInput(callback, onCancel, player.getUniqueId(), lang));
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             PendingInput removed = pendingInputs.remove(player.getUniqueId());
             if (removed != null) {
-                player.sendMessage(ChatColor.GRAY + "输入超时，已取消。");
+                player.sendMessage(lang.getFor(player, "config.menu.input.timeout"));
                 if (removed.onCancel != null) removed.onCancel.run();
             }
         }, 20L * 30);
     }
 
-    public static void requestInteger(Plugin plugin, Player player, String prompt, Consumer<Integer> callback, Runnable onCancel) {
-        requestNumber(plugin, player, prompt, d -> callback.accept(d.intValue()), onCancel);
+    public static void requestInteger(Plugin plugin, Player player, String prompt, Consumer<Integer> callback, Runnable onCancel, LanguageManager lang) {
+        requestNumber(plugin, player, prompt, d -> callback.accept(d.intValue()), onCancel, lang);
     }
 
     /**
-     * 请求玩家在聊天栏输入任意字符串。
-     * 用于 ItemsAdder 命名空间ID、Material 名等文本输入。
+     * Requests the player to input an arbitrary string in chat.
+     * Used for ItemsAdder namespace IDs, Material names, etc.
      *
-     * @param plugin   插件实例
-     * @param player   目标玩家
-     * @param prompt   输入提示
-     * @param callback 输入完成回调（接受字符串值，可为空字符串）
-     * @param onCancel 取消/超时回调（可为 null）
+     * @param plugin   plugin instance
+     * @param player   target player
+     * @param prompt   input prompt (already localized)
+     * @param callback completion callback (accepts string value, may be empty)
+     * @param onCancel cancel/timeout callback (may be null)
+     * @param lang     language manager for i18n
      */
-    public static void requestString(Plugin plugin, Player player, String prompt, Consumer<String> callback, Runnable onCancel) {
+    public static void requestString(Plugin plugin, Player player, String prompt, Consumer<String> callback, Runnable onCancel, LanguageManager lang) {
         player.closeInventory();
         player.sendMessage("");
-        player.sendMessage(ChatColor.GOLD + "请在聊天栏输入文本:");
-        player.sendMessage(ChatColor.GRAY + prompt);
-        player.sendMessage(ChatColor.RED + "输入 'cancel' 取消");
+        player.sendMessage(lang.getFor(player, "config.menu.input.text-prompt"));
+        player.sendMessage(prompt);
+        player.sendMessage(lang.getFor(player, "config.menu.input.cancel-hint"));
         player.sendMessage("");
 
-        PendingStringInput input = new PendingStringInput(callback, onCancel, player.getUniqueId());
+        PendingStringInput input = new PendingStringInput(callback, onCancel, player.getUniqueId(), lang);
         pendingStringInputs.put(player.getUniqueId(), input);
 
         Bukkit.getScheduler().runTaskLater(plugin, () -> {
             PendingStringInput removed = pendingStringInputs.remove(player.getUniqueId());
             if (removed != null) {
-                player.sendMessage(ChatColor.GRAY + "输入超时，已取消。");
+                player.sendMessage(lang.getFor(player, "config.menu.input.timeout"));
                 if (removed.onCancel != null) removed.onCancel.run();
             }
         }, 20L * 30);
@@ -86,7 +87,7 @@ public class NumericInputHandler implements Listener {
             event.setCancelled(true);
             String msg = event.getMessage().trim();
             if (msg.equalsIgnoreCase("cancel")) {
-                event.getPlayer().sendMessage(ChatColor.GRAY + "已取消。");
+                event.getPlayer().sendMessage(stringPending.lang.getFor(event.getPlayer(), "config.menu.input.cancelled"));
                 if (stringPending.onCancel != null) {
                     Bukkit.getScheduler().runTask(
                             Bukkit.getPluginManager().getPlugin("HilltopVillage"),
@@ -111,7 +112,7 @@ public class NumericInputHandler implements Listener {
 
         String msg = event.getMessage().trim();
         if (msg.equalsIgnoreCase("cancel")) {
-            event.getPlayer().sendMessage(ChatColor.GRAY + "已取消。");
+            event.getPlayer().sendMessage(pending.lang.getFor(event.getPlayer(), "config.menu.input.cancelled"));
             if (pending.onCancel != null) {
                 Bukkit.getScheduler().runTask(
                         Bukkit.getPluginManager().getPlugin("HilltopVillage"),
@@ -128,7 +129,7 @@ public class NumericInputHandler implements Listener {
                         () -> pending.callback.accept(value));
             }
         } catch (NumberFormatException e) {
-            event.getPlayer().sendMessage(ChatColor.RED + "无效的数字: " + msg + "，请重新输入或输入 'cancel'。");
+            event.getPlayer().sendMessage(pending.lang.getFor(event.getPlayer(), "config.menu.input.invalid-number", msg));
             pendingInputs.put(id, pending);
         }
     }
@@ -137,11 +138,13 @@ public class NumericInputHandler implements Listener {
         final Consumer<Double> callback;
         final Runnable onCancel;
         final UUID playerId;
+        final LanguageManager lang;
 
-        PendingInput(Consumer<Double> callback, Runnable onCancel, UUID playerId) {
+        PendingInput(Consumer<Double> callback, Runnable onCancel, UUID playerId, LanguageManager lang) {
             this.callback = callback;
             this.onCancel = onCancel;
             this.playerId = playerId;
+            this.lang = lang;
         }
     }
 
@@ -149,11 +152,13 @@ public class NumericInputHandler implements Listener {
         final Consumer<String> callback;
         final Runnable onCancel;
         final UUID playerId;
+        final LanguageManager lang;
 
-        PendingStringInput(Consumer<String> callback, Runnable onCancel, UUID playerId) {
+        PendingStringInput(Consumer<String> callback, Runnable onCancel, UUID playerId, LanguageManager lang) {
             this.callback = callback;
             this.onCancel = onCancel;
             this.playerId = playerId;
+            this.lang = lang;
         }
     }
 }

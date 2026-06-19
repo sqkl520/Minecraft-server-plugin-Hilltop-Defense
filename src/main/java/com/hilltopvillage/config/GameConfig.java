@@ -25,13 +25,23 @@ public class GameConfig {
     private double hammerBaseDamage = 20.0;
     private double hammerEffectRadius = 5.0;
     private int hammerAftershockTicks = 60;
-    private int hammerSmashTimeoutTicks = 100;
+    private int hammerSmashTimeoutTicks = 600;
     private int hammerVisualDisplayTicks = 20;
     private double hammerDamageLowThreshold = 5.0;
     private double hammerDamageMediumThreshold = 10.0;
     private double hammerDamageLowMultiplier = 1.5;
     private double hammerDamageMediumMultiplier = 2.0;
     private double hammerDamageHighMultiplier = 3.0;
+    // 每档独立配置（伤害 / 范围 / 蓄力距离）
+    private double hammerLowDamage = 30.0;
+    private double hammerMediumDamage = 40.0;
+    private double hammerHighDamage = 60.0;
+    private double hammerLowRadius = 4.0;
+    private double hammerMediumRadius = 5.0;
+    private double hammerHighRadius = 6.5;
+    private double hammerLowCharge = 1.0;
+    private double hammerMediumCharge = 5.0;
+    private double hammerHighCharge = 10.0;
 
     private List<Material> nodeBlockTypes = new ArrayList<>(Arrays.asList(
             Material.BEACON, Material.ENCHANTING_TABLE, Material.ENDER_CHEST, Material.RESPAWN_ANCHOR
@@ -41,6 +51,8 @@ public class GameConfig {
     private double nodeRepairAmount = 50.0;
     private double nodeBuffRadius = 20.0;
     private double nodeSelfDestructMultiplier = 3.0;
+    private String nodeDestroyedMessage = "&cAn energy node has been destroyed!";
+    private String nodeRepairedMessage = "&aAn energy node has been repaired!";
     private Map<PotionEffectType, Integer> nodeBuffEffects = new LinkedHashMap<>();
 
     private Map<String, MonsterConfig> monsters = new LinkedHashMap<>();
@@ -59,6 +71,9 @@ public class GameConfig {
     private double fireballExplosionRadius = 4.0;
     private int fireballCooldownTicks = 3;
     private int fireballMaxTravelTicks = 100;
+    private double fireballKnockback = 5.0;
+    private double fireballProximityFuse = 1.5;  // 近炸检测半径（格），0=禁用
+    private String fireballItemName = "&c&l烈焰蛋";  // 物品显示名称（含颜色代码）
 
     public GameConfig() {
         nodeBuffEffects.put(PotionEffectType.DAMAGE_RESISTANCE, 0);
@@ -133,6 +148,7 @@ public class GameConfig {
         // 飞行抛投者专用
         private int airdropMobCount;          // 每次空投怪物数量
         private int airdropIntervalTicks;     // 空投间隔 tick 数
+        private String airdropMobType;        // 空投怪物类型
 
         /**
          * 创建一个完整的怪物配置对象。
@@ -159,6 +175,7 @@ public class GameConfig {
             this.cooldownTicks = cooldownTicks;
             this.stunDurationTicks = stunDurationTicks;
             this.airdropMobCount = airdropMobCount;
+            this.airdropMobType = "ZOMBIE";
             // 新字段默认值
             this.baseDamage = 5.0;
             this.itemsAdderId = "";
@@ -210,6 +227,8 @@ public class GameConfig {
         public void setStunDurationTicks(int v) { this.stunDurationTicks = v; }
         public int getAirdropMobCount() { return airdropMobCount; }
         public void setAirdropMobCount(int v) { this.airdropMobCount = v; }
+        public String getAirdropMobType() { return airdropMobType; }
+        public void setAirdropMobType(String v) { this.airdropMobType = v; }
         public int getAirdropIntervalTicks() { return airdropIntervalTicks; }
         public void setAirdropIntervalTicks(int v) { this.airdropIntervalTicks = v; }
     }
@@ -260,10 +279,18 @@ public class GameConfig {
         snap.hammerDamageLowThreshold = this.hammerDamageLowThreshold; snap.hammerDamageMediumThreshold = this.hammerDamageMediumThreshold;
         snap.hammerDamageLowMultiplier = this.hammerDamageLowMultiplier; snap.hammerDamageMediumMultiplier = this.hammerDamageMediumMultiplier;
         snap.hammerDamageHighMultiplier = this.hammerDamageHighMultiplier;
+        snap.hammerLowDamage = this.hammerLowDamage; snap.hammerMediumDamage = this.hammerMediumDamage;
+        snap.hammerHighDamage = this.hammerHighDamage;
+        snap.hammerLowRadius = this.hammerLowRadius; snap.hammerMediumRadius = this.hammerMediumRadius;
+        snap.hammerHighRadius = this.hammerHighRadius;
+        snap.hammerLowCharge = this.hammerLowCharge; snap.hammerMediumCharge = this.hammerMediumCharge;
+        snap.hammerHighCharge = this.hammerHighCharge;
         snap.nodeBlockTypes = new ArrayList<>(this.nodeBlockTypes);
         snap.nodeBaseHealth = this.nodeBaseHealth; snap.nodeRepairItem = this.nodeRepairItem;
         snap.nodeRepairAmount = this.nodeRepairAmount; snap.nodeBuffRadius = this.nodeBuffRadius;
         snap.nodeSelfDestructMultiplier = this.nodeSelfDestructMultiplier;
+        snap.nodeDestroyedMessage = this.nodeDestroyedMessage;
+        snap.nodeRepairedMessage = this.nodeRepairedMessage;
         snap.nodeBuffEffects = new LinkedHashMap<>(this.nodeBuffEffects);
         snap.monsters = new LinkedHashMap<>(this.monsters);
         snap.waves = new LinkedHashMap<>(this.waves);
@@ -273,6 +300,9 @@ public class GameConfig {
         snap.fireballMaterial = this.fireballMaterial; snap.fireballSpeed = this.fireballSpeed;
         snap.fireballDamage = this.fireballDamage; snap.fireballExplosionRadius = this.fireballExplosionRadius;
         snap.fireballCooldownTicks = this.fireballCooldownTicks; snap.fireballMaxTravelTicks = this.fireballMaxTravelTicks;
+        snap.fireballKnockback = this.fireballKnockback;
+        snap.fireballProximityFuse = this.fireballProximityFuse;
+        snap.fireballItemName = this.fireballItemName;
         return snap;
     }
 
@@ -320,6 +350,24 @@ public class GameConfig {
     public void setHammerDamageMediumMultiplier(double v) { this.hammerDamageMediumMultiplier = v; }
     public double getHammerDamageHighMultiplier() { return hammerDamageHighMultiplier; }
     public void setHammerDamageHighMultiplier(double v) { this.hammerDamageHighMultiplier = v; }
+    public double getHammerLowDamage() { return hammerLowDamage; }
+    public void setHammerLowDamage(double v) { this.hammerLowDamage = v; }
+    public double getHammerMediumDamage() { return hammerMediumDamage; }
+    public void setHammerMediumDamage(double v) { this.hammerMediumDamage = v; }
+    public double getHammerHighDamage() { return hammerHighDamage; }
+    public void setHammerHighDamage(double v) { this.hammerHighDamage = v; }
+    public double getHammerLowRadius() { return hammerLowRadius; }
+    public void setHammerLowRadius(double v) { this.hammerLowRadius = v; }
+    public double getHammerMediumRadius() { return hammerMediumRadius; }
+    public void setHammerMediumRadius(double v) { this.hammerMediumRadius = v; }
+    public double getHammerHighRadius() { return hammerHighRadius; }
+    public void setHammerHighRadius(double v) { this.hammerHighRadius = v; }
+    public double getHammerLowCharge() { return hammerLowCharge; }
+    public void setHammerLowCharge(double v) { this.hammerLowCharge = v; }
+    public double getHammerMediumCharge() { return hammerMediumCharge; }
+    public void setHammerMediumCharge(double v) { this.hammerMediumCharge = v; }
+    public double getHammerHighCharge() { return hammerHighCharge; }
+    public void setHammerHighCharge(double v) { this.hammerHighCharge = v; }
     public List<Material> getNodeBlockTypes() { return nodeBlockTypes; }
     public void setNodeBlockTypes(List<Material> v) { this.nodeBlockTypes = v; }
     public double getNodeBaseHealth() { return nodeBaseHealth; }
@@ -332,6 +380,10 @@ public class GameConfig {
     public void setNodeBuffRadius(double v) { this.nodeBuffRadius = v; }
     public double getNodeSelfDestructMultiplier() { return nodeSelfDestructMultiplier; }
     public void setNodeSelfDestructMultiplier(double v) { this.nodeSelfDestructMultiplier = v; }
+    public String getNodeDestroyedMessage() { return nodeDestroyedMessage; }
+    public void setNodeDestroyedMessage(String v) { this.nodeDestroyedMessage = v; }
+    public String getNodeRepairedMessage() { return nodeRepairedMessage; }
+    public void setNodeRepairedMessage(String v) { this.nodeRepairedMessage = v; }
     public Map<PotionEffectType, Integer> getNodeBuffEffects() { return nodeBuffEffects; }
     public Map<String, MonsterConfig> getMonsters() { return monsters; }
     public Map<Integer, WaveConfig> getWaves() { return waves; }
@@ -358,6 +410,12 @@ public class GameConfig {
     public void setFireballCooldownTicks(int v) { this.fireballCooldownTicks = v; }
     public int getFireballMaxTravelTicks() { return fireballMaxTravelTicks; }
     public void setFireballMaxTravelTicks(int v) { this.fireballMaxTravelTicks = v; }
+    public double getFireballKnockback() { return fireballKnockback; }
+    public void setFireballKnockback(double v) { this.fireballKnockback = v; }
+    public double getFireballProximityFuse() { return fireballProximityFuse; }
+    public void setFireballProximityFuse(double v) { this.fireballProximityFuse = v; }
+    public String getFireballItemName() { return fireballItemName; }
+    public void setFireballItemName(String v) { this.fireballItemName = v; }
 
     public WaveConfig getWaveConfig(int waveNumber) {
         return waves.getOrDefault(waveNumber, defaultWave);

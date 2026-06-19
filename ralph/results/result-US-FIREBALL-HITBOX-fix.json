@@ -1,0 +1,19 @@
+{
+  "storyId": "US-FIREBALL-HITBOX",
+  "passes": true,
+  "summary": "修复全部 14 个 code/arch 问题：i18n 硬编码 6 处、配置路径 1 处、线程安全 2 处、代码质量 5 处（删除死字段 + 提取魔法数字 + 清理无用 import）",
+  "lessons": [
+    "坑1: snapshot() 的 return snap; 和 } 在编辑时容易被吞掉，需要在编辑后验证方法结构完整",
+    "坑2: fireballName 改为从 GameConfig 动态读取后，isFireball() 也需要同步改为从 cfg 获取 expectedName 进行比较",
+    "坑3: activeCooldowns 是死字段（只 add/remove 从未 contains/get），直接删除可减少维护负担",
+    "坑4: ConcurrentHashMap 的 import 需要单独添加 java.util.concurrent.ConcurrentHashMap，不能靠 java.util.* 通配符"
+  ],
+  "filesChanged": [
+    "src/main/java/com/hilltopvillage/mechanics/FireballListener.java",
+    "src/main/java/com/hilltopvillage/config/GameConfig.java",
+    "src/main/java/com/hilltopvillage/config/ConfigManager.java",
+    "src/main/java/com/hilltopvillage/config/menu/ItemSettingsMenu.java",
+    "src/main/resources/messages.yml",
+    "CHANGELOG.md"
+  ]
+}

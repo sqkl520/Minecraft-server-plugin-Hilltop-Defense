@@ -3,6 +3,7 @@ package com.hilltopvillage.ai;
 import com.destroystokyo.paper.entity.ai.Goal;
 import com.destroystokyo.paper.entity.ai.GoalKey;
 import com.destroystokyo.paper.entity.ai.GoalType;
+import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import org.bukkit.*;
 import org.bukkit.attribute.Attribute;
@@ -56,8 +57,9 @@ public class AirdropSpawnGoal implements Goal<Mob> {
 
     @Override
     public void stop() {
-        airdropCooldown = gameManager.getPlugin().getConfig()
-                .getInt("monsters.flying-dropper.airdrop-interval-ticks", 160);
+        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig.MonsterConfig monsterCfg = cfg.getMonsters().get("flying-dropper");
+        airdropCooldown = monsterCfg != null ? monsterCfg.getAirdropIntervalTicks() : 160;
         targetDropLocation = null;
     }
 
@@ -130,10 +132,10 @@ public class AirdropSpawnGoal implements Goal<Mob> {
     private void executeAirdrop() {
         Location dropLoc = targetDropLocation;
         World world = dropLoc.getWorld();
-        int count = gameManager.getPlugin().getConfig()
-                .getInt("monsters.flying-dropper.airdrop-count", 3);
-        String mobTypeName = gameManager.getPlugin().getConfig()
-                .getString("monsters.flying-dropper.airdrop-mob-type", "ZOMBIE");
+        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig.MonsterConfig monsterCfg = cfg.getMonsters().get("flying-dropper");
+        int count = monsterCfg != null ? monsterCfg.getAirdropMobCount() : 3;
+        String mobTypeName = monsterCfg != null ? monsterCfg.getAirdropMobType() : "ZOMBIE";
         EntityType mobType;
         try {
             mobType = EntityType.valueOf(mobTypeName.toUpperCase());

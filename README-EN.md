@@ -2,7 +2,7 @@ English | [简体中文](README.md)
 
 > ⚠️ **This is a Minecraft plugin developed by an enthusiast with AI assistance. Feel free to submit Issues for any questions or suggestions. If you like this project, give it a star!**
 
-# HilltopVillage —— Village Defense PLUS
+# Hilltop Village
 
 A cooperative PvE tower defense plugin for Minecraft servers. Players must work together to protect the village core from waves of increasingly powerful monsters.
 
@@ -133,14 +133,16 @@ The JAR file will be generated in the `target/` directory.
 
 ## License
 
-MIT License
+This project is licensed under the [PolyForm Noncommercial License 1.0.0](https://polyformproject.org/licenses/noncommercial/1.0.0/).
+
+Any use, modification, or distribution must retain the `LICENSE` and `NOTICE` files in the project root directory, and ensure their contents remain intact.
 
 ## Star History
 
-<a href="https://www.star-history.com/?repos=your-username%2FHilltopVillage&type=date&legend=top-left">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=your-username/HilltopVillage&type=date&theme=dark&legend=top-left" />
-    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=your-username/HilltopVillage&type=date&legend=top-left" />
-    <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=your-username/HilltopVillage&type=date&legend=top-left" />
-  </picture>
+<a href="https://www.star-history.com/?repos=sqkl520%2FMinecraft-server-plugin-Hilltop-Defense&type=date&legend=top-left">
+ <picture>
+   <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/chart?repos=sqkl520/Minecraft-server-plugin-Hilltop-Defense&type=date&theme=dark&legend=top-left" />
+   <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/chart?repos=sqkl520/Minecraft-server-plugin-Hilltop-Defense&type=date&legend=top-left" />
+   <img alt="Star History Chart" src="https://api.star-history.com/chart?repos=sqkl520/Minecraft-server-plugin-Hilltop-Defense&type=date&legend=top-left" />
+ </picture>
 </a>
