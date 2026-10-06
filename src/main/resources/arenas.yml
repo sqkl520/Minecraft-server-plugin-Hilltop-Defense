@@ -1,0 +1,166 @@
+# ============================================================
+#  Hilltop Village — 多竞技场配置文件 (arenas.yml)  [中文]
+# ============================================================
+#  本文件是多竞技场模式的核心配置：定义大厅 + 每个竞技场。
+#
+#  === 部署流程 ===
+#  1. 确认世界文件夹已存在于服务器根目录（插件会自动加载）
+#  2. 在本文件中填写竞技场的 world / core / waiting-location
+#  3. 进入竞技场世界，运行 /hilltop setup 走完 8 步向导
+#     （生成点、节点、村民、商店位置都会被向导写入本文件）
+#  4. 用 /hilltop list 或 /hilltop arenas 检查状态
+#
+#  === 竞技场状态说明 ===
+#  地图缺失 = 配置里写了，但世界存档不存在/未加载   → 任何人都不能进
+#  未部署   = 世界在，但还没配生成点               → 仅管理员可进（便于核对位置）
+#  等待中   = 已就绪，可加入
+# ============================================================
+
+schema-version: 2
+
+# 默认竞技场（玩家执行 /hilltop join 不带参数时加入的竞技场）
+default-arena: arena1
+
+# ------------------------------------------------------------
+# 大厅设置（玩家进服后等待、浏览菜单的世界）
+# ------------------------------------------------------------
+lobby:
+  # 大厅世界名。留空或填写的世界不存在时，自动回退到服务器主世界
+  world: lobby
+  # 大厅出生点（玩家进服落点）
+  spawn:
+    x: 0.5
+    y: 100.0
+    z: 0.5
+    yaw: 0.0
+    pitch: 0.0
+
+# ------------------------------------------------------------
+# 竞技场列表
+# ------------------------------------------------------------
+arenas:
+
+  # ========== 竞技场 1（默认，已启用） ==========
+  arena1:
+    display-name: "&6&l天空堡垒"
+    enabled: true
+    world: hilltop_arena1          # 竞技场世界名（必须与大厅不同）
+
+    # 等待区：玩家加入竞技场后、开局前的落点
+    waiting-location:
+      x: 100.5
+      y: 80.0
+      z: 100.5
+      yaw: 0.0
+      pitch: 0.0
+
+    # 核心：玩家阵亡后的重生点（本身无血量）
+    core:
+      x: 100.0
+      y: 64.0
+      z: 100.0
+
+    # 怪物生成点：留空即可，用 /hilltop setup 的步骤 3 添加
+    # 生成点为空时，该竞技场会显示为「未部署」
+    spawn-points: []
+
+    # 村民位置：留空即可，用 /hilltop setup 的步骤 5 添加
+    villagers: []
+
+    # 生成设置
+    node-search-radius: 50
+    spawn-radius-min: 20
+    spawn-radius-max: 40
+    spawn-y-offset: 0
+
+    # 游戏设置
+    game:
+      # 人数下限：以竞技场自己的这个值为准——写 1 就是允许单人开局。
+      # 不写这一项时才回退到 game-settings.yml 的全局 min-players。
+      # 可用 /hilltop manage 的参数页在线修改（立即生效）；手动编辑本文件则需重启服务器（/hilltop reloadconfig 不会重读 arenas.yml）。
+      min-players: 1
+      max-players: 6
+      victory-waves: 20
+      wave-interval-seconds: 30
+
+  # ========== 竞技场 2（示例，默认禁用） ==========
+  arena2:
+    display-name: "&e&l沙漠要塞"
+    enabled: false
+    world: hilltop_arena2
+
+    waiting-location:
+      x: 200.5
+      y: 80.0
+      z: 200.5
+      yaw: 0.0
+      pitch: 0.0
+
+    core:
+      x: 200.0
+      y: 64.0
+      z: 200.0
+
+    spawn-points: []
+    villagers: []
+
+    node-search-radius: 50
+    spawn-radius-min: 25
+    spawn-radius-max: 45
+    spawn-y-offset: 0
+
+    game:
+      # 人数下限：以本竞技场此值为准；不写则继承 game-settings.yml 的 min-players（修改后需重启）
+      min-players: 2
+      max-players: 8
+      victory-waves: 25
+      wave-interval-seconds: 25
+
+  # ========== 竞技场 3（示例，默认禁用） ==========
+  arena3:
+    display-name: "&b&l雪地村庄"
+    enabled: false
+    world: hilltop_arena3
+
+    waiting-location:
+      x: 300.5
+      y: 85.0
+      z: 300.5
+      yaw: 0.0
+      pitch: 0.0
+
+    core:
+      x: 300.0
+      y: 70.0
+      z: 300.0
+
+    spawn-points: []
+    villagers: []
+
+    node-search-radius: 60
+    spawn-radius-min: 30
+    spawn-radius-max: 50
+    spawn-y-offset: 0
+
+    game:
+      # 人数下限：以本竞技场此值为准；不写则继承 game-settings.yml 的 min-players（修改后需重启）
+      min-players: 2
+      max-players: 4
+      victory-waves: 15
+      wave-interval-seconds: 35
+
+# ------------------------------------------------------------
+# 通用设置
+# ------------------------------------------------------------
+settings:
+  # 自动启动所有已启用的竞技场
+  auto-start-arenas: true
+
+  # 玩家退出服务器时是否自动离开竞技场
+  auto-leave-on-quit: true
+
+  # 竞技场重置延迟(秒)
+  arena-reset-delay: 5
+
+  # 游戏开始倒计时(秒)
+  start-countdown: 10

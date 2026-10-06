@@ -1,0 +1,58 @@
+# ============================================================
+#  Hilltop Village — 村民商店配置 (shop.yml)
+#  货币：击杀波次怪物掉落能量水晶（掉落率见 game-settings.yml）
+#  修改后使用 /hilltop shop reload 重载（管理员）
+# ============================================================
+shop:
+  # 货币物品
+  currency:
+    material: EMERALD
+    # 货币显示名（支持颜色码 &；留空则使用语言文件的 shop.currency.name）
+    name: "&a能量水晶"
+  # 商店村民 NPC 头顶名称（支持颜色码 &；留空则使用语言文件的 shop.npc.name）
+  npc:
+    name: ""
+  # 商店 GUI
+  gui:
+    # GUI 标题（支持颜色码 &；留空则使用语言文件的 shop.gui.title）
+    title: ""
+    size: 27
+  # 商品列表（key = 商品 ID）
+  # type 可选值:
+  #   HAMMER      = 神圣重锤（无视 amount，固定 1 个）
+  #   FIREBALL    = 烈焰蛋（amount = 一次购买给的数量）
+  #   REPAIR_ITEM = 世界树汁液（amount = 一次购买给的数量）
+  #   MATERIAL    = 任意原版物品（按 icon.material 给 amount 个）
+  items:
+    sacred_hammer:
+      slot: 10
+      price: 5
+      type: HAMMER
+      icon:
+        material: NETHERITE_AXE
+      name: "&6神圣重锤"
+      lore:
+        - "&7右键腾空蓄力，落地猛击"
+        - "&7高度越高伤害越强"
+    blaze_fireball:
+      slot: 12
+      price: 3
+      amount: 8
+      type: FIREBALL
+      icon:
+        material: FIRE_CHARGE
+      name: "&c烈焰蛋 &7x8"
+      lore:
+        - "&7右键投掷，命中爆炸"
+        - "&7范围伤害 + 击退"
+    world_tree_sap:
+      slot: 14
+      price: 2
+      amount: 4
+      type: REPAIR_ITEM
+      icon:
+        material: GHAST_TEAR
+      name: "&a世界树汁液 &7x4"
+      lore:
+        - "&7右键修复失活的能量节点"
+        - "&7每个恢复 50 点生命"

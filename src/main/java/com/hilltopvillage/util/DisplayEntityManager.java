@@ -76,7 +76,7 @@ public class DisplayEntityManager {
         scheduleCleanup(hammerDisplay, displayDurationTicks);
 
         Location particleLoc = center.clone().add(0, 0.1, 0);
-        world.spawnParticle(org.bukkit.Particle.BLOCK_CRACK, particleLoc, 30, 0.5, 0.1, 0.5, 0.1,
+        world.spawnParticle(org.bukkit.Particle.BLOCK, particleLoc, 30, 0.5, 0.1, 0.5, 0.1,
                 Material.IRON_BLOCK.createBlockData());
         world.spawnParticle(org.bukkit.Particle.CLOUD, particleLoc, 15, 0.8, 0.1, 0.8, 0.02);
     }
@@ -90,11 +90,11 @@ public class DisplayEntityManager {
             double x = Math.cos(angle) * 0.8;
             double z = Math.sin(angle) * 0.8;
 
-            world.spawnParticle(org.bukkit.Particle.VILLAGER_HAPPY,
+            world.spawnParticle(org.bukkit.Particle.HAPPY_VILLAGER,
                     center.clone().add(x, 0, z), 1, 0, 0, 0, 0);
         }
 
-        world.spawnParticle(org.bukkit.Particle.ENCHANTMENT_TABLE,
+        world.spawnParticle(org.bukkit.Particle.ENCHANT,
                 center, 20, 0.5, 0.5, 0.5, 0);
     }
 
@@ -102,7 +102,7 @@ public class DisplayEntityManager {
         World world = location.getWorld();
         Location center = location.clone().add(0.5, 0.5, 0.5);
 
-        world.spawnParticle(org.bukkit.Particle.EXPLOSION_LARGE, center, 1, 0, 0, 0, 0);
+        world.spawnParticle(org.bukkit.Particle.EXPLOSION_EMITTER, center, 1, 0, 0, 0, 0);
         world.spawnParticle(org.bukkit.Particle.FLAME, center, 20, 0.5, 0.5, 0.5, 0.02);
     }
 

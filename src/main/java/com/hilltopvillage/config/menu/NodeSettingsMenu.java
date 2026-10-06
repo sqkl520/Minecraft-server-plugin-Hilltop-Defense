@@ -38,8 +38,8 @@ public class NodeSettingsMenu extends AbstractConfigMenu {
                 lang.getFor(admin, "config.menu.nodes.base-health-desc"));
 
         addAdjustableItem(12, Material.GOLDEN_APPLE, lang.getFor(admin, "config.menu.nodes.repair-amount"),
-                cfg.getNodeRepairAmount(), 10, 500, 25,
-                () -> cfg.getNodeRepairAmount(), v -> cfg.setNodeRepairAmount(v),
+                cfg.getRepairAmountPerCost(), 10, 500, 25,
+                () -> cfg.getRepairAmountPerCost(), v -> cfg.setRepairAmountPerCost(v),
                 lang.getFor(admin, "config.menu.nodes.repair-amount-desc"));
 
         addAdjustableItem(14, Material.ENDER_EYE, lang.getFor(admin, "config.menu.nodes.buff-radius"),
@@ -52,15 +52,12 @@ public class NodeSettingsMenu extends AbstractConfigMenu {
                 () -> cfg.getNodeSelfDestructMultiplier(), v -> cfg.setNodeSelfDestructMultiplier(v),
                 lang.getFor(admin, "config.menu.nodes.self-destruct-desc"));
 
-        setItem(20, Material.KNOWLEDGE_BOOK, lang.getFor(admin, "config.menu.nodes.block-types-header"),
-                lang.getFor(admin, "config.menu.nodes.block-types-count", cfg.getNodeBlockTypes().size()),
-                lang.getFor(admin, "config.menu.nodes.block-types-cmd1"),
-                lang.getFor(admin, "config.menu.nodes.block-types-cmd2-display"),
-                lang.getFor(admin, "config.menu.nodes.block-types-cmd3-display"),
-                lang.getFor(admin, "config.menu.nodes.block-types-default"));
+        // 节点方块类型固定为重生锚，此处仅作说明性展示
+        setItem(20, Material.RESPAWN_ANCHOR, lang.getFor(admin, "config.menu.nodes.block-types-header"),
+                lang.getFor(admin, "config.menu.nodes.block-types-fixed"));
 
-        setItem(22, Material.SLIME_BALL, lang.getFor(admin, "config.menu.nodes.repair-item"),
-                lang.getFor(admin, "config.menu.nodes.repair-item-current") + ChatColor.AQUA + cfg.getNodeRepairItem().name(),
+        setItem(22, Material.GHAST_TEAR, lang.getFor(admin, "config.menu.nodes.repair-item"),
+                lang.getFor(admin, "config.menu.nodes.repair-item-current") + ChatColor.AQUA + cfg.getRepairCostItem().name(),
                 lang.getFor(admin, "config.menu.nodes.repair-item-cmd1"),
                 lang.getFor(admin, "config.menu.nodes.repair-item-cmd2"),
                 lang.getFor(admin, "config.menu.nodes.repair-item-hint"));

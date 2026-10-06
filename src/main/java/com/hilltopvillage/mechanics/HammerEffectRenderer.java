@@ -13,7 +13,7 @@ public class HammerEffectRenderer {
         World world = location.getWorld();
         Location center = location.clone().add(0, 0.1, 0);
 
-        world.spawnParticle(Particle.EXPLOSION_NORMAL, center, 3, 0.8, 0.2, 0.8, 0.1);
+        world.spawnParticle(Particle.EXPLOSION, center, 3, 0.8, 0.2, 0.8, 0.1);
         world.spawnParticle(Particle.CLOUD, center, 15, 1.2, 0.05, 1.2, 0.02);
 
         for (int i = 0; i < 12; i++) {
@@ -22,7 +22,7 @@ public class HammerEffectRenderer {
             world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, ringLoc, 1, 0.1, 0.05, 0.1, 0.01);
         }
 
-        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.15, 0), 20,
+        world.spawnParticle(Particle.BLOCK, center.clone().add(0, 0.15, 0), 20,
                 1.2, 0.3, 1.2, 0.2, Material.STONE.createBlockData());
     }
 
@@ -33,8 +33,8 @@ public class HammerEffectRenderer {
         World world = location.getWorld();
         Location center = location.clone().add(0, 0.15, 0);
 
-        world.spawnParticle(Particle.EXPLOSION_LARGE, center, 2, 0.3, 0.3, 0.3, 0);
-        world.spawnParticle(Particle.EXPLOSION_NORMAL, center, 10, 1.5, 0.3, 1.5, 0.3);
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, center, 2, 0.3, 0.3, 0.3, 0);
+        world.spawnParticle(Particle.EXPLOSION, center, 10, 1.5, 0.3, 1.5, 0.3);
 
         for (int i = 0; i < 35; i++) {
             double angle = (2 * Math.PI / 35) * i;
@@ -50,9 +50,9 @@ public class HammerEffectRenderer {
             world.spawnParticle(Particle.FLAME, ringLoc, 1, 0.1, 0.1, 0.1, 0.02);
         }
 
-        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.2, 0), 60,
+        world.spawnParticle(Particle.BLOCK, center.clone().add(0, 0.2, 0), 60,
                 2.5, 0.5, 2.5, 0.3, Material.STONE.createBlockData());
-        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.2, 0), 30,
+        world.spawnParticle(Particle.BLOCK, center.clone().add(0, 0.2, 0), 30,
                 2.0, 0.5, 2.0, 0.2, Material.COBBLESTONE.createBlockData());
 
         for (int y = 0; y < 5; y++) {
@@ -61,13 +61,13 @@ public class HammerEffectRenderer {
             world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, center.clone().add(0, yOff, 0),
                     8, spread, 0.1, spread, 0.01);
         }
-        world.spawnParticle(Particle.EXPLOSION_LARGE, center.clone().add(0, 1.5, 0),
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, center.clone().add(0, 1.5, 0),
                 10, 0.8, 0.5, 0.8, 0.05);
 
         world.spawnParticle(Particle.ELECTRIC_SPARK, center, 25, 1.0, 0.3, 1.0, 0.1);
         world.spawnParticle(Particle.ELECTRIC_SPARK, center.clone().add(0, 0.8, 0), 15, 0.6, 0.4, 0.6, 0.08);
 
-        world.spawnParticle(Particle.REDSTONE, center, 40, 2.0, 0.05, 2.0, 0,
+        world.spawnParticle(Particle.DUST, center, 40, 2.0, 0.05, 2.0, 0,
                 new Particle.DustOptions(Color.fromRGB(120, 100, 70), 1.5f));
     }
 
@@ -78,8 +78,8 @@ public class HammerEffectRenderer {
         World world = location.getWorld();
         Location center = location.clone().add(0, 0.15, 0);
 
-        world.spawnParticle(Particle.EXPLOSION_LARGE, center, 5, 0.5, 0.5, 0.5, 0);
-        world.spawnParticle(Particle.EXPLOSION_NORMAL, center, 20, 2.5, 0.5, 2.5, 0.4);
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, center, 5, 0.5, 0.5, 0.5, 0);
+        world.spawnParticle(Particle.EXPLOSION, center, 20, 2.5, 0.5, 2.5, 0.4);
 
         // 三层环形冲击波
         for (int ring = 0; ring < 3; ring++) {
@@ -95,9 +95,9 @@ public class HammerEffectRenderer {
         }
 
         // 大量碎石
-        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.3, 0), 100,
+        world.spawnParticle(Particle.BLOCK, center.clone().add(0, 0.3, 0), 100,
                 4.0, 0.8, 4.0, 0.4, Material.STONE.createBlockData());
-        world.spawnParticle(Particle.BLOCK_CRACK, center.clone().add(0, 0.3, 0), 60,
+        world.spawnParticle(Particle.BLOCK, center.clone().add(0, 0.3, 0), 60,
                 3.5, 0.8, 3.5, 0.3, Material.DEEPSLATE.createBlockData());
 
         // 上扬烟雾柱 (更高更密)
@@ -107,7 +107,7 @@ public class HammerEffectRenderer {
             world.spawnParticle(Particle.CAMPFIRE_COSY_SMOKE, center.clone().add(0, yOff, 0),
                     12, spread, 0.1, spread, 0.01);
         }
-        world.spawnParticle(Particle.EXPLOSION_LARGE, center.clone().add(0, 2.5, 0),
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, center.clone().add(0, 2.5, 0),
                 15, 1.2, 0.8, 1.2, 0.05);
 
         // 闪电
@@ -115,7 +115,7 @@ public class HammerEffectRenderer {
         world.spawnParticle(Particle.ELECTRIC_SPARK, center.clone().add(0, 1.5, 0), 30, 1.5, 0.8, 1.5, 0.1);
 
         // 地面尘土
-        world.spawnParticle(Particle.REDSTONE, center, 80, 3.0, 0.05, 3.0, 0,
+        world.spawnParticle(Particle.DUST, center, 80, 3.0, 0.05, 3.0, 0,
                 new Particle.DustOptions(Color.fromRGB(120, 100, 70), 2.0f));
 
         // 火焰旋涡

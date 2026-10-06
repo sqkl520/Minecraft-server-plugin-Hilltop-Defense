@@ -24,6 +24,21 @@ victory-waves: 20
 # 波次间隔（秒）
 wave-interval-seconds: 30
 
+# 失败结算倒计时（秒）：显示本局战报后传送回大厅的等待时间
+defeat-countdown-seconds: 20
+# 待保护村民的最大生命值（村民全部阵亡 = 游戏失败）
+villager-health: 20.0
+# 掉线重连窗口（秒）：对局中掉线后保留位置的时长，0 = 关闭重连
+rejoin-timeout-seconds: 60
+
+# 地图恢复：对局结束时回滚本局被破坏/放置的方块
+map-restore:
+  enabled: true
+
+# 侧边栏记分板
+scoreboard:
+  enabled: true
+
 # ============================================================
 #  重锤系统 (Hammer)
 # ============================================================
@@ -93,22 +108,42 @@ fireball:
 #  能量节点系统 (Nodes)
 # ============================================================
 nodes:
-  # 可用作节点的方块类型列表
-  block-types:
-    - BEACON
-    - ENCHANTING_TABLE
-    - ENDER_CHEST
-    - RESPAWN_ANCHOR
   # 节点基础生命值
   base-health: 100.0
-  # 修复节点所需物品
-  repair-item: SLIME_BALL
-  # 每次修复恢复的生命值
-  repair-amount: 50.0
+  # 修复节点消耗的物品（默认恶魂之泪，击杀下界恶魂获得，也可在商店购买）
+  repair-cost-item: GHAST_TEAR
+  # 每次修复消耗几个
+  repair-cost-amount: 1
+  # 每消耗一个恢复多少节点血量
+  repair-amount-per-cost: 50.0
+  # 修复物品显示名（留空则使用 messages.yml 的 item.repair-cost-name）
+  repair-cost-name: ""
   # 节点增益效果作用半径（格）
   buff-radius: 20.0
+  # 节点增益效果（格式 "效果名:等级"，0 = I 级，1 = II 级，以此类推）
+  buff-effects:
+    - "RESISTANCE:0"
+    - "REGENERATION:0"
+  # 增益刷新周期（tick）
+  buff-refresh-ticks: 60
+  # 多个节点叠加时的最大等级
+  buff-stack-cap: 3
+  # 单次增益持续时间（tick）
+  buff-duration-ticks: 100
   # 自爆对节点伤害倍率
   self-destruct-multiplier: 3.0
+  # 节点扫描搜索半径（距核心水平距离，格；垂直方向为全高度扫描）
+  search-radius: 128
+
+# ============================================================
+#  村民商店货币掉落 (Shop)
+#  货币物品（默认能量水晶 EMERALD）与商品价格见 shop.yml
+# ============================================================
+shop:
+  # 击杀波次怪物的货币掉落概率（0~1，0=不掉落）
+  currency-drop-chance: 0.4
+  # 每次掉落的货币数量（固定值）
+  currency-drop-amount: 1
 
 # ============================================================
 #  怪物生成设置 (Spawning)
@@ -118,6 +153,8 @@ spawning:
   spawn-radius-min: 20
   # 生成半径最大值（距核心，格）
   spawn-radius-max: 40
+  # 生成高度偏移（生成点 Y 坐标的偏移量，0 = 与生成点同高）
+  spawn-y-offset: 0
   # 全局怪物数量上限
   global-mob-cap: 80
   # 每名玩家的怪物数量上限
@@ -134,7 +171,8 @@ monsters:
     health: 40.0
     speed: 0.3
     hook-velocity: 1.0
-    display-name: "自爆甲虫"
+    # 显示名留空时使用 messages.yml 的 mob.explode-beetle（随玩家语言切换）
+    display-name: ""
     explode-damage-multiplier: 3.0
     cooldown-ticks: 0
     stun-duration-ticks: 0
@@ -145,7 +183,8 @@ monsters:
     health: 60.0
     speed: 0.25
     hook-velocity: 1.8
-    display-name: "钩爪猎手"
+    # 显示名留空时使用 messages.yml 的 mob.hook-claw-hunter（随玩家语言切换）
+    display-name: ""
     explode-damage-multiplier: 0
     cooldown-ticks: 60
     stun-duration-ticks: 40
@@ -156,7 +195,8 @@ monsters:
     health: 80.0
     speed: 0.3
     hook-velocity: 0
-    display-name: "飞行抛投者"
+    # 显示名留空时使用 messages.yml 的 mob.airdrop-dropper（随玩家语言切换）
+    display-name: ""
     explode-damage-multiplier: 0
     cooldown-ticks: 160
     stun-duration-ticks: 3

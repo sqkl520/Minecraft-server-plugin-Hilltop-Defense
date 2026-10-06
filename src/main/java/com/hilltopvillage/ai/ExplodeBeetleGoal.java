@@ -6,16 +6,33 @@ import com.destroystokyo.paper.entity.ai.GoalType;
 import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.mechanics.NodeSystem;
-import org.bukkit.*;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
 import org.bukkit.entity.Mob;
 
 import java.util.EnumSet;
 
 public class ExplodeBeetleGoal implements Goal<Mob> {
 
+    private static final double EXPLODE_DISTANCE   = 2.5;
+    private static final double STUCK_THRESHOLD_SQ = 0.01;
+    private static final int    STUCK_TICK_LIMIT   = 60;
+    private static final double PATHFINDER_SPEED   = 1.5;
+    /** 重新搜索最近节点的间隔（tick）：避免每 tick 全量扫描节点表 */
+    private static final int    RETARGET_INTERVAL_TICKS = 30;
+
     private final Mob beetle;
     private final GameManager gameManager;
     private NodeSystem.NodeData targetNode;
+    /** 目标节点上方一格（寻路 / 引爆判定用，节点位置固定不变，随目标一起缓存） */
+    private Location targetApproach;
+    /** 下次允许重新扫描节点的实体存活 tick；使用绝对 tick 避免激活切换导致少算或多算 */
+    private long nextRetargetTick;
+    /** 搜索半径平方；配置值小于等于 0 时为 0，表示禁用节点寻路 */
+    private double searchRadiusSq;
     private int stuckTicks;
     private Location lastPosition;
 
@@ -29,57 +46,113 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
     public boolean shouldActivate() {
         if (!gameManager.isGameRunning()) return false;
 
-        targetNode = gameManager.getNodeSystem().getNearestNode(beetle.getLocation());
+        retargetIfNeeded();
         return targetNode != null;
+    }
+
+    /**
+     * 在目标失效时立即重选，并在目标有效或暂无目标时每 30 tick 重新评估一次。
+     *
+     * <p>搜索半径沿用配置中心已有的 {@code nodes.search-radius}；值小于等于 0
+     * 明确定义为禁用节点寻路，不扫描节点，也不会退回到隐藏的魔法默认值。</p>
+     */
+    private boolean retargetIfNeeded() {
+        NodeSystem nodeSystem = gameManager.getNodeSystem();
+        if (targetNode != null && !nodeSystem.isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+        }
+
+        long currentTick = beetle.getTicksLived();
+        if (currentTick < nextRetargetTick) return false;
+
+        NodeSystem.NodeData previousTarget = targetNode;
+        double radius = gameManager.getConfigManager().getActiveConfig().getNodeSearchRadius();
+        searchRadiusSq = radius > 0 ? radius * radius : 0;
+
+        NodeSystem.NodeData nearest = null;
+        if (radius > 0) {
+            nearest = nodeSystem.getNearestNode(beetle.getLocation());
+            if (nearest != null && !isWithinSearchRadius(nearest)) {
+                nearest = null;
+            }
+        }
+
+        targetNode = nearest;
+        targetApproach = nearest == null
+                ? null
+                : nearest.getLocation().add(0.5, 1, 0.5);
+        nextRetargetTick = currentTick + RETARGET_INTERVAL_TICKS;
+        return previousTarget != targetNode;
+    }
+
+    private boolean isWithinSearchRadius(NodeSystem.NodeData node) {
+        Location nodeLocation = node.getLocation();
+        Location beetleLocation = beetle.getLocation();
+        return nodeLocation.getWorld() == beetleLocation.getWorld()
+                && nodeLocation.distanceSquared(beetleLocation) <= searchRadiusSq;
     }
 
     @Override
     public boolean shouldStayActive() {
-        return targetNode != null && targetNode.isActive()
-                && gameManager.isGameRunning() && beetle.isValid();
+        if (!gameManager.isGameRunning() || !beetle.isValid() || targetNode == null) return false;
+        if (!gameManager.getNodeSystem().isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+            return false;
+        }
+        return true;
     }
 
     @Override
     public void start() {
+        if (targetNode == null || targetApproach == null) return;
+
         stuckTicks = 0;
-        lastPosition = beetle.getLocation().clone();
+        lastPosition = beetle.getLocation();
         beetle.setGlowing(true);
+        beetle.getPathfinder().moveTo(targetApproach, PATHFINDER_SPEED);
     }
 
     @Override
     public void stop() {
+        beetle.getPathfinder().stopPathfinding();
         beetle.setGlowing(false);
-        targetNode = null;
+        clearTarget();
     }
 
     @Override
     public void tick() {
-        if (targetNode == null) return;
+        boolean targetChanged = retargetIfNeeded();
+        if (targetNode == null || targetApproach == null) return;
+        if (!gameManager.getNodeSystem().isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+            return;
+        }
 
-        Location nodeLoc = targetNode.getLocation().clone().add(0.5, 1, 0.5);
         Location beetleLoc = beetle.getLocation();
-        double distance = beetleLoc.distance(nodeLoc);
+        if (targetChanged) {
+            stuckTicks = 0;
+            lastPosition = beetleLoc;
+            beetle.getPathfinder().moveTo(targetApproach, PATHFINDER_SPEED);
+        }
 
-        if (distance <= 2.5) {
+        double distance = beetleLoc.distance(targetApproach);
+        if (distance <= EXPLODE_DISTANCE) {
             explode();
             return;
         }
 
-        org.bukkit.util.Vector direction = nodeLoc.toVector().subtract(beetleLoc.toVector()).normalize();
-        Location newLoc = beetleLoc.clone().add(direction.multiply(0.5));
-        newLoc.setDirection(direction);
-        beetle.teleport(newLoc);
-
-        if (beetleLoc.distanceSquared(lastPosition) < 0.01) {
+        if (beetleLoc.distanceSquared(lastPosition) < STUCK_THRESHOLD_SQ) {
             stuckTicks++;
         } else {
             stuckTicks = 0;
         }
-        lastPosition = beetleLoc.clone();
+        lastPosition = beetleLoc;
 
-        if (stuckTicks > 60) {
-            beetle.teleport(beetleLoc.add(
-                    beetleLoc.getDirection().multiply(1.5).setY(0.5)));
+        if (stuckTicks >= STUCK_TICK_LIMIT) {
+            beetle.getPathfinder().moveTo(targetApproach, PATHFINDER_SPEED);
             stuckTicks = 0;
         }
     }
@@ -95,25 +168,45 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
     }
 
     private void explode() {
-        if (targetNode == null) return;
+        NodeSystem nodeSystem = gameManager.getNodeSystem();
+        if (targetNode == null || !nodeSystem.isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+            return;
+        }
 
         Location nodeLoc = targetNode.getLocation();
         World world = nodeLoc.getWorld();
 
-        // 统一从 GameConfig / MonsterConfig 读取，确保配置中心 GUI 修改后生效
+        // 怪物爆炸伤害 = 对玩家的基础攻击伤害 × 怪物爆炸倍率；节点倍率只额外应用一次
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
         GameConfig.MonsterConfig monsterCfg = cfg.getMonsters().get("explode-beetle");
-        double explodePower = monsterCfg != null ? monsterCfg.getExplodeDamageMultiplier() : 3.0;
+        double explodeMultiplier = monsterCfg == null
+                ? 0
+                : Math.max(0, monsterCfg.getExplodeDamageMultiplier());
+        double nodeMultiplier = Math.max(0, cfg.getNodeSelfDestructMultiplier());
+        double nodeDamage = resolveBaseDamage(monsterCfg) * explodeMultiplier * nodeMultiplier;
 
-        world.createExplosion(nodeLoc, (float) explodePower, false, false, beetle);
-
-        double nodeDamage = 40.0; // 基础节点伤害
-        double multiplier = cfg.getNodeSelfDestructMultiplier();
-
-        gameManager.getNodeSystem().damageNode(nodeLoc, nodeDamage * multiplier);
+        if (world == null) return;
+        world.createExplosion(nodeLoc, (float) explodeMultiplier, false, false, beetle);
+        nodeSystem.damageNode(nodeLoc, nodeDamage);
         gameManager.getDisplayEntityManager().spawnNodeDestroyEffect(nodeLoc);
 
         beetle.remove();
         gameManager.getWaveManager().onMobDeath(beetle);
+    }
+
+    /** ATTACK_DAMAGE 由 WaveManager 按 base-damage 写入；属性不可用时才回退配置值。 */
+    private double resolveBaseDamage(GameConfig.MonsterConfig monsterCfg) {
+        AttributeInstance attribute = beetle.getAttribute(Attribute.ATTACK_DAMAGE);
+        if (attribute != null && attribute.getValue() > 0) {
+            return attribute.getValue();
+        }
+        return monsterCfg == null ? 0 : Math.max(0, monsterCfg.getBaseDamage());
+    }
+
+    private void clearTarget() {
+        targetNode = null;
+        targetApproach = null;
     }
 }

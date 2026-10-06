@@ -108,7 +108,8 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
     }
 
     protected void setBackButton(ClickAction onBack) {
-        setClickableItem(8, Material.RED_STAINED_GLASS_PANE,
+        int slot = size - 9; // 最后一行左端（45格=slot45，54格=slot45）
+        setClickableItem(slot, Material.RED_STAINED_GLASS_PANE,
                 lang.getFor(admin, "config.menu.common.back"),
                 onBack,
                 lang.getFor(admin, "config.menu.common.back-lore"));

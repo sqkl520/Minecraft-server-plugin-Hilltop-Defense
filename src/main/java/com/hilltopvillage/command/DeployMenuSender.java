@@ -28,17 +28,37 @@ public class DeployMenuSender {
         String hover = lang.getFor(player, "usage-click-to-copy");
 
         sender.sendMessage(lang.getFor(player, "usage-header"));
-        sendClickableLine(sender, "usage-start", "/hilltop start", hover);
-        sendClickableLine(sender, "usage-stop", "/hilltop stop", hover);
-        sendClickableLine(sender, "usage-join", "/hilltop join", hover);
+
+        // 玩家命令
+        sender.sendMessage(lang.getFor(player, "usage-player-header"));
+        sendClickableLine(sender, "usage-join", "/hilltop join ", hover);
         sendClickableLine(sender, "usage-leave", "/hilltop leave", hover);
+        sendClickableLine(sender, "usage-lobby", "/hilltop lobby", hover);
+        sendClickableLine(sender, "usage-gui", "/hilltop gui", hover);
         sendClickableLine(sender, "usage-status", "/hilltop status", hover);
+        sendClickableLine(sender, "usage-list", "/hilltop list", hover);
+        sendClickableLine(sender, "usage-stats", "/hilltop stats ", hover);
+        sendClickableLine(sender, "usage-top", "/hilltop top ", hover);
         sendClickableLine(sender, "usage-hammer", "/hilltop hammer", hover);
+        sendClickableLine(sender, "usage-fireball", "/hilltop fireball", hover);
         sendClickableLine(sender, "usage-lang", "/hilltop lang ", hover);
+
+        // 管理员命令
         if (sender.hasPermission("hilltopvillage.admin")) {
+            sender.sendMessage(lang.getFor(player, "usage-admin-header"));
+            sendClickableLine(sender, "usage-start", "/hilltop start", hover);
+            sendClickableLine(sender, "usage-stop", "/hilltop stop", hover);
+            sendClickableLine(sender, "usage-setup", "/hilltop setup", hover);
             sendClickableLine(sender, "usage-deploy", "/hilltop deploy", hover);
             sendClickableLine(sender, "usage-config", "/hilltop config", hover);
             sendClickableLine(sender, "usage-reloadconfig", "/hilltop reloadconfig", hover);
+            sendClickableLine(sender, "usage-arenas", "/hilltop arenas", hover);
+            sendClickableLine(sender, "usage-manage", "/hilltop manage", hover);
+            sendClickableLine(sender, "usage-enable", "/hilltop enable ", hover);
+            sendClickableLine(sender, "usage-disable", "/hilltop disable ", hover);
+            sendClickableLine(sender, "usage-shop-reload", "/hilltop shop reload", hover);
+            sendClickableLine(sender, "usage-build", "/hilltop build", hover);
+            sendClickableLine(sender, "usage-tps", "/hilltop tps", hover);
         }
     }
 
@@ -51,6 +71,8 @@ public class DeployMenuSender {
                 .deserialize(lang.getFor(player, "deploy.menu-title"))
                 .hoverEvent(HoverEvent.showText(Component.text(lang.getFor(player, "deploy.menu-hover")))));
 
+        sendClickableLine(player, "deploy.cmd-setup", "/hilltop setup", hover,
+                lang.getFor(player, "deploy.desc-setup"));
         sendClickableLine(player, "deploy.cmd-setcore", "/hilltop deploy setcore", hover,
                 lang.getFor(player, "deploy.desc-setcore"));
         sendClickableLine(player, "deploy.cmd-addspawn", "/hilltop deploy addspawn", hover,

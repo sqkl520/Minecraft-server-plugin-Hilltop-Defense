@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 
+import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
 public class CommandsDocumentGenerator {
@@ -148,12 +149,19 @@ public class CommandsDocumentGenerator {
         md.append("- **使用示例**: `/hilltop deploy reloadnodes`\n");
         md.append("- **注意事项**: 重新从世界方块中加载能量节点，用于地图更新后刷新节点状态。\n\n");
 
+        md.append("### `/hilltop manage`\n\n");
+        md.append("- **功能**: 打开竞技场管理 GUI。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop manage`\n");
+        md.append("- **注意事项**: 仅限玩家在游戏内使用。列表页展示全部已配置的竞技场（含已禁用、未部署、世界未加载的），点击进入详情页可查看生成点 / 能量节点 / 村民 / 商店 NPC 与对局参数；左键条目可传送到该坐标，右键删除单条，Shift+左键预览粒子。详情页还提供启用 / 禁用竞技场与「恢复初始状态」（重置）：重置会踢出场内玩家、清空该竞技场的全部部署数据与节点，并强制回滚地图方块，需要二次确认；对局进行中或正在启用队列加载中的竞技场会被拒绝，重置后因核心坐标被清空需重新部署才能再次启用。\n\n");
+
         md.append("### `/hilltop reloadconfig`\n\n");
         md.append("- **功能**: 重新加载游戏配置文件。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop reloadconfig`\n");
-        md.append("- **注意事项**: 从 `game-settings.yml` 重新加载所有游戏参数（波次配置、怪物属性、锤子参数、节点设置等），无需重启服务器即可使修改生效。\n\n");
+        md.append("- **注意事项**: 同时从 `game-settings.yml`（波次配置、怪物基础属性、锤子参数、节点设置等）与 `monsters-config.yml`（怪物实体类型、攻击伤害、装备与模型）重新加载配置，无需重启服务器即可使修改生效。竞技场参数来自 `arenas.yml`，需重启服务器才能生效。\n\n");
 
         md.append("---\n\n");
         md.append("## 配置中心命令\n\n");
@@ -172,20 +180,6 @@ public class CommandsDocumentGenerator {
         md.append("- **参数**: `<材料名>` — Minecraft 材料名称（如 IRON_INGOT、GOLD_INGOT）。\n");
         md.append("- **使用示例**: `/hilltop config nodes repairitem IRON_INGOT`\n");
         md.append("- **注意事项**: 材料名需使用大写英文，且必须为有效的 Minecraft 材料枚举名。\n\n");
-
-        md.append("### `/hilltop config nodes add <材料名>`\n\n");
-        md.append("- **功能**: 添加能量节点的可用方块类型。\n");
-        md.append("- **权限**: `hilltopvillage.config.nodes`\n");
-        md.append("- **参数**: `<材料名>` — 要添加为能量节点的方块类型（如 CRYING_OBSIDIAN）。\n");
-        md.append("- **使用示例**: `/hilltop config nodes add CRYING_OBSIDIAN`\n");
-        md.append("- **注意事项**: 添加后方块会被识别为能量节点，玩家可与其交互获取增益效果。重复添加相同材料不会产生效果。\n\n");
-
-        md.append("### `/hilltop config nodes remove <材料名>`\n\n");
-        md.append("- **功能**: 移除能量节点的可用方块类型。\n");
-        md.append("- **权限**: `hilltopvillage.config.nodes`\n");
-        md.append("- **参数**: `<材料名>` — 要移除的方块类型。\n");
-        md.append("- **使用示例**: `/hilltop config nodes remove CRYING_OBSIDIAN`\n");
-        md.append("- **注意事项**: 移除后该方块类型不再被识别为能量节点。\n\n");
 
         md.append("---\n\n");
         md.append("## 权限节点\n\n");
@@ -208,14 +202,17 @@ public class CommandsDocumentGenerator {
         md.append("5. **粒子展示**: `/hilltop deploy showparticles` 仅展示当前已设置的生成点对应粒子。若没有生成点则不会有任何效果。\n");
         md.append("6. **多语言**: 使用 `/hilltop lang <en|zh>` 切换语言。所有消息文本可在 `plugins/HilltopVillage/messages.yml` 中自定义编辑。\n");
 
-        try {
-            if (!docFile.getParentFile().exists()) {
-                docFile.getParentFile().mkdirs();
+        final String content = md.toString();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
+            try {
+                if (!docFile.getParentFile().exists()) {
+                    docFile.getParentFile().mkdirs();
+                }
+                java.nio.file.Files.write(docFile.toPath(), content.getBytes(StandardCharsets.UTF_8));
+                plugin.getLogger().info("命令文档已生成: " + docFile.getAbsolutePath());
+            } catch (IOException e) {
+                plugin.getLogger().severe("无法生成命令文档 commands.md: " + e.getMessage());
             }
-            java.nio.file.Files.write(docFile.toPath(), md.toString().getBytes(StandardCharsets.UTF_8));
-            plugin.getLogger().info("命令文档已生成: " + docFile.getAbsolutePath());
-        } catch (IOException e) {
-            plugin.getLogger().severe("无法生成命令文档 commands.md: " + e.getMessage());
-        }
+        });
     }
 }

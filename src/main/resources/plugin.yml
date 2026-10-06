@@ -1,7 +1,7 @@
 name: HilltopVillage
-version: 1.0.0
+version: ${project.version}
 main: com.hilltopvillage.HilltopVillagePlugin
-api-version: 1.19
+api-version: '1.21'
 description: Hilltop Village - Cooperative PvE Tower Defense
 authors: [HilltopVillageTeam]
 depend: []

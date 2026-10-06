@@ -2,7 +2,7 @@ package com.hilltopvillage.mechanics;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.config.GameConfig;
-import com.hilltopvillage.core.GameManager;
+import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.*;
 import org.bukkit.entity.*;
@@ -37,19 +37,64 @@ public class FireballListener implements Listener {
     private static final double KB_Y_COMPENSATION = 1.5;
     private static final double KB_VERTICAL_SCALE = 0.45;
 
-    private final GameManager gameManager;
+    /** 全局唯一飞行 ticker：恢复原实现每 2 tick 一次的近炸检测语义。 */
+    private static final int TRAIL_PERIOD_TICKS = 2;
+    /** 高频火焰/烟雾粒子每 4 tick 输出一次，避免随检测频率一起增量。 */
+    private static final int FLAME_SMOKE_PARTICLE_INTERVAL_TICKS = 4;
+    /** 熔岩粒子每 6 tick 输出一次。 */
+    private static final int LAVA_PARTICLE_INTERVAL_TICKS = 6;
+    /** 原实现每次飞行计数代表 2 个服务器 tick，用于保持配置的历史等效寿命。 */
+    private static final int LEGACY_TRAIL_PERIOD_TICKS = 2;
+
     private final HilltopVillagePlugin plugin;
     private final LanguageManager lang;
+    private final String cachedFireballName;
     private final Map<UUID, Integer> cooldowns;
     private BukkitRunnable cooldownTicker;
-    private boolean cooldownTickerRunning;
+    private volatile boolean cooldownTickerRunning;
+    /** 在飞的烈焰蛋：投射物 UUID → 飞行状态。全局共用一条 ticker 遍历 */
+    private final Map<UUID, TrailState> activeTrails;
+    private BukkitRunnable trailTicker;
+    private volatile boolean trailTickerRunning;
 
-    public FireballListener(GameManager gameManager) {
-        this.gameManager = gameManager;
-        this.plugin = gameManager.getPlugin();
+    /** 单个烈焰蛋的飞行状态（由 {@code tickTrails()} 遍历更新） */
+    private static final class TrailState {
+        /** 投射物本体 */
+        private final Snowball projectile;
+        /** 发射瞬间快照的配置（与原实现一致：飞行途中不随重载改变） */
+        private final GameConfig cfg;
+        /** 失效阈值（服务器 tick）；使用 long 防止 max-travel-ticks × 2 溢出。 */
+        private final long expireTicks;
+        /** 已飞行服务器 tick 数 */
+        private long ticks;
+
+        private TrailState(Snowball projectile, GameConfig cfg) {
+            this.projectile = projectile;
+            // 必须存深拷贝快照：GameConfig 是可变对象且 reloadconfig 会原地改写字段，
+            // 直接持有引用会让飞行中的烈焰蛋读到重载后的新伤害/半径/击退。
+            // snapshot() 会连 monsters / waves 一并深拷贝，但只在发射瞬间调用一次，
+            // 相对 launchProjectile / 粒子开销可忽略，不属于热路径。
+            this.cfg = cfg.snapshot();
+            // 寿命同样只从快照读取，保证 TrailState 内所有数值来自同一个不可变副本。
+            int maxTravelTicks = this.cfg.getFireballMaxTravelTicks();
+            this.expireTicks = maxTravelTicks <= 0
+                    ? 0L
+                    : (long) maxTravelTicks * LEGACY_TRAIL_PERIOD_TICKS;
+        }
+    }
+
+    public FireballListener(HilltopVillagePlugin plugin) {
+        this.plugin = plugin;
         this.lang = plugin.getLanguageManager();
+        String configuredName = plugin.getConfigManager().getActiveConfig().getFireballItemName();
+        this.cachedFireballName = ChatColor.translateAlternateColorCodes('&',
+                (configuredName == null || configuredName.isEmpty())
+                        ? lang.get("item.fireball-name")
+                        : configuredName);
         this.cooldowns = new ConcurrentHashMap<>();
         this.cooldownTickerRunning = false;
+        this.activeTrails = new ConcurrentHashMap<>();
+        this.trailTickerRunning = false;
     }
 
     private void ensureCooldownTickerRunning() {
@@ -70,6 +115,7 @@ public class FireballListener implements Listener {
                 }
                 if (cooldowns.isEmpty()) {
                     cooldownTickerRunning = false;
+                    cooldownTicker = null;
                     cancel();
                 }
             }
@@ -80,11 +126,11 @@ public class FireballListener implements Listener {
     /* ========== 创建烈焰蛋物品 ========== */
 
     public ItemStack createFireball() {
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         ItemStack item = new ItemStack(cfg.getFireballMaterial());
 
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', cfg.getFireballItemName()));
+        meta.setDisplayName(cachedFireballName);
         List<String> lore = new ArrayList<>();
         lore.add(ChatColor.GRAY + lang.get("fireball.lore-use"));
         lore.add(ChatColor.RED + lang.get("fireball.lore-damage"));
@@ -101,13 +147,31 @@ public class FireballListener implements Listener {
 
     public boolean isFireball(ItemStack item) {
         if (item == null || !item.hasItemMeta()) return false;
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
-        String expectedName = ChatColor.translateAlternateColorCodes('&', cfg.getFireballItemName());
         ItemMeta meta = item.getItemMeta();
-        return meta.hasDisplayName() && meta.getDisplayName().equals(expectedName);
+        return meta.hasDisplayName() && meta.getDisplayName().equals(cachedFireballName);
     }
 
     /* ========== 右键投掷 ========== */
+
+    /** 世界必须对应一个仍在进行中的竞技场。 */
+    private boolean isRunningArena(World world) {
+        if (world == null) return false;
+        var arena = plugin.getMultiArenaManager().getArenaByWorld(world.getName());
+        return arena != null
+                && (arena.getState() == GameState.RUNNING
+                || arena.getState() == GameState.WAVE_INTERMISSION);
+    }
+
+    /** 玩家必须属于其当前世界对应的进行中竞技场。 */
+    private boolean isPlayerInRunningArena(Player player) {
+        var playerArena = plugin.getMultiArenaManager().getPlayerArena(player);
+        if (playerArena == null
+                || (playerArena.getState() != GameState.RUNNING
+                && playerArena.getState() != GameState.WAVE_INTERMISSION)) return false;
+
+        var worldArena = plugin.getMultiArenaManager().getArenaByWorld(player.getWorld().getName());
+        return worldArena != null && worldArena.getArenaId().equals(playerArena.getArenaId());
+    }
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onRightClick(PlayerInteractEvent event) {
@@ -117,11 +181,12 @@ public class FireballListener implements Listener {
         boolean isOffhand = event.getHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND;
         ItemStack item = isOffhand ? player.getInventory().getItemInOffHand() : player.getInventory().getItemInMainHand();
         if (!isFireball(item)) return;
+        if (!isPlayerInRunningArena(player)) return;
 
         event.setCancelled(true);
 
         // 冷却检查
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         UUID pid = player.getUniqueId();
         int cd = cooldowns.getOrDefault(pid, 0);
         if (cd > 0) {
@@ -152,7 +217,7 @@ public class FireballListener implements Listener {
         player.spawnParticle(Particle.FLAME, eye.add(direction.clone().multiply(0.5)), 10, 0.1, 0.1, 0.1, 0.02);
 
         // 飞行粒子轨迹
-        startTrailTask(projectile, cfg);
+        trackProjectile(projectile, cfg);
     }
 
     @EventHandler(priority = EventPriority.HIGHEST)
@@ -160,10 +225,11 @@ public class FireballListener implements Listener {
         if (event.isCancelled()) return;
         ItemStack item = event.getItem();
         if (!isFireball(item)) return;
+        if (!(event.getBlock().getState() instanceof org.bukkit.block.Dispenser dispenser)) return;
+        if (!isRunningArena(event.getBlock().getWorld())) return;
 
         event.setCancelled(true);
 
-        org.bukkit.block.Dispenser dispenser = (org.bukkit.block.Dispenser) event.getBlock().getState();
         org.bukkit.inventory.Inventory inv = dispenser.getInventory();
 
         for (int i = 0; i < inv.getSize(); i++) {
@@ -180,7 +246,7 @@ public class FireballListener implements Listener {
         Vector velocity = event.getVelocity();
         Location origin = event.getBlock().getLocation().toCenterLocation().add(velocity.clone().normalize().multiply(0.6));
 
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         Snowball projectile = origin.getWorld().spawn(origin, Snowball.class);
         projectile.setMetadata("hilltop_fireball", new FixedMetadataValue(plugin, "DISPENSER"));
         projectile.setGravity(false);
@@ -188,53 +254,137 @@ public class FireballListener implements Listener {
         projectile.setVelocity(velocity.clone().normalize().multiply(cfg.getFireballSpeed()));
 
         origin.getWorld().playSound(origin, Sound.ENTITY_BLAZE_SHOOT, 0.8f, 1.5f);
-        startTrailTask(projectile, cfg);
+        trackProjectile(projectile, cfg);
     }
 
-    /* ========== 飞行轨迹粒子 ========== */
+    /* ========== 飞行轨迹粒子 + 近炸检测 ========== */
 
-    private void startTrailTask(Snowball projectile, GameConfig cfg) {
-        new BukkitRunnable() {
-            int ticks = 0;
-            int maxTicks = cfg.getFireballMaxTravelTicks();
+    /**
+     * 把投射物登记进全局飞行列表，并确保统一 ticker 在运行。
+     *
+     * <p>只有「加入」这一条路径会创建任务；任务本身全局唯一，列表清空后自停。</p>
+     */
+    private void trackProjectile(Snowball projectile, GameConfig cfg) {
+        activeTrails.put(projectile.getUniqueId(), new TrailState(projectile, cfg));
+        ensureTrailTickerRunning();
+    }
 
+    /**
+     * 确保全局飞行 ticker 在运行。
+     * 沿用本文件冷却计时器与 {@code DisplayEntityManager} 的「空则自停」惯例。
+     */
+    private void ensureTrailTickerRunning() {
+        if (trailTickerRunning) return;
+        trailTickerRunning = true;
+        trailTicker = new BukkitRunnable() {
             @Override
             public void run() {
-                if (!projectile.isValid() || projectile.isDead()) {
+                if (activeTrails.isEmpty()) {
+                    trailTickerRunning = false;
+                    trailTicker = null;
                     cancel();
                     return;
                 }
-                ticks++;
-                if (ticks > maxTicks) {
-                    projectile.remove();
-                    cancel();
-                    return;
-                }
-                Location loc = projectile.getLocation();
-                World w = loc.getWorld();
-                w.spawnParticle(Particle.FLAME, loc, 3, 0.1, 0.1, 0.1, 0.01);
-                w.spawnParticle(Particle.SMOKE_NORMAL, loc, 2, 0.15, 0.15, 0.15, 0.01);
-                w.spawnParticle(Particle.LAVA, loc, 1, 0.05, 0.05, 0.05, 0);
-
-                // 近炸检测：扫描周围实体，进入近炸半径则触发爆炸
-                double fuse = cfg.getFireballProximityFuse();
-                if (fuse > 0) {
-                    Collection<LivingEntity> nearby = w.getNearbyLivingEntities(
-                            loc, fuse, fuse, fuse,
-                            e -> e.isValid() && !e.isDead() && !(e instanceof Player));
-                    if (!nearby.isEmpty()) {
-                        triggerExplosion(projectile, loc, cfg);
-                        projectile.remove();
-                        cancel();
-                        return;
-                    }
-                }
+                tickTrails();
             }
-        }.runTaskTimer(plugin, 0L, 2L);
+        };
+        trailTicker.runTaskTimer(plugin, 0L, TRAIL_PERIOD_TICKS);
     }
 
+    /**
+     * 遍历所有在飞投射物：按 2 tick 做近炸判定，并分别节流粒子输出。
+     * 所有结束路径都会从列表移除，且在主动移除实体前清掉 metadata。
+     */
+    private void tickTrails() {
+        Iterator<Map.Entry<UUID, TrailState>> it = activeTrails.entrySet().iterator();
+        while (it.hasNext()) {
+            TrailState state = it.next().getValue();
+            Snowball projectile = state.projectile;
+
+            if (!projectile.isValid() || projectile.isDead()) {
+                projectile.removeMetadata("hilltop_fireball", plugin);
+                it.remove();
+                continue;
+            }
+
+            state.ticks += TRAIL_PERIOD_TICKS;
+            if (state.ticks > state.expireTicks) {
+                removeProjectile(projectile);
+                it.remove();
+                continue;
+            }
+
+            Location loc = projectile.getLocation();
+            World world = loc.getWorld();
+            if (!isRunningArena(world)) {
+                removeProjectile(projectile);
+                it.remove();
+                continue;
+            }
+
+            if (state.ticks % FLAME_SMOKE_PARTICLE_INTERVAL_TICKS == 0) {
+                world.spawnParticle(Particle.FLAME, loc, 3, 0.1, 0.1, 0.1, 0.01);
+                world.spawnParticle(Particle.SMOKE, loc, 2, 0.15, 0.15, 0.15, 0.01);
+            }
+            if (state.ticks % LAVA_PARTICLE_INTERVAL_TICKS == 0) {
+                world.spawnParticle(Particle.LAVA, loc, 1, 0.05, 0.05, 0.05, 0);
+            }
+
+            if (probeProximity(state, loc)) {
+                triggerExplosion(projectile, loc, state.cfg);
+                projectile.remove();
+                it.remove();
+            }
+        }
+    }
+
+    /** 每 2 tick 使用原始近炸 AABB 查询，不扩大查询盒、不缓存密集实体结果。 */
+    private boolean probeProximity(TrailState state, Location loc) {
+        double fuse = state.cfg.getFireballProximityFuse();
+        World world = loc.getWorld();
+        if (fuse <= 0 || world == null) return false;
+
+        return !world.getNearbyLivingEntities(
+                loc, fuse, fuse, fuse, FireballListener::isValidTarget).isEmpty();
+    }
+
+    /** 目标筛选条件，与原实现保持一致：存活中的非玩家 LivingEntity。 */
+    private static boolean isValidTarget(LivingEntity entity) {
+        return entity != null && entity.isValid() && !entity.isDead() && !(entity instanceof Player);
+    }
+
+    /** 主动清理投射物时先移除标记，防止任何后续命中路径重复引爆。 */
+    private void removeProjectile(Snowball projectile) {
+        projectile.removeMetadata("hilltop_fireball", plugin);
+        projectile.remove();
+    }
+
+    /** 冷却查询：玩家退出时清理（在飞的烈焰蛋由全局 ticker 按失效/超时自行出列） */
     public void cleanupPlayer(Player player) {
         cooldowns.remove(player.getUniqueId());
+    }
+
+    /**
+     * 插件关闭时停止全局任务，并清理仍在飞行的投射物及所有运行期状态。
+     * 可重复调用。
+     */
+    public void shutdown() {
+        if (cooldownTicker != null) {
+            cooldownTicker.cancel();
+            cooldownTicker = null;
+        }
+        if (trailTicker != null) {
+            trailTicker.cancel();
+            trailTicker = null;
+        }
+
+        for (TrailState state : activeTrails.values()) {
+            removeProjectile(state.projectile);
+        }
+        activeTrails.clear();
+        cooldowns.clear();
+        cooldownTickerRunning = false;
+        trailTickerRunning = false;
     }
 
     /* ========== 命中爆炸 ========== */
@@ -245,8 +395,18 @@ public class FireballListener implements Listener {
         Snowball projectile = (Snowball) event.getEntity();
         if (!projectile.hasMetadata("hilltop_fireball")) return;
 
+        // remove 返回发射时状态；受追踪投射物必须沿用发射瞬间的配置快照。
+        TrailState state = activeTrails.remove(projectile.getUniqueId());
         Location impact = projectile.getLocation().clone();
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        if (!isRunningArena(impact.getWorld())) {
+            removeProjectile(projectile);
+            return;
+        }
+
+        // state == null 仅用于兼容升级前或其他旧路径创建、但仍带 metadata 的投射物。
+        GameConfig cfg = state != null
+                ? state.cfg
+                : plugin.getConfigManager().getActiveConfig();
         triggerExplosion(projectile, impact, cfg);
     }
 
@@ -255,10 +415,14 @@ public class FireballListener implements Listener {
      * 在入口处读取 shooter/metadata 到局部变量，再移除 metadata，确保近炸路径也能正常获取投掷者信息。
      */
     private void triggerExplosion(Snowball projectile, Location impact, GameConfig cfg) {
-        // 只处理一次（防止重复触发）
+        // 只处理一次，并再次验证命中世界仍对应运行中的竞技场。
         if (!projectile.hasMetadata("hilltop_fireball")) return;
 
         World world = impact.getWorld();
+        if (!isRunningArena(world)) {
+            removeProjectile(projectile);
+            return;
+        }
 
         // 获取投掷者（优先 getShooter，metadata 作备用）
         UUID throwerUuid = null;
@@ -282,11 +446,11 @@ public class FireballListener implements Listener {
         world.playSound(impact, Sound.ENTITY_BLAZE_DEATH, 0.8f, 1.0f);
 
         // 中心爆炸粒子
-        world.spawnParticle(Particle.EXPLOSION_LARGE, impact, 1, 0, 0, 0, 0);
-        world.spawnParticle(Particle.EXPLOSION_NORMAL, impact, 5, 0.5, 0.5, 0.5, 0.2);
+        world.spawnParticle(Particle.EXPLOSION_EMITTER, impact, 1, 0, 0, 0, 0);
+        world.spawnParticle(Particle.EXPLOSION, impact, 5, 0.5, 0.5, 0.5, 0.2);
         world.spawnParticle(Particle.FLAME, impact, 30, 1.0, 0.5, 1.0, 0.05);
         world.spawnParticle(Particle.LAVA, impact, 15, 0.5, 0.2, 0.5, 0.02);
-        world.spawnParticle(Particle.SMOKE_LARGE, impact, 10, 0.8, 0.5, 0.8, 0.05);
+        world.spawnParticle(Particle.LARGE_SMOKE, impact, 10, 0.8, 0.5, 0.8, 0.05);
 
         // 环形火焰扩散
         for (int i = 0; i < 16; i++) {
@@ -353,7 +517,7 @@ public class FireballListener implements Listener {
                 if (t++ >= 10) { cancel(); return; }
                 world.spawnParticle(Particle.FLAME, impact.clone().add(0, 0.1, 0),
                         3, 1.0, 0.05, 1.0, 0.01);
-                world.spawnParticle(Particle.SMOKE_NORMAL, impact.clone().add(0, 0.2, 0),
+                world.spawnParticle(Particle.SMOKE, impact.clone().add(0, 0.2, 0),
                         2, 0.8, 0.1, 0.8, 0.01);
             }
         }.runTaskTimer(plugin, 0L, 2L);

@@ -189,4 +189,13 @@ public class LanguageManager {
     public String getFor(Player player, String key, Object... args) {
         return get(key, getPlayerLocale(player), args);
     }
+
+    /**
+     * 发送消息给玩家（使用玩家语言）
+     */
+    public void send(Player player, String key, Object... args) {
+        if (player != null) {
+            player.sendMessage(getFor(player, key, args));
+        }
+    }
 }

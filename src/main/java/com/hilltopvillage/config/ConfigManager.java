@@ -6,6 +6,8 @@ import org.bukkit.Material;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
 import org.bukkit.configuration.file.YamlConfiguration;
+import org.bukkit.entity.EntityType;
+import org.bukkit.entity.Mob;
 import org.bukkit.potion.PotionEffectType;
 
 import java.io.File;
@@ -73,6 +75,11 @@ public class ConfigManager {
         settingsYaml.set("max-players", activeConfig.getMaxPlayers());
         settingsYaml.set("victory-waves", activeConfig.getVictoryWaves());
         settingsYaml.set("wave-interval-seconds", activeConfig.getWaveIntervalSeconds());
+        settingsYaml.set("defeat-countdown-seconds", activeConfig.getDefeatCountdownSeconds());
+        settingsYaml.set("villager-health", activeConfig.getVillagerHealth());
+        settingsYaml.set("rejoin-timeout-seconds", activeConfig.getRejoinTimeoutSeconds());
+        settingsYaml.set("map-restore.enabled", activeConfig.isMapRestoreEnabled());
+        settingsYaml.set("scoreboard.enabled", activeConfig.isScoreboardEnabled());
 
         settingsYaml.set("hammer.material", activeConfig.getHammerMaterial().name());
         settingsYaml.set("hammer.itemsadder-id", activeConfig.getHammerItemsAdderId());
@@ -98,24 +105,34 @@ public class ConfigManager {
         settingsYaml.set("hammer.damage-low-multiplier", activeConfig.getHammerDamageLowMultiplier());
         settingsYaml.set("hammer.damage-medium-multiplier", activeConfig.getHammerDamageMediumMultiplier());
         settingsYaml.set("hammer.damage-high-multiplier", activeConfig.getHammerDamageHighMultiplier());
+        settingsYaml.set("hammer.item-name", activeConfig.getHammerItemName());
 
-        List<String> nodeTypes = new ArrayList<>();
-        for (Material m : activeConfig.getNodeBlockTypes()) {
-            nodeTypes.add(m.name());
-        }
-        settingsYaml.set("nodes.block-types", nodeTypes);
         settingsYaml.set("nodes.base-health", activeConfig.getNodeBaseHealth());
-        settingsYaml.set("nodes.repair-item", activeConfig.getNodeRepairItem().name());
-        settingsYaml.set("nodes.repair-amount", activeConfig.getNodeRepairAmount());
         settingsYaml.set("nodes.buff-radius", activeConfig.getNodeBuffRadius());
         settingsYaml.set("nodes.self-destruct-multiplier", activeConfig.getNodeSelfDestructMultiplier());
-        settingsYaml.set("nodes.destroyed-message", activeConfig.getNodeDestroyedMessage());
-        settingsYaml.set("nodes.repaired-message", activeConfig.getNodeRepairedMessage());
+        settingsYaml.set("nodes.search-radius", activeConfig.getNodeSearchRadius());
+        settingsYaml.set("nodes.repair-cost-name", activeConfig.getRepairCostName());
+        settingsYaml.set("nodes.repair-cost-item", activeConfig.getRepairCostItem().name());
+        settingsYaml.set("nodes.repair-cost-amount", activeConfig.getRepairCostAmount());
+        settingsYaml.set("nodes.repair-amount-per-cost", activeConfig.getRepairAmountPerCost());
+
+        // 节点增益效果：格式 "效果名:等级"（等级为 amplifier，0 = I 级）
+        List<String> buffEffectList = new ArrayList<>();
+        for (Map.Entry<PotionEffectType, Integer> buff : activeConfig.getNodeBuffEffects().entrySet()) {
+            // PotionEffectType -> NamespacedKey -> String（如 "resistance"），再转大写写入配置
+            String effectName = buff.getKey().getKey().getKey();
+            buffEffectList.add(effectName.toUpperCase() + ":" + buff.getValue());
+        }
+        settingsYaml.set("nodes.buff-effects", buffEffectList);
+        settingsYaml.set("nodes.buff-refresh-ticks", activeConfig.getNodeBuffRefreshTicks());
+        settingsYaml.set("nodes.buff-stack-cap", activeConfig.getNodeBuffStackCap());
+        settingsYaml.set("nodes.buff-duration-ticks", activeConfig.getNodeBuffDurationTicks());
 
         settingsYaml.set("spawning.spawn-radius-min", activeConfig.getSpawnRadiusMin());
         settingsYaml.set("spawning.spawn-radius-max", activeConfig.getSpawnRadiusMax());
         settingsYaml.set("spawning.global-mob-cap", activeConfig.getGlobalMobCap());
         settingsYaml.set("spawning.mob-cap-per-player", activeConfig.getMobCapPerPlayer());
+        settingsYaml.set("spawning.spawn-y-offset", activeConfig.getSpawnYOffset());
 
         // ---- 烈焰蛋配置 ----
         settingsYaml.set("fireball.material", activeConfig.getFireballMaterial().name());
@@ -128,7 +145,11 @@ public class ConfigManager {
         settingsYaml.set("fireball.proximity-fuse", activeConfig.getFireballProximityFuse());
         settingsYaml.set("fireball.item-name", activeConfig.getFireballItemName());
 
-        settingsYaml.set("monsters", null);
+        // ---- 村民商店货币掉落 ----
+        settingsYaml.set("shop.currency-drop-chance", activeConfig.getCurrencyDropChance());
+        settingsYaml.set("shop.currency-drop-amount", activeConfig.getCurrencyDropAmount());
+
+        // 不整段清空 sections，以保留管理员手写的键与注释；代价是已删除的怪物/波次可能残留旧键
         for (Map.Entry<String, GameConfig.MonsterConfig> entry : activeConfig.getMonsters().entrySet()) {
             String key = entry.getKey();
             GameConfig.MonsterConfig mc = entry.getValue();
@@ -144,7 +165,6 @@ public class ConfigManager {
             settingsYaml.set(path + "airdrop-mob-count", mc.getAirdropMobCount());
         }
 
-        settingsYaml.set("waves", null);
         settingsYaml.set("waves.default.total-mobs", activeConfig.getDefaultWave().getTotalMobs());
         for (Map.Entry<String, GameConfig.MobComposition> comp : activeConfig.getDefaultWave().getCompositions().entrySet()) {
             settingsYaml.set("waves.default.compositions." + comp.getKey() + ".count", comp.getValue().getCount());
@@ -173,13 +193,13 @@ public class ConfigManager {
      * 包含所有怪物类型的基础属性、模型外观、武器装备、盔甲等完整信息。
      */
     private void saveMonstersConfig() {
-        monstersConfigYaml.set("explode-beetle", null);
-        monstersConfigYaml.set("hook-claw-hunter", null);
-        monstersConfigYaml.set("flying-dropper", null);
+        // 不整段清空，以保留管理员手写的键与注释；代价是已删除的怪物可能残留旧键
         for (Map.Entry<String, GameConfig.MonsterConfig> entry : activeConfig.getMonsters().entrySet()) {
             String key = entry.getKey();
             GameConfig.MonsterConfig mc = entry.getValue();
             String path = key + ".";
+            monstersConfigYaml.set(path + "entity-type",
+                    mc.getEntityType() != null ? mc.getEntityType().name() : "");
             monstersConfigYaml.set(path + "display-name", mc.getDisplayName());
             if (mc.getDisplayEgg() != null) monstersConfigYaml.set(path + "display-egg", mc.getDisplayEgg().name());
             monstersConfigYaml.set(path + "health", mc.getHealth());
@@ -219,9 +239,21 @@ public class ConfigManager {
         if (settingsYaml.contains("max-players")) activeConfig.setMaxPlayers(settingsYaml.getInt("max-players"));
         if (settingsYaml.contains("victory-waves")) activeConfig.setVictoryWaves(settingsYaml.getInt("victory-waves"));
         if (settingsYaml.contains("wave-interval-seconds")) activeConfig.setWaveIntervalSeconds(settingsYaml.getInt("wave-interval-seconds"));
+        if (settingsYaml.contains("defeat-countdown-seconds")) activeConfig.setDefeatCountdownSeconds(settingsYaml.getInt("defeat-countdown-seconds"));
+        if (settingsYaml.contains("villager-health")) activeConfig.setVillagerHealth(settingsYaml.getDouble("villager-health"));
+        if (settingsYaml.contains("rejoin-timeout-seconds")) activeConfig.setRejoinTimeoutSeconds(settingsYaml.getInt("rejoin-timeout-seconds"));
+        if (settingsYaml.contains("map-restore.enabled")) activeConfig.setMapRestoreEnabled(settingsYaml.getBoolean("map-restore.enabled"));
+        if (settingsYaml.contains("scoreboard.enabled")) activeConfig.setScoreboardEnabled(settingsYaml.getBoolean("scoreboard.enabled"));
 
         String hammerMat = settingsYaml.getString("hammer.material");
-        if (hammerMat != null) activeConfig.setHammerMaterial(Material.getMaterial(hammerMat));
+        if (hammerMat != null) {
+            Material hammerMatResult = Material.getMaterial(hammerMat);
+            if (hammerMatResult != null) {
+                activeConfig.setHammerMaterial(hammerMatResult);
+            } else {
+                plugin.getLogger().warning("Unknown material: " + hammerMat + ", keeping default");
+            }
+        }
         if (settingsYaml.contains("hammer.itemsadder-id")) activeConfig.setHammerItemsAdderId(settingsYaml.getString("hammer.itemsadder-id"));
         if (settingsYaml.contains("hammer.custom-model-data")) activeConfig.setHammerCustomModelData(settingsYaml.getInt("hammer.custom-model-data"));
         if (settingsYaml.contains("hammer.use-itemsadder")) activeConfig.setHammerUseItemsAdder(settingsYaml.getBoolean("hammer.use-itemsadder"));
@@ -235,6 +267,7 @@ public class ConfigManager {
         if (settingsYaml.contains("hammer.damage-low-multiplier")) activeConfig.setHammerDamageLowMultiplier(settingsYaml.getDouble("hammer.damage-low-multiplier"));
         if (settingsYaml.contains("hammer.damage-medium-multiplier")) activeConfig.setHammerDamageMediumMultiplier(settingsYaml.getDouble("hammer.damage-medium-multiplier"));
         if (settingsYaml.contains("hammer.damage-high-multiplier")) activeConfig.setHammerDamageHighMultiplier(settingsYaml.getDouble("hammer.damage-high-multiplier"));
+        if (settingsYaml.contains("hammer.item-name")) activeConfig.setHammerItemName(settingsYaml.getString("hammer.item-name"));
         if (settingsYaml.contains("hammer.tier.low.charge")) activeConfig.setHammerLowCharge(settingsYaml.getDouble("hammer.tier.low.charge"));
         if (settingsYaml.contains("hammer.tier.low.damage")) activeConfig.setHammerLowDamage(settingsYaml.getDouble("hammer.tier.low.damage"));
         if (settingsYaml.contains("hammer.tier.low.radius")) activeConfig.setHammerLowRadius(settingsYaml.getDouble("hammer.tier.low.radius"));
@@ -245,31 +278,104 @@ public class ConfigManager {
         if (settingsYaml.contains("hammer.tier.high.damage")) activeConfig.setHammerHighDamage(settingsYaml.getDouble("hammer.tier.high.damage"));
         if (settingsYaml.contains("hammer.tier.high.radius")) activeConfig.setHammerHighRadius(settingsYaml.getDouble("hammer.tier.high.radius"));
 
-        List<String> nodeTypes = settingsYaml.getStringList("nodes.block-types");
-        if (!nodeTypes.isEmpty()) {
-            List<Material> materials = new ArrayList<>();
-            for (String name : nodeTypes) {
-                Material m = Material.getMaterial(name);
-                if (m != null) materials.add(m);
-            }
-            activeConfig.setNodeBlockTypes(materials);
-        }
+        // 节点方块固定为重生锚（见 NodeSystem#loadConfig），不再从 YAML 读取
         if (settingsYaml.contains("nodes.base-health")) activeConfig.setNodeBaseHealth(settingsYaml.getDouble("nodes.base-health"));
-        String repairItem = settingsYaml.getString("nodes.repair-item");
-        if (repairItem != null) activeConfig.setNodeRepairItem(Material.getMaterial(repairItem));
-        if (settingsYaml.contains("nodes.repair-amount")) activeConfig.setNodeRepairAmount(settingsYaml.getDouble("nodes.repair-amount"));
         if (settingsYaml.contains("nodes.buff-radius")) activeConfig.setNodeBuffRadius(settingsYaml.getDouble("nodes.buff-radius"));
         if (settingsYaml.contains("nodes.self-destruct-multiplier")) activeConfig.setNodeSelfDestructMultiplier(settingsYaml.getDouble("nodes.self-destruct-multiplier"));
-        if (settingsYaml.contains("nodes.destroyed-message")) activeConfig.setNodeDestroyedMessage(settingsYaml.getString("nodes.destroyed-message"));
-        if (settingsYaml.contains("nodes.repaired-message")) activeConfig.setNodeRepairedMessage(settingsYaml.getString("nodes.repaired-message"));
+        if (settingsYaml.contains("nodes.search-radius")) activeConfig.setNodeSearchRadius(settingsYaml.getInt("nodes.search-radius"));
+        if (settingsYaml.contains("nodes.repair-cost-name")) activeConfig.setRepairCostName(settingsYaml.getString("nodes.repair-cost-name"));
+        String repairCostItemStr = settingsYaml.getString("nodes.repair-cost-item");
+        if (repairCostItemStr != null) {
+            Material rcMat = Material.getMaterial(repairCostItemStr);
+            if (rcMat != null) { activeConfig.setRepairCostItem(rcMat); } else { plugin.getLogger().warning("Unknown material: " + repairCostItemStr + ", keeping default"); }
+        }
+        if (settingsYaml.contains("nodes.repair-cost-amount")) activeConfig.setRepairCostAmount(settingsYaml.getInt("nodes.repair-cost-amount"));
+        if (settingsYaml.contains("nodes.repair-amount-per-cost")) activeConfig.setRepairAmountPerCost(settingsYaml.getDouble("nodes.repair-amount-per-cost"));
+
+        // 旧键迁移：早期版本使用 nodes.repair-item / nodes.repair-amount，现统一为
+        // nodes.repair-cost-item / nodes.repair-amount-per-cost。仅在未部署新键时迁移。
+        // 旧键值读取完毕后会立即从 YAML 中删除并落盘，使第二次启动起不再残留旧键、不再重复打印警告。
+        boolean hasLegacyRepairItem = settingsYaml.contains("nodes.repair-item");
+        boolean hasLegacyRepairAmount = settingsYaml.contains("nodes.repair-amount");
+        if (hasLegacyRepairItem || hasLegacyRepairAmount) {
+            // 1) 修复物品：仅在未部署新键时迁移
+            if (hasLegacyRepairItem && !settingsYaml.contains("nodes.repair-cost-item")) {
+                String legacyRepairItem = settingsYaml.getString("nodes.repair-item");
+                Material legacyRepairMat = legacyRepairItem == null ? null : Material.getMaterial(legacyRepairItem);
+                if (legacyRepairMat != null) {
+                    activeConfig.setRepairCostItem(legacyRepairMat);
+                }
+                plugin.getLogger().warning("检测到旧配置键 nodes.repair-item，已自动迁移到 nodes.repair-cost-item");
+                // 新键原本缺失，补写入迁移后的值，避免删除旧键后配置丢失
+                settingsYaml.set("nodes.repair-cost-item", activeConfig.getRepairCostItem().name());
+            } else if (hasLegacyRepairItem) {
+                plugin.getLogger().warning("检测到已废弃的配置键 nodes.repair-item，当前使用 nodes.repair-cost-item，该旧键将被忽略");
+            }
+
+            // 2) 单次修复量：同样仅在未部署新键时迁移
+            if (hasLegacyRepairAmount && !settingsYaml.contains("nodes.repair-amount-per-cost")) {
+                activeConfig.setRepairAmountPerCost(settingsYaml.getDouble("nodes.repair-amount"));
+                settingsYaml.set("nodes.repair-amount-per-cost", activeConfig.getRepairAmountPerCost());
+            }
+
+            // 3) 旧键值已读取完毕（或确认被忽略），从 YAML 中删除旧键并写回磁盘，
+            //    使第二次启动起不再残留旧键、不再重复打印警告。
+            //    已存在的新键 nodes.repair-cost-item / nodes.repair-amount-per-cost 不受影响。
+            settingsYaml.set("nodes.repair-item", null);
+            settingsYaml.set("nodes.repair-amount", null);
+            try {
+                settingsYaml.save(settingsFile);
+            } catch (IOException e) {
+                plugin.getLogger().severe("Failed to remove legacy keys from game-settings.yml: " + e.getMessage());
+            }
+        }
+
+        // 节点增益效果：字符串列表，格式 "效果名:等级"（等级为 amplifier，0 = I 级）
+        List<String> buffEffectList = settingsYaml.getStringList("nodes.buff-effects");
+        if (!buffEffectList.isEmpty()) {
+            Map<PotionEffectType, Integer> parsedBuffs = new LinkedHashMap<>();
+            for (String raw : buffEffectList) {
+                if (raw == null || raw.isBlank()) continue;
+                String[] parts = raw.split(":", 2);
+                if (parts.length != 2) {
+                    plugin.getLogger().warning("Invalid nodes.buff-effects entry (expected \"EFFECT:AMPLIFIER\"): " + raw);
+                    continue;
+                }
+                PotionEffectType effectType = PotionEffectType.getByName(parts[0].trim().toUpperCase());
+                if (effectType == null) {
+                    plugin.getLogger().warning("Unknown potion effect: " + parts[0].trim() + ", skipping");
+                    continue;
+                }
+                try {
+                    parsedBuffs.put(effectType, Integer.parseInt(parts[1].trim()));
+                } catch (NumberFormatException e) {
+                    plugin.getLogger().warning("Invalid amplifier in nodes.buff-effects entry: " + raw);
+                }
+            }
+            if (!parsedBuffs.isEmpty()) {
+                activeConfig.getNodeBuffEffects().clear();
+                activeConfig.getNodeBuffEffects().putAll(parsedBuffs);
+            }
+        }
+        if (settingsYaml.contains("nodes.buff-refresh-ticks")) activeConfig.setNodeBuffRefreshTicks(settingsYaml.getInt("nodes.buff-refresh-ticks"));
+        if (settingsYaml.contains("nodes.buff-stack-cap")) activeConfig.setNodeBuffStackCap(settingsYaml.getInt("nodes.buff-stack-cap"));
+        if (settingsYaml.contains("nodes.buff-duration-ticks")) activeConfig.setNodeBuffDurationTicks(settingsYaml.getInt("nodes.buff-duration-ticks"));
 
         if (settingsYaml.contains("spawning.spawn-radius-min")) activeConfig.setSpawnRadiusMin(settingsYaml.getInt("spawning.spawn-radius-min"));
         if (settingsYaml.contains("spawning.spawn-radius-max")) activeConfig.setSpawnRadiusMax(settingsYaml.getInt("spawning.spawn-radius-max"));
         if (settingsYaml.contains("spawning.global-mob-cap")) activeConfig.setGlobalMobCap(settingsYaml.getInt("spawning.global-mob-cap"));
         if (settingsYaml.contains("spawning.mob-cap-per-player")) activeConfig.setMobCapPerPlayer(settingsYaml.getInt("spawning.mob-cap-per-player"));
+        if (settingsYaml.contains("spawning.spawn-y-offset")) activeConfig.setSpawnYOffset(settingsYaml.getInt("spawning.spawn-y-offset"));
 
         String fireballMat = settingsYaml.getString("fireball.material");
-        if (fireballMat != null) activeConfig.setFireballMaterial(Material.getMaterial(fireballMat));
+        if (fireballMat != null) {
+            Material fireballMatResult = Material.getMaterial(fireballMat);
+            if (fireballMatResult != null) {
+                activeConfig.setFireballMaterial(fireballMatResult);
+            } else {
+                plugin.getLogger().warning("Unknown material: " + fireballMat + ", keeping default");
+            }
+        }
         if (settingsYaml.contains("fireball.speed")) activeConfig.setFireballSpeed(settingsYaml.getDouble("fireball.speed"));
         if (settingsYaml.contains("fireball.damage")) activeConfig.setFireballDamage(settingsYaml.getDouble("fireball.damage"));
         if (settingsYaml.contains("fireball.explosion-radius")) activeConfig.setFireballExplosionRadius(settingsYaml.getDouble("fireball.explosion-radius"));
@@ -279,13 +385,24 @@ public class ConfigManager {
         if (settingsYaml.contains("fireball.proximity-fuse")) activeConfig.setFireballProximityFuse(settingsYaml.getDouble("fireball.proximity-fuse"));
         if (settingsYaml.contains("fireball.item-name")) activeConfig.setFireballItemName(settingsYaml.getString("fireball.item-name"));
 
+        // ---- 村民商店货币掉落 ----
+        if (settingsYaml.contains("shop.currency-drop-chance")) activeConfig.setCurrencyDropChance(settingsYaml.getDouble("shop.currency-drop-chance"));
+        if (settingsYaml.contains("shop.currency-drop-amount")) activeConfig.setCurrencyDropAmount(settingsYaml.getInt("shop.currency-drop-amount"));
+
         ConfigurationSection monsterSection = settingsYaml.getConfigurationSection("monsters");
         if (monsterSection != null) {
             for (String key : monsterSection.getKeys(false)) {
                 GameConfig.MonsterConfig mc = activeConfig.getMonsters().get(key);
                 if (mc == null) continue;
                 String name = settingsYaml.getString("monsters." + key + ".display-egg");
-                if (name != null) mc.setDisplayEgg(Material.getMaterial(name));
+                if (name != null) {
+                    Material eggMat = Material.getMaterial(name);
+                    if (eggMat != null) {
+                        mc.setDisplayEgg(eggMat);
+                    } else {
+                        plugin.getLogger().warning("Unknown material: " + name + ", keeping default");
+                    }
+                }
                 if (settingsYaml.contains("monsters." + key + ".health")) mc.setHealth(settingsYaml.getDouble("monsters." + key + ".health"));
                 if (settingsYaml.contains("monsters." + key + ".speed")) mc.setSpeed(settingsYaml.getDouble("monsters." + key + ".speed"));
                 if (settingsYaml.contains("monsters." + key + ".hook-velocity")) mc.setHookVelocity(settingsYaml.getDouble("monsters." + key + ".hook-velocity"));
@@ -354,6 +471,24 @@ public class ConfigManager {
             GameConfig.MonsterConfig mc = activeConfig.getMonsters().get(key);
             if (mc == null) continue;
 
+            String entityTypeName = monstersConfigYaml.getString(key + ".entity-type");
+            if (entityTypeName != null && !entityTypeName.isEmpty()) {
+                try {
+                    EntityType parsedType = EntityType.valueOf(entityTypeName.trim().toUpperCase());
+                    // 合法名称不代表可生成：PLAYER / ITEM / ARROW 等类型无法 spawnEntity，会中断刷怪任务。
+                    // 此处只接受实体类是 Mob 子类的类型，不满足则保留默认值。
+                    Class<?> entityClass = parsedType.getEntityClass();
+                    if (entityClass == null || !Mob.class.isAssignableFrom(entityClass)) {
+                        plugin.getLogger().warning("Entity type " + parsedType.name() + " for monster " + key
+                                + " is not a spawnable mob, keeping default (" + mc.getEntityType() + ")");
+                    } else {
+                        mc.setEntityType(parsedType);
+                    }
+                } catch (IllegalArgumentException e) {
+                    plugin.getLogger().warning("Unknown entity type: " + entityTypeName
+                            + " for monster " + key + ", keeping default (" + mc.getEntityType() + ")");
+                }
+            }
             if (monstersConfigYaml.contains(key + ".base-damage")) {
                 mc.setBaseDamage(monstersConfigYaml.getDouble(key + ".base-damage"));
             }
@@ -365,27 +500,39 @@ public class ConfigManager {
             }
             String mainHand = monstersConfigYaml.getString(key + ".main-hand");
             if (mainHand != null && !mainHand.isEmpty()) {
-                mc.setMainHandItem(Material.getMaterial(mainHand));
+                Material mainHandMat = Material.getMaterial(mainHand);
+                if (mainHandMat != null) { mc.setMainHandItem(mainHandMat); }
+                else { plugin.getLogger().warning("Unknown material: " + mainHand + ", keeping default"); }
             }
             String offHand = monstersConfigYaml.getString(key + ".off-hand");
             if (offHand != null && !offHand.isEmpty()) {
-                mc.setOffHandItem(Material.getMaterial(offHand));
+                Material offHandMat = Material.getMaterial(offHand);
+                if (offHandMat != null) { mc.setOffHandItem(offHandMat); }
+                else { plugin.getLogger().warning("Unknown material: " + offHand + ", keeping default"); }
             }
             String helmet = monstersConfigYaml.getString(key + ".helmet");
             if (helmet != null && !helmet.isEmpty()) {
-                mc.setHelmet(Material.getMaterial(helmet));
+                Material helmetMat = Material.getMaterial(helmet);
+                if (helmetMat != null) { mc.setHelmet(helmetMat); }
+                else { plugin.getLogger().warning("Unknown material: " + helmet + ", keeping default"); }
             }
             String chestplate = monstersConfigYaml.getString(key + ".chestplate");
             if (chestplate != null && !chestplate.isEmpty()) {
-                mc.setChestplate(Material.getMaterial(chestplate));
+                Material chestplateMat = Material.getMaterial(chestplate);
+                if (chestplateMat != null) { mc.setChestplate(chestplateMat); }
+                else { plugin.getLogger().warning("Unknown material: " + chestplate + ", keeping default"); }
             }
             String leggings = monstersConfigYaml.getString(key + ".leggings");
             if (leggings != null && !leggings.isEmpty()) {
-                mc.setLeggings(Material.getMaterial(leggings));
+                Material leggingsMat = Material.getMaterial(leggings);
+                if (leggingsMat != null) { mc.setLeggings(leggingsMat); }
+                else { plugin.getLogger().warning("Unknown material: " + leggings + ", keeping default"); }
             }
             String boots = monstersConfigYaml.getString(key + ".boots");
             if (boots != null && !boots.isEmpty()) {
-                mc.setBoots(Material.getMaterial(boots));
+                Material bootsMat = Material.getMaterial(boots);
+                if (bootsMat != null) { mc.setBoots(bootsMat); }
+                else { plugin.getLogger().warning("Unknown material: " + boots + ", keeping default"); }
             }
         }
     }

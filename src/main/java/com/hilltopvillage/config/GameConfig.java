@@ -7,6 +7,7 @@ import java.util.List;
 import java.util.Map;
 
 import org.bukkit.Material;
+import org.bukkit.entity.EntityType;
 import org.bukkit.potion.PotionEffectType;
 
 public class GameConfig {
@@ -17,6 +18,16 @@ public class GameConfig {
     private int maxPlayers = 6;
     private int victoryWaves = 20;
     private int waveIntervalSeconds = 30;
+    /** 失败结算倒计时（秒）：显示统计后传送回大厅的等待时间 */
+    private int defeatCountdownSeconds = 20;
+    /** 村民最大生命值 */
+    private double villagerHealth = 20.0;
+    /** 掉线重连窗口（秒），0 = 关闭重连（掉线即离开） */
+    private int rejoinTimeoutSeconds = 60;
+    /** 是否启用地图恢复（对局结束回滚被破坏/放置的方块） */
+    private boolean mapRestoreEnabled = true;
+    /** 是否启用记分板侧边栏 */
+    private boolean scoreboardEnabled = true;
 
     private Material hammerMaterial = Material.NETHERITE_AXE;
     private String hammerItemsAdderId = "";
@@ -42,18 +53,29 @@ public class GameConfig {
     private double hammerLowCharge = 1.0;
     private double hammerMediumCharge = 5.0;
     private double hammerHighCharge = 10.0;
+    // 物品显示名（留空则回退 messages.yml 的 item.hammer-name）
+    private String hammerItemName = "";
 
     private List<Material> nodeBlockTypes = new ArrayList<>(Arrays.asList(
             Material.BEACON, Material.ENCHANTING_TABLE, Material.ENDER_CHEST, Material.RESPAWN_ANCHOR
     ));
     private double nodeBaseHealth = 100.0;
-    private Material nodeRepairItem = Material.SLIME_BALL;
-    private double nodeRepairAmount = 50.0;
     private double nodeBuffRadius = 20.0;
     private double nodeSelfDestructMultiplier = 3.0;
-    private String nodeDestroyedMessage = "&cAn energy node has been destroyed!";
-    private String nodeRepairedMessage = "&aAn energy node has been repaired!";
+    private int nodeSearchRadius = 128;
+    // 修复物品显示名（留空则回退 messages.yml 的 item.repair-cost-name）
+    private String repairCostName = "";
+    private Material repairCostItem = Material.GHAST_TEAR;
+    private int repairCostAmount = 1;
+    /** 每消耗 1 个修复物品恢复的节点生命值 */
+    private double repairAmountPerCost = 50.0;
     private Map<PotionEffectType, Integer> nodeBuffEffects = new LinkedHashMap<>();
+    /** 节点增益刷新周期（tick） */
+    private int nodeBuffRefreshTicks = 60;
+    /** 多个节点叠加时的最大等级（amplifier 上限） */
+    private int nodeBuffStackCap = 3;
+    /** 单次施加的增益持续时间（tick） */
+    private int nodeBuffDurationTicks = 100;
 
     private Map<String, MonsterConfig> monsters = new LinkedHashMap<>();
     private Map<Integer, WaveConfig> waves = new LinkedHashMap<>();
@@ -61,8 +83,16 @@ public class GameConfig {
 
     private int spawnRadiusMin = 20;
     private int spawnRadiusMax = 40;
+    private double spawnRadiusSpread = 3.0;  // 生成点扩散半径（默认3.0格）
     private int globalMobCap = 80;
     private int mobCapPerPlayer = 15;
+    private int spawnYOffset = 0;
+
+    // ---- 村民商店货币掉落 (Shop) ----
+    // 击杀波次怪物的货币掉落概率（0~1，0=不掉）
+    private double currencyDropChance = 0.4;
+    // 每次掉落的货币数量（固定值，不做随机）
+    private int currencyDropAmount = 1;
 
     // ---- 烈焰蛋 (Fireball) 配置 ----
     private Material fireballMaterial = Material.FIRE_CHARGE;
@@ -73,18 +103,29 @@ public class GameConfig {
     private int fireballMaxTravelTicks = 100;
     private double fireballKnockback = 5.0;
     private double fireballProximityFuse = 1.5;  // 近炸检测半径（格），0=禁用
-    private String fireballItemName = "&c&l烈焰蛋";  // 物品显示名称（含颜色代码）
+    // 物品显示名（留空则回退 messages.yml 的 item.fireball-name）
+    private String fireballItemName = "";
 
     public GameConfig() {
-        nodeBuffEffects.put(PotionEffectType.DAMAGE_RESISTANCE, 0);
+        nodeBuffEffects.put(PotionEffectType.RESISTANCE, 0);
         nodeBuffEffects.put(PotionEffectType.REGENERATION, 0);
 
-        monsters.put("explode-beetle", new MonsterConfig(Material.CAVE_SPIDER_SPAWN_EGG, 40, 0.3, 1.0,
-                "自爆甲虫", 3.0, 0, 0, 0));
-        monsters.put("hook-claw-hunter", new MonsterConfig(Material.SKELETON_SPAWN_EGG, 60, 0.25, 1.8,
-                "钩爪猎手", 0, 60, 40, 8));
-        monsters.put("flying-dropper", new MonsterConfig(Material.PHANTOM_SPAWN_EGG, 80, 0.3, 0,
-                "飞行抛投者", 0, 160, 3, 10));
+        // displayName 留空：由 WaveManager 回退到 messages.yml 的 mob.* key
+        // entityType 默认值与历史硬编码保持一致，可在 monsters-config.yml 中覆盖
+        MonsterConfig beetle = new MonsterConfig(Material.CAVE_SPIDER_SPAWN_EGG, 40, 0.3, 1.0,
+                "", 3.0, 0, 0, 0);
+        beetle.setEntityType(EntityType.CAVE_SPIDER);
+        monsters.put("explode-beetle", beetle);
+
+        MonsterConfig hunter = new MonsterConfig(Material.SKELETON_SPAWN_EGG, 60, 0.25, 1.8,
+                "", 0, 60, 40, 8);
+        hunter.setEntityType(EntityType.SKELETON);
+        monsters.put("hook-claw-hunter", hunter);
+
+        MonsterConfig dropper = new MonsterConfig(Material.PHANTOM_SPAWN_EGG, 80, 0.3, 0,
+                "", 0, 160, 3, 10);
+        dropper.setEntityType(EntityType.PHANTOM);
+        monsters.put("flying-dropper", dropper);
 
         defaultWave = new WaveConfig(10, new LinkedHashMap<>());
         defaultWave.getCompositions().put("explode-beetle", new MobComposition(4, 3));
@@ -117,6 +158,7 @@ public class GameConfig {
         // 基础标识
         private Material displayEgg;          // GUI 中显示的刷怪蛋图标
         private String displayName;           // 怪物头顶显示名称（彩色）
+        private EntityType entityType;        // 实际生成的实体类型（可在 monsters-config.yml 覆盖）
 
         // 战斗属性
         private double health;                // 最大生命值
@@ -177,6 +219,7 @@ public class GameConfig {
             this.airdropMobCount = airdropMobCount;
             this.airdropMobType = "ZOMBIE";
             // 新字段默认值
+            this.entityType = EntityType.ZOMBIE;
             this.baseDamage = 5.0;
             this.itemsAdderId = "";
             this.customModelData = 0;
@@ -193,6 +236,8 @@ public class GameConfig {
 
         public Material getDisplayEgg() { return displayEgg; }
         public void setDisplayEgg(Material m) { this.displayEgg = m; }
+        public EntityType getEntityType() { return entityType; }
+        public void setEntityType(EntityType v) { this.entityType = v; }
         public double getHealth() { return health; }
         public void setHealth(double v) { this.health = v; }
         public double getSpeed() { return speed; }
@@ -231,6 +276,30 @@ public class GameConfig {
         public void setAirdropMobType(String v) { this.airdropMobType = v; }
         public int getAirdropIntervalTicks() { return airdropIntervalTicks; }
         public void setAirdropIntervalTicks(int v) { this.airdropIntervalTicks = v; }
+
+        /**
+         * 返回当前怪物配置的完整深拷贝，与原实例字段完全独立。
+         * Material / String 均为不可变类型，直接赋值即满足深拷贝语义。
+         */
+        public MonsterConfig copy() {
+            MonsterConfig c = new MonsterConfig(
+                    this.displayEgg, this.health, this.speed, this.hookVelocity,
+                    this.displayName, this.explodeDamageMultiplier,
+                    this.cooldownTicks, this.stunDurationTicks, this.airdropMobCount);
+            c.entityType = this.entityType;
+            c.baseDamage = this.baseDamage;
+            c.itemsAdderId = this.itemsAdderId;
+            c.customModelData = this.customModelData;
+            c.mainHandItem = this.mainHandItem;
+            c.offHandItem = this.offHandItem;
+            c.helmet = this.helmet;
+            c.chestplate = this.chestplate;
+            c.leggings = this.leggings;
+            c.boots = this.boots;
+            c.airdropMobType = this.airdropMobType;
+            c.airdropIntervalTicks = this.airdropIntervalTicks;
+            return c;
+        }
     }
 
     public static class WaveConfig {
@@ -248,6 +317,18 @@ public class GameConfig {
         public int getTotalWeight() {
             return compositions.values().stream().mapToInt(MobComposition::getWeight).sum();
         }
+
+        /**
+         * 返回当前波次配置的完整深拷贝。
+         * compositions map 内每个 MobComposition 均新建独立实例。
+         */
+        public WaveConfig copy() {
+            Map<String, MobComposition> compositionsCopy = new LinkedHashMap<>();
+            for (Map.Entry<String, MobComposition> entry : this.compositions.entrySet()) {
+                compositionsCopy.put(entry.getKey(), entry.getValue().copy());
+            }
+            return new WaveConfig(this.totalMobs, compositionsCopy);
+        }
     }
 
     public static class MobComposition {
@@ -263,6 +344,11 @@ public class GameConfig {
         public void setCount(int v) { this.count = v; }
         public int getWeight() { return weight; }
         public void setWeight(int v) { this.weight = v; }
+
+        /** 返回当前实例的深拷贝。 */
+        public MobComposition copy() {
+            return new MobComposition(this.count, this.weight);
+        }
     }
 
     public GameConfig snapshot() {
@@ -271,6 +357,11 @@ public class GameConfig {
         snap.coreX = this.coreX; snap.coreY = this.coreY; snap.coreZ = this.coreZ;
         snap.minPlayers = this.minPlayers; snap.maxPlayers = this.maxPlayers;
         snap.victoryWaves = this.victoryWaves; snap.waveIntervalSeconds = this.waveIntervalSeconds;
+        snap.defeatCountdownSeconds = this.defeatCountdownSeconds;
+        snap.villagerHealth = this.villagerHealth;
+        snap.rejoinTimeoutSeconds = this.rejoinTimeoutSeconds;
+        snap.mapRestoreEnabled = this.mapRestoreEnabled;
+        snap.scoreboardEnabled = this.scoreboardEnabled;
         snap.hammerMaterial = this.hammerMaterial; snap.hammerItemsAdderId = this.hammerItemsAdderId;
         snap.hammerCustomModelData = this.hammerCustomModelData; snap.hammerUseItemsAdder = this.hammerUseItemsAdder;
         snap.hammerBaseDamage = this.hammerBaseDamage;
@@ -285,24 +376,41 @@ public class GameConfig {
         snap.hammerHighRadius = this.hammerHighRadius;
         snap.hammerLowCharge = this.hammerLowCharge; snap.hammerMediumCharge = this.hammerMediumCharge;
         snap.hammerHighCharge = this.hammerHighCharge;
+        snap.hammerItemName = this.hammerItemName;
         snap.nodeBlockTypes = new ArrayList<>(this.nodeBlockTypes);
-        snap.nodeBaseHealth = this.nodeBaseHealth; snap.nodeRepairItem = this.nodeRepairItem;
-        snap.nodeRepairAmount = this.nodeRepairAmount; snap.nodeBuffRadius = this.nodeBuffRadius;
+        snap.nodeBaseHealth = this.nodeBaseHealth; snap.nodeBuffRadius = this.nodeBuffRadius;
         snap.nodeSelfDestructMultiplier = this.nodeSelfDestructMultiplier;
-        snap.nodeDestroyedMessage = this.nodeDestroyedMessage;
-        snap.nodeRepairedMessage = this.nodeRepairedMessage;
+        snap.nodeSearchRadius = this.nodeSearchRadius;
+        snap.repairCostName = this.repairCostName;
+        snap.repairCostItem = this.repairCostItem;
+        snap.repairCostAmount = this.repairCostAmount;
+        snap.repairAmountPerCost = this.repairAmountPerCost;
         snap.nodeBuffEffects = new LinkedHashMap<>(this.nodeBuffEffects);
-        snap.monsters = new LinkedHashMap<>(this.monsters);
-        snap.waves = new LinkedHashMap<>(this.waves);
-        snap.defaultWave = this.defaultWave;
+        snap.nodeBuffRefreshTicks = this.nodeBuffRefreshTicks;
+        snap.nodeBuffStackCap = this.nodeBuffStackCap;
+        snap.nodeBuffDurationTicks = this.nodeBuffDurationTicks;
+        // deep copy monsters — 每个 MonsterConfig 独立拷贝，snapshot 与 activeConfig 完全隔离
+        snap.monsters = new LinkedHashMap<>();
+        for (Map.Entry<String, MonsterConfig> entry : this.monsters.entrySet()) {
+            snap.monsters.put(entry.getKey(), entry.getValue().copy());
+        }
+        // deep copy waves — 每个 WaveConfig 及其 compositions 独立拷贝
+        snap.waves = new LinkedHashMap<>();
+        for (Map.Entry<Integer, WaveConfig> entry : this.waves.entrySet()) {
+            snap.waves.put(entry.getKey(), entry.getValue().copy());
+        }
+        snap.defaultWave = this.defaultWave.copy();
         snap.spawnRadiusMin = this.spawnRadiusMin; snap.spawnRadiusMax = this.spawnRadiusMax;
         snap.globalMobCap = this.globalMobCap; snap.mobCapPerPlayer = this.mobCapPerPlayer;
+        snap.spawnYOffset = this.spawnYOffset;
         snap.fireballMaterial = this.fireballMaterial; snap.fireballSpeed = this.fireballSpeed;
         snap.fireballDamage = this.fireballDamage; snap.fireballExplosionRadius = this.fireballExplosionRadius;
         snap.fireballCooldownTicks = this.fireballCooldownTicks; snap.fireballMaxTravelTicks = this.fireballMaxTravelTicks;
         snap.fireballKnockback = this.fireballKnockback;
         snap.fireballProximityFuse = this.fireballProximityFuse;
         snap.fireballItemName = this.fireballItemName;
+        snap.currencyDropChance = this.currencyDropChance;
+        snap.currencyDropAmount = this.currencyDropAmount;
         return snap;
     }
 
@@ -322,6 +430,16 @@ public class GameConfig {
     public void setVictoryWaves(int v) { this.victoryWaves = v; }
     public int getWaveIntervalSeconds() { return waveIntervalSeconds; }
     public void setWaveIntervalSeconds(int v) { this.waveIntervalSeconds = v; }
+    public int getDefeatCountdownSeconds() { return defeatCountdownSeconds; }
+    public void setDefeatCountdownSeconds(int v) { this.defeatCountdownSeconds = v; }
+    public double getVillagerHealth() { return villagerHealth; }
+    public void setVillagerHealth(double v) { this.villagerHealth = v; }
+    public int getRejoinTimeoutSeconds() { return rejoinTimeoutSeconds; }
+    public void setRejoinTimeoutSeconds(int v) { this.rejoinTimeoutSeconds = v; }
+    public boolean isMapRestoreEnabled() { return mapRestoreEnabled; }
+    public void setMapRestoreEnabled(boolean v) { this.mapRestoreEnabled = v; }
+    public boolean isScoreboardEnabled() { return scoreboardEnabled; }
+    public void setScoreboardEnabled(boolean v) { this.scoreboardEnabled = v; }
     public Material getHammerMaterial() { return hammerMaterial; }
     public void setHammerMaterial(Material v) { this.hammerMaterial = v; }
     public String getHammerItemsAdderId() { return hammerItemsAdderId; }
@@ -372,19 +490,27 @@ public class GameConfig {
     public void setNodeBlockTypes(List<Material> v) { this.nodeBlockTypes = v; }
     public double getNodeBaseHealth() { return nodeBaseHealth; }
     public void setNodeBaseHealth(double v) { this.nodeBaseHealth = v; }
-    public Material getNodeRepairItem() { return nodeRepairItem; }
-    public void setNodeRepairItem(Material v) { this.nodeRepairItem = v; }
-    public double getNodeRepairAmount() { return nodeRepairAmount; }
-    public void setNodeRepairAmount(double v) { this.nodeRepairAmount = v; }
     public double getNodeBuffRadius() { return nodeBuffRadius; }
     public void setNodeBuffRadius(double v) { this.nodeBuffRadius = v; }
     public double getNodeSelfDestructMultiplier() { return nodeSelfDestructMultiplier; }
     public void setNodeSelfDestructMultiplier(double v) { this.nodeSelfDestructMultiplier = v; }
-    public String getNodeDestroyedMessage() { return nodeDestroyedMessage; }
-    public void setNodeDestroyedMessage(String v) { this.nodeDestroyedMessage = v; }
-    public String getNodeRepairedMessage() { return nodeRepairedMessage; }
-    public void setNodeRepairedMessage(String v) { this.nodeRepairedMessage = v; }
+    public int getNodeSearchRadius() { return nodeSearchRadius; }
+    public void setNodeSearchRadius(int v) { this.nodeSearchRadius = v; }
+    public String getRepairCostName() { return repairCostName; }
+    public void setRepairCostName(String v) { this.repairCostName = v; }
+    public Material getRepairCostItem() { return repairCostItem; }
+    public void setRepairCostItem(Material v) { this.repairCostItem = v; }
+    public int getRepairCostAmount() { return repairCostAmount; }
+    public void setRepairCostAmount(int v) { this.repairCostAmount = v; }
+    public double getRepairAmountPerCost() { return repairAmountPerCost; }
+    public void setRepairAmountPerCost(double v) { this.repairAmountPerCost = v; }
     public Map<PotionEffectType, Integer> getNodeBuffEffects() { return nodeBuffEffects; }
+    public int getNodeBuffRefreshTicks() { return nodeBuffRefreshTicks; }
+    public void setNodeBuffRefreshTicks(int v) { this.nodeBuffRefreshTicks = v; }
+    public int getNodeBuffStackCap() { return nodeBuffStackCap; }
+    public void setNodeBuffStackCap(int v) { this.nodeBuffStackCap = v; }
+    public int getNodeBuffDurationTicks() { return nodeBuffDurationTicks; }
+    public void setNodeBuffDurationTicks(int v) { this.nodeBuffDurationTicks = v; }
     public Map<String, MonsterConfig> getMonsters() { return monsters; }
     public Map<Integer, WaveConfig> getWaves() { return waves; }
     public WaveConfig getDefaultWave() { return defaultWave; }
@@ -393,10 +519,14 @@ public class GameConfig {
     public void setSpawnRadiusMin(int v) { this.spawnRadiusMin = v; }
     public int getSpawnRadiusMax() { return spawnRadiusMax; }
     public void setSpawnRadiusMax(int v) { this.spawnRadiusMax = v; }
+    public double getSpawnRadiusSpread() { return spawnRadiusSpread; }
+    public void setSpawnRadiusSpread(double v) { this.spawnRadiusSpread = v; }
     public int getGlobalMobCap() { return globalMobCap; }
     public void setGlobalMobCap(int v) { this.globalMobCap = v; }
     public int getMobCapPerPlayer() { return mobCapPerPlayer; }
     public void setMobCapPerPlayer(int v) { this.mobCapPerPlayer = v; }
+    public int getSpawnYOffset() { return spawnYOffset; }
+    public void setSpawnYOffset(int v) { this.spawnYOffset = v; }
 
     public Material getFireballMaterial() { return fireballMaterial; }
     public void setFireballMaterial(Material v) { this.fireballMaterial = v; }
@@ -416,6 +546,13 @@ public class GameConfig {
     public void setFireballProximityFuse(double v) { this.fireballProximityFuse = v; }
     public String getFireballItemName() { return fireballItemName; }
     public void setFireballItemName(String v) { this.fireballItemName = v; }
+    public String getHammerItemName() { return hammerItemName; }
+    public void setHammerItemName(String v) { this.hammerItemName = v; }
+
+    public double getCurrencyDropChance() { return currencyDropChance; }
+    public void setCurrencyDropChance(double v) { this.currencyDropChance = v; }
+    public int getCurrencyDropAmount() { return currencyDropAmount; }
+    public void setCurrencyDropAmount(int v) { this.currencyDropAmount = v; }
 
     public WaveConfig getWaveConfig(int waveNumber) {
         return waves.getOrDefault(waveNumber, defaultWave);

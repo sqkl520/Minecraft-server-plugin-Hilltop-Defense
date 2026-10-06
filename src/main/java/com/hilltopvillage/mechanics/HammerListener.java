@@ -4,6 +4,7 @@ import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.PlayerData;
+import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.*;
 import org.bukkit.boss.BarColor;
 import org.bukkit.boss.BarStyle;
@@ -17,6 +18,7 @@ import org.bukkit.event.block.Action;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.event.player.PlayerMoveEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
@@ -27,32 +29,42 @@ import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
 import java.util.*;
+import java.util.concurrent.ConcurrentHashMap;
 
 public class HammerListener implements Listener {
 
-    private final GameManager gameManager;
     private final HilltopVillagePlugin plugin;
+    private final LanguageManager lang;
     private final String hammerName;
     private final Map<UUID, BossBar> chargeBars;
     private final Map<UUID, Integer> lastChargeTier;
     private final Map<UUID, Integer> lastBossBarTick;
     private final Set<UUID> recentlyLanded;
 
-    public HammerListener(GameManager gameManager) {
-        this.gameManager = gameManager;
-        this.plugin = gameManager.getPlugin();
+    public HammerListener(HilltopVillagePlugin plugin) {
+        this.plugin = plugin;
+        this.lang = plugin.getLanguageManager();
+        String configuredName = plugin.getConfigManager().getActiveConfig().getHammerItemName();
         this.hammerName = ChatColor.translateAlternateColorCodes('&',
-                plugin.getConfig().getString("hammer.item-name", "&6&l\u795e\u5723\u91cd\u9524"));
-        this.chargeBars = new HashMap<>();
-        this.lastChargeTier = new HashMap<>();
-        this.lastBossBarTick = new HashMap<>();
-        this.recentlyLanded = new HashSet<>();
+                (configuredName == null || configuredName.isEmpty())
+                        ? lang.get("item.hammer-name")
+                        : configuredName);
+        this.chargeBars = new ConcurrentHashMap<>();
+        this.lastChargeTier = new ConcurrentHashMap<>();
+        this.lastBossBarTick = new ConcurrentHashMap<>();
+        this.recentlyLanded = Collections.newSetFromMap(new ConcurrentHashMap<>());
+    }
+
+    /** 解析玩家所在竞技场的 GameManager（不在任何竞技场时返回 null） */
+    private GameManager gm(Player player) {
+        var arena = plugin.getMultiArenaManager().getPlayerArena(player);
+        return arena == null ? null : arena.getGameManager();
     }
 
     /* ========== 模型系统 ========== */
 
     public ItemStack createHammer() {
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         ItemStack hammer;
 
         // ItemsAdder 优先
@@ -71,9 +83,9 @@ public class HammerListener implements Listener {
         ItemMeta meta = hammer.getItemMeta();
         meta.setDisplayName(hammerName);
         List<String> lore = new ArrayList<>();
-        lore.add(ChatColor.GRAY + "\u53f3\u952e\u7a7a\u6c14\u6fc0\u6d3b\u731b\u51fb\u72b6\u6001");
-        lore.add(ChatColor.GRAY + "\u4ece\u9ad8\u5904\u843d\u4e0b\u89e6\u53d1\u5929\u964d\u6b63\u4e49");
-        lore.add(ChatColor.GOLD + "\u9ad8\u5ea6\u8d8a\u9ad8\uff0c\u4f24\u5bb3\u8d8a\u5f3a");
+        lore.add(lang.get("hammer.lore1"));
+        lore.add(lang.get("hammer.lore2"));
+        lore.add(lang.get("hammer.lore3"));
         meta.setLore(lore);
         hammer.setItemMeta(meta);
         return hammer;
@@ -120,6 +132,9 @@ public class HammerListener implements Listener {
         if (event.getAction() != Action.RIGHT_CLICK_AIR) return;
 
         Player player = event.getPlayer();
+        GameManager gameManager = gm(player);
+        if (gameManager == null) return;
+
         PlayerData data = gameManager.getPlayerData(player);
         if (data == null || !data.isAlive()) return;
 
@@ -135,11 +150,11 @@ public class HammerListener implements Listener {
         // 复用或创建蓄力 BossBar
         BossBar bar = chargeBars.get(player.getUniqueId());
         if (bar == null) {
-            bar = Bukkit.createBossBar(ChatColor.YELLOW + "\u25a0 \u84c4\u529b\u5f00\u59cb", BarColor.YELLOW, BarStyle.SOLID);
+            bar = Bukkit.createBossBar(lang.getFor(player, "hammer.bossbar.charging"), BarColor.YELLOW, BarStyle.SOLID);
             chargeBars.put(player.getUniqueId(), bar);
             bar.addPlayer(player);
         }
-        bar.setTitle(ChatColor.YELLOW + "\u25a0 \u84c4\u529b\u5f00\u59cb");
+        bar.setTitle(lang.getFor(player, "hammer.bossbar.charging"));
         bar.setColor(BarColor.YELLOW);
         bar.setProgress(0.0);
         bar.setVisible(true);
@@ -154,6 +169,9 @@ public class HammerListener implements Listener {
     public void onPlayerMove(PlayerMoveEvent event) {
         if (!event.hasChangedPosition()) return;
         Player player = event.getPlayer();
+        GameManager gameManager = gm(player);
+        if (gameManager == null) return;
+
         PlayerData data = gameManager.getPlayerData(player);
         if (data == null || !data.isSmashActive()) return;
 
@@ -169,7 +187,7 @@ public class HammerListener implements Listener {
             } else {
                 lastBossBarTick.put(player.getUniqueId(), currentTick);
 
-                GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+                GameConfig cfg = plugin.getConfigManager().getActiveConfig();
                 double startY = data.getSmashStartY();
                 double fallDist = startY - currentY;
                 double maxDist = cfg.getHammerHighCharge() * 1.5;
@@ -183,13 +201,13 @@ public class HammerListener implements Listener {
                     lastChargeTier.put(player.getUniqueId(), tier);
                     if (tier == 2) {
                         bar.setColor(BarColor.RED);
-                        bar.setTitle(ChatColor.RED + "\u25a0 \u5929\u964d\u6b63\u4e49\uff01");
+                        bar.setTitle(lang.getFor(player, "hammer.bossbar.ready"));
                     } else if (tier == 1) {
                         bar.setColor(BarColor.YELLOW);
-                        bar.setTitle(ChatColor.GOLD + "\u25a0 \u731b\u51fb\u84c4\u529b\u4e2d...");
+                        bar.setTitle(lang.getFor(player, "hammer.bossbar.smashing"));
                     } else {
                         bar.setColor(BarColor.YELLOW);
-                        bar.setTitle(ChatColor.YELLOW + "\u25a0 \u84c4\u529b\u5f00\u59cb");
+                        bar.setTitle(lang.getFor(player, "hammer.bossbar.charging"));
                     }
                 }
             }
@@ -200,7 +218,7 @@ public class HammerListener implements Listener {
 
         double fallDistance = startY(player, data, currentY);
         long currentTick = gameManager.getGameWorld().getGameTime();
-        long tickLimit = gameManager.getConfigManager().getActiveConfig().getHammerSmashTimeoutTicks();
+        long tickLimit = plugin.getConfigManager().getActiveConfig().getHammerSmashTimeoutTicks();
 
         if (currentY < data.getLastSmashY() - 0.01) {
             data.setSmashActivateTick(currentTick);
@@ -231,6 +249,9 @@ public class HammerListener implements Listener {
         if (event.getCause() != EntityDamageEvent.DamageCause.FALL) return;
 
         Player player = (Player) event.getEntity();
+        GameManager gameManager = gm(player);
+        if (gameManager == null) return;
+
         PlayerData data = gameManager.getPlayerData(player);
         if (data == null) return;
 
@@ -255,7 +276,7 @@ public class HammerListener implements Listener {
             }
         }.runTaskLater(plugin, 10L);
 
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         int tier = getHammerTier(cfg, fallDistance);
         double finalDamage = getTierDamage(cfg, tier);
         double radius = getTierRadius(cfg, tier);
@@ -264,12 +285,11 @@ public class HammerListener implements Listener {
         player.setVelocity(new Vector(0, 0.8 + Math.min(fallDistance * 0.05, 1.2), 0));
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1.0f, 1.2f);
 
-        // 伤害提示（汉化）
-        String tierName = getTierDisplayName(tier);
-        String actionBarMsg = ChatColor.GOLD + "\u25a0 \u731b\u51fb\uff01" + ChatColor.YELLOW + " [" + tierName + "] "
-                + ChatColor.RED + String.format("%.1f", finalDamage) + " \u4f24\u5bb3";
+        // 伤害提示
+        String tierName = getTierDisplayName(player, tier);
+        String smashKey = tier == 2 ? "hammer.smash.high" : tier == 1 ? "hammer.smash.medium" : "hammer.smash.low";
+        String actionBarMsg = lang.getFor(player, smashKey, tierName, String.format("%.1f", finalDamage));
         player.sendActionBar(actionBarMsg);
-
         // 范围伤害（包含玩家弹飞）
         applyAreaDamage(player, player.getLocation(), finalDamage, radius);
         applyAftershock(player.getLocation(), radius);
@@ -329,7 +349,7 @@ public class HammerListener implements Listener {
     }
 
     private void applyAftershock(Location center, double radius) {
-        int duration = gameManager.getConfigManager().getActiveConfig().getHammerAftershockTicks();
+        int duration = plugin.getConfigManager().getActiveConfig().getHammerAftershockTicks();
         int slownessLevel = 2;
 
         World world = center.getWorld();
@@ -338,12 +358,12 @@ public class HammerListener implements Listener {
 
         for (LivingEntity entity : nearby) {
             entity.addPotionEffect(new PotionEffect(
-                    PotionEffectType.SLOW, duration, slownessLevel, false, true, true));
+                    PotionEffectType.SLOWNESS, duration, slownessLevel, false, true, true));
         }
     }
 
     private void spawnSmashEffect(Location location, double fallDistance) {
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         int tier = getHammerTier(cfg, fallDistance);
         if (tier >= 2) {
             HammerEffectRenderer.spawnHighTierEffect(location);
@@ -378,11 +398,11 @@ public class HammerListener implements Listener {
         };
     }
 
-    private String getTierDisplayName(int tier) {
+    private String getTierDisplayName(Player player, int tier) {
         return switch (tier) {
-            case 2 -> "\u9ad8\u6863";
-            case 1 -> "\u4e2d\u6863";
-            default -> "\u4f4e\u6863";
+            case 2 -> lang.getFor(player, "hammer.tier.high");
+            case 1 -> lang.getFor(player, "hammer.tier.medium");
+            default -> lang.getFor(player, "hammer.tier.low");
         };
     }
 
@@ -393,5 +413,10 @@ public class HammerListener implements Listener {
 
         Location below = to.clone().subtract(0, 0.1, 0);
         return below.getBlock().getType().isSolid();
+    }
+
+    @EventHandler(priority = EventPriority.NORMAL)
+    public void onPlayerQuit(PlayerQuitEvent event) {
+        cleanupPlayer(event.getPlayer());
     }
 }

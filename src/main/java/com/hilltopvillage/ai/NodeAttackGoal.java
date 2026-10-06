@@ -1,0 +1,231 @@
+package com.hilltopvillage.ai;
+
+import com.destroystokyo.paper.entity.ai.Goal;
+import com.destroystokyo.paper.entity.ai.GoalKey;
+import com.destroystokyo.paper.entity.ai.GoalType;
+import com.hilltopvillage.core.GameManager;
+import com.hilltopvillage.mechanics.NodeSystem;
+import org.bukkit.Location;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
+import org.bukkit.attribute.Attribute;
+import org.bukkit.attribute.AttributeInstance;
+import org.bukkit.entity.Mob;
+
+import java.util.EnumSet;
+
+/**
+ * 普通怪物攻击能量节点的 AI。
+ *
+ * <p>设计对应「节点才是真正的血条」：怪物在没有玩家可攻击时，会向最近的活跃节点推进并攻击它。</p>
+ *
+ * <p><b>伤害值 = 怪物对玩家的攻击伤害</b>（{@code Attribute.ATTACK_DAMAGE}），
+ * 因此管理员在怪物配置里调整的 base-damage 会同时作用于玩家和节点。</p>
+ *
+ * <p>本 Goal 以较低优先级注册，原版近战 AI（攻击玩家）优先级更高，
+ * 即：<b>有玩家在附近时优先打玩家，否则推进打节点</b>。</p>
+ */
+public class NodeAttackGoal implements Goal<Mob> {
+
+    /** 攻击距离（格） */
+    private static final double ATTACK_RANGE = 3.0;
+    /** 攻击间隔（tick），20 tick = 1 秒 */
+    private static final int ATTACK_COOLDOWN_TICKS = 20;
+    /** 寻路速度 */
+    private static final double PATHFINDER_SPEED = 1.0;
+    /** 重新搜索最近节点的间隔（tick）：避免每 tick 全量扫描节点表 */
+    private static final int RETARGET_INTERVAL_TICKS = 30;
+    /** 卡住判定阈值（位移平方） */
+    private static final double STUCK_THRESHOLD_SQ = 0.01;
+    /** 卡住超时（tick）后重新寻路 */
+    private static final int STUCK_TICK_LIMIT = 60;
+
+    private final Mob mob;
+    private final GameManager gameManager;
+    private NodeSystem.NodeData targetNode;
+    /** 目标节点方块中心（节点位置固定不变，随目标一起缓存，避免每 tick 重建 Location） */
+    private Location targetCenter;
+    /** 下次允许重新扫描节点的实体存活 tick；使用绝对 tick 避免激活切换导致少算或多算 */
+    private long nextRetargetTick;
+    /** 搜索半径平方；配置值小于等于 0 时为 0，表示禁用节点寻路 */
+    private double searchRadiusSq;
+    private int attackCooldown;
+    private int stuckTicks;
+    private Location lastPosition;
+
+    public NodeAttackGoal(Mob mob, GameManager gameManager) {
+        this.mob = mob;
+        this.gameManager = gameManager;
+    }
+
+    @Override
+    public boolean shouldActivate() {
+        if (!gameManager.isGameRunning()) return false;
+
+        retargetIfNeeded();
+        return targetNode != null;
+    }
+
+    /**
+     * 在目标失效时立即重选，并在目标有效或暂无目标时每 30 tick 重新评估一次。
+     *
+     * <p>绝对实体 tick 同时覆盖未激活与已激活阶段，不依赖 shouldActivate 的调用频率；
+     * 目标被摧毁、移除或 reload 替换时则绕过缓存立即放弃旧对象。</p>
+     */
+    private boolean retargetIfNeeded() {
+        NodeSystem nodeSystem = gameManager.getNodeSystem();
+        if (targetNode != null && !nodeSystem.isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+        }
+
+        long currentTick = mob.getTicksLived();
+        if (currentTick < nextRetargetTick) return false;
+
+        NodeSystem.NodeData previousTarget = targetNode;
+        double radius = gameManager.getConfigManager().getActiveConfig().getNodeSearchRadius();
+        searchRadiusSq = radius > 0 ? radius * radius : 0;
+
+        NodeSystem.NodeData nearest = null;
+        if (radius > 0) {
+            nearest = nodeSystem.getNearestNode(mob.getLocation());
+            if (nearest != null && !isWithinSearchRadius(nearest)) {
+                nearest = null;
+            }
+        }
+
+        targetNode = nearest;
+        targetCenter = nearest == null
+                ? null
+                : nearest.getLocation().add(0.5, 0.5, 0.5);
+        nextRetargetTick = currentTick + RETARGET_INTERVAL_TICKS;
+        return previousTarget != targetNode;
+    }
+
+    private boolean isWithinSearchRadius(NodeSystem.NodeData node) {
+        Location nodeLocation = node.getLocation();
+        Location mobLocation = mob.getLocation();
+        return nodeLocation.getWorld() == mobLocation.getWorld()
+                && nodeLocation.distanceSquared(mobLocation) <= searchRadiusSq;
+    }
+
+    @Override
+    public boolean shouldStayActive() {
+        if (!gameManager.isGameRunning() || !mob.isValid() || targetNode == null) return false;
+        if (!gameManager.getNodeSystem().isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+            return false;
+        }
+        return true;
+    }
+
+    @Override
+    public void start() {
+        attackCooldown = 0;
+        stuckTicks = 0;
+        lastPosition = mob.getLocation();
+        pathToNode();
+    }
+
+    @Override
+    public void stop() {
+        mob.getPathfinder().stopPathfinding();
+        clearTarget();
+    }
+
+    @Override
+    public void tick() {
+        boolean targetChanged = retargetIfNeeded();
+        if (targetNode == null || targetCenter == null) return;
+        if (!gameManager.getNodeSystem().isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+            return;
+        }
+
+        Location mobLoc = mob.getLocation();
+        if (targetChanged) {
+            stuckTicks = 0;
+            lastPosition = mobLoc;
+            pathToNode();
+        }
+
+        if (attackCooldown > 0) {
+            attackCooldown--;
+        }
+
+        // 面向节点
+        mob.lookAt(targetCenter);
+
+        if (mobLoc.distance(targetCenter) <= ATTACK_RANGE) {
+            mob.getPathfinder().stopPathfinding();
+            attackNode();
+            return;
+        }
+
+        // 卡住检测：长时间未位移则重新寻路
+        if (mobLoc.distanceSquared(lastPosition) < STUCK_THRESHOLD_SQ) {
+            stuckTicks++;
+        } else {
+            stuckTicks = 0;
+        }
+        lastPosition = mobLoc;
+
+        if (stuckTicks >= STUCK_TICK_LIMIT) {
+            pathToNode();
+            stuckTicks = 0;
+        }
+    }
+
+    private void pathToNode() {
+        if (targetNode == null || !gameManager.getNodeSystem().isRegisteredActive(targetNode)) return;
+        Location nodeCenter = targetNode.getLocation().add(0.5, 1, 0.5);
+        mob.getPathfinder().moveTo(nodeCenter, PATHFINDER_SPEED);
+    }
+
+    /** 攻击节点：伤害 = 怪物对玩家的攻击伤害 */
+    private void attackNode() {
+        if (!gameManager.getNodeSystem().isRegisteredActive(targetNode)) {
+            clearTarget();
+            nextRetargetTick = 0;
+            return;
+        }
+        if (attackCooldown > 0) return;
+        attackCooldown = ATTACK_COOLDOWN_TICKS;
+
+        double damage = resolveAttackDamage();
+        Location nodeLoc = targetNode.getLocation();
+
+        mob.getWorld().playSound(mob.getLocation(), Sound.ENTITY_PLAYER_ATTACK_STRONG, 0.6f, 0.8f);
+        mob.getWorld().spawnParticle(Particle.CRIT,
+                nodeLoc.clone().add(0.5, 1.0, 0.5), 6, 0.3, 0.3, 0.3, 0.05);
+
+        gameManager.getNodeSystem().damageNode(nodeLoc, damage);
+    }
+
+    private void clearTarget() {
+        targetNode = null;
+        targetCenter = null;
+    }
+
+    /** 读取怪物的攻击伤害属性（即其对玩家造成的伤害） */
+    private double resolveAttackDamage() {
+        AttributeInstance attribute = mob.getAttribute(Attribute.ATTACK_DAMAGE);
+        if (attribute != null && attribute.getValue() > 0) {
+            return attribute.getValue();
+        }
+        return 3.0; // 原版僵尸默认攻击伤害兜底
+    }
+
+    @Override
+    public GoalKey<Mob> getKey() {
+        return GoalKey.of(Mob.class, new NamespacedKey("hilltopvillage", "node_attack"));
+    }
+
+    @Override
+    public EnumSet<GoalType> getTypes() {
+        return EnumSet.of(GoalType.MOVE, GoalType.LOOK);
+    }
+}

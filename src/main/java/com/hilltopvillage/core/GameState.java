@@ -6,5 +6,6 @@ public enum GameState {
     RUNNING,
     WAVE_INTERMISSION,
     VICTORY,
-    DEFEAT
+    DEFEAT,
+    ENDING  // 多竞技场模式：游戏结束后的清理阶段
 }

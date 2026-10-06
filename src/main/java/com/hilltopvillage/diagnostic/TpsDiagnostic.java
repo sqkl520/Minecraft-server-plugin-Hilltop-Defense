@@ -1,22 +1,34 @@
 package com.hilltopvillage.diagnostic;
 
+import com.hilltopvillage.HilltopVillagePlugin;
+import com.hilltopvillage.arena.ArenaInstance;
+import com.hilltopvillage.core.GameManager;
+import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.World;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
-import com.hilltopvillage.core.GameManager;
-import com.hilltopvillage.util.LanguageManager;
-
 public class TpsDiagnostic {
 
-    private final GameManager gameManager;
+    private final HilltopVillagePlugin plugin;
     private final LanguageManager lang;
 
-    public TpsDiagnostic(GameManager gameManager, LanguageManager lang) {
-        this.gameManager = gameManager;
+    public TpsDiagnostic(HilltopVillagePlugin plugin, LanguageManager lang) {
+        this.plugin = plugin;
         this.lang = lang;
+    }
+
+    /** 解析诊断目标竞技场：玩家所在 → 默认 → 第一个活动 */
+    private GameManager resolveGameManager(CommandSender sender) {
+        if (sender instanceof Player player) {
+            ArenaInstance arena = plugin.getMultiArenaManager().resolveArena(null, player);
+            if (arena != null) return arena.getGameManager();
+        }
+        ArenaInstance arena = plugin.getMultiArenaManager().getDefaultArena();
+        if (arena == null) arena = plugin.getMultiArenaManager().getFirstActiveArena();
+        return arena == null ? null : arena.getGameManager();
     }
 
     /**
@@ -34,21 +46,26 @@ public class TpsDiagnostic {
     public void printDiagnostic(CommandSender sender) {
         double[] tps = Bukkit.getTPS();
         double mspt = Bukkit.getAverageTickTime();
+        GameManager gameManager = resolveGameManager(sender);
 
         sender.sendMessage(msg(sender, "tps.header"));
         sender.sendMessage(msg(sender, "tps.values",
                 formatTps(tps[0]), formatTps(tps[1]), formatTps(tps[2])));
         sender.sendMessage(msg(sender, "tps.mspt", String.format("%.2f", mspt)));
 
-        sender.sendMessage(msg(sender, "tps.state", gameManager.getState()));
-        sender.sendMessage(msg(sender, "tps.online-players", Bukkit.getOnlinePlayers().size()));
-        sender.sendMessage(msg(sender, "tps.game-players", gameManager.getPlayers().size()));
-        sender.sendMessage(msg(sender, "tps.wave", gameManager.getCurrentWave()));
-        sender.sendMessage(msg(sender, "tps.mobs", gameManager.getWaveManager().getRemainingMobCount()));
-        sender.sendMessage(msg(sender, "tps.nodes",
-                gameManager.getNodeSystem().getActiveCount(), gameManager.getNodeSystem().getTotalCount()));
-        sender.sendMessage(msg(sender, "tps.cleanup-queue",
-                gameManager.getDisplayEntityManager().getPendingCleanupCount()));
+        if (gameManager != null) {
+            sender.sendMessage(msg(sender, "tps.state", gameManager.getState()));
+            sender.sendMessage(msg(sender, "tps.online-players", Bukkit.getOnlinePlayers().size()));
+            sender.sendMessage(msg(sender, "tps.game-players", gameManager.getPlayers().size()));
+            sender.sendMessage(msg(sender, "tps.wave", gameManager.getCurrentWave()));
+            sender.sendMessage(msg(sender, "tps.mobs", gameManager.getWaveManager().getRemainingMobCount()));
+            sender.sendMessage(msg(sender, "tps.nodes",
+                    gameManager.getNodeSystem().getActiveCount(), gameManager.getNodeSystem().getTotalCount()));
+            sender.sendMessage(msg(sender, "tps.cleanup-queue",
+                    gameManager.getDisplayEntityManager().getPendingCleanupCount()));
+        } else {
+            sender.sendMessage(msg(sender, "tps.online-players", Bukkit.getOnlinePlayers().size()));
+        }
 
         sender.sendMessage(msg(sender, "tps.server-header"));
         for (World world : Bukkit.getWorlds()) {
