@@ -239,6 +239,18 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             }
         }
 
+        // 强制落盘物品快照（与统计同理：防抖窗口内未落盘的变更必须在关服前写完）
+        // 放在竞技场停止 / 地图回滚之后的收尾段：玩家离场的 restore() 可能已把快照从内存移除，
+        // 但那次移除只登记了防抖任务，异步写盘在禁用阶段不会再触发，故这里必须补一次同步写。
+        // 与前面各段一样独立 try/catch，任一段抛异常都不会跳过本段。
+        if (playerGoodsManager != null) {
+            try {
+                playerGoodsManager.saveNow();
+            } catch (RuntimeException exception) {
+                getLogger().log(Level.SEVERE, "物品快照落盘失败", exception);
+            }
+        }
+
         getLogger().info("Hilltop Village has been disabled.");
     }
 
@@ -405,6 +417,19 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         // 对局进行中保留重连窗口；否则正常离开竞技场（内部会归还物品并送回大厅）
         if (multiArenaManager.isInArena(player)) {
             multiArenaManager.handleQuit(player);
+        }
+
+        // 玩家一走就把物品快照同步写完，不等 2 秒防抖窗口。
+        // 理由：restore() 只登记了防抖任务，而玩家退出后 Bukkit 会把「已归还物品」的背包
+        // 写进 .dat；若这 2 秒内服务器非优雅关闭（kill / 断电 / OOM），磁盘上仍是归还前的
+        // 旧快照 → 下次登录会再归还一次 → 物品翻倍。这是玩家可主动制造的路径
+        // （离开竞技场 → 秒退 → 逼服务器重启），因此必须在退出事件当场写盘。
+        if (playerGoodsManager != null) {
+            try {
+                playerGoodsManager.saveNow();
+            } catch (RuntimeException exception) {
+                getLogger().log(Level.SEVERE, "玩家退出时物品快照落盘失败", exception);
+            }
         }
 
         // Cleanup player data

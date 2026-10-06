@@ -1,6 +1,7 @@
 package com.hilltopvillage.core;
 
 import com.hilltopvillage.HilltopVillagePlugin;
+import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -8,9 +9,13 @@ import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
+import org.bukkit.scheduler.BukkitTask;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.LinkedHashMap;
@@ -18,6 +23,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 
 /**
@@ -31,6 +37,20 @@ import java.util.logging.Level;
 public final class PlayerGoodsManager {
 
     private static final String FILE_NAME = "player-goods.yml";
+    /**
+     * 落盘防抖窗口（tick）：1 tick = 下一 tick 立即写。
+     *
+     * <p><b>为什么是 1 而不是更长：</b>防抖的收益来自「同一 tick 内的多次调用合并成一次写」——
+     * 一局结束时 {@code finishSession} 在一个 tick 里循环 {@code removePlayer}，
+     * 6 名玩家会连发 6 次 save/restore，1 tick 的窗口足以把它们合并成 1 次写，
+     * 合并收益已全部拿到。</p>
+     *
+     * <p>而窗口越长，数据不一致的窗口就越长：{@code restore()} 只把快照从内存移除，
+     * 磁盘上仍是旧内容；若这段时间内服务器非优雅关闭，重启后会<b>再归还一次（物品翻倍）</b>。
+     * 窗口从 2 秒缩到 1 tick（50ms），这个不一致窗口缩小了 40 倍，
+     * 而合并收益不变 —— 没有理由留长窗口。</p>
+     */
+    private static final long SAVE_DEBOUNCE_TICKS = 1L;
     /** 玩家背包容量（getContents() 的固定长度） */
     private static final int INVENTORY_SIZE = 36;
     /** 盔甲槽位数量（头盔/胸甲/护腿/靴子） */
@@ -39,6 +59,45 @@ public final class PlayerGoodsManager {
     private final HilltopVillagePlugin plugin;
     private final File goodsFile;
     private Map<UUID, Snapshot> goods = new ConcurrentHashMap<>();
+    /**
+     * 是否已有待执行的防抖落盘任务。
+     *
+     * <p>刻意不加 volatile：该字段只在主线程读写 —— {@link #save(Player)} / {@link #restore(Player)}
+     * 本就只能在主线程调用（直接操作 {@code player.getInventory()}），{@link #flushToDisk()} 由
+     * 主线程的 Bukkit 调度器回调，{@link #saveNow()} 也由主线程（onDisable / PlayerQuitEvent）调用。
+     * 异步线程只拿 {@code yaml} 去写文件，不碰这个标志。</p>
+     */
+    private boolean saveScheduled;
+    /**
+     * 尚未到期的防抖任务句柄；{@link #saveNow()} 会取消它，避免同步写完后又跑一次异步写。
+     *
+     * <p>取消不是「为了正确性」而是「为了少一次多余的磁盘 I/O」：即便不取消，
+     * 两次写的也是同一份内存快照，内容相同、幂等无害。但句柄留着能让
+     * {@link #saveNow()} 的语义更干净（写完即无待办）。</p>
+     */
+    private BukkitTask pendingSaveTask;
+    /**
+     * 所有文件写的互斥锁：防止防抖异步写与关服同步写同时操作磁盘。
+     *
+     * <p>注意这把锁只保护「序列化 + 写文件」，不保护 {@link #buildYaml()} —— 构建
+     * {@link YamlConfiguration} 读的是 Bukkit 对象，必须留在主线程。</p>
+     */
+    private final Object writeLock = new Object();
+    /**
+     * 单调递增的写序号：让「后发起的写」能压过「先发起但尚未落盘的在途写」。
+     *
+     * <p>解决的问题：异步写可能持有「上一 tick 的快照」，若它比 {@link #saveNow()} 的同步写
+     * <b>后</b>拿到锁，就会把关服写对的内容覆盖成陈旧内容。每次写请求在<b>主线程</b>
+     * 分配一个递增序号，锁内比对 —— 发现自己不是最新就放弃写入。</p>
+     * <p>用 {@link AtomicLong} 而非普通 long：序号在主线程分配、在异步线程读取，
+     * 需要跨线程可见性。</p>
+     */
+    private final AtomicLong writeSeq = new AtomicLong();
+
+    /** 分配下一个写序号（只在主线程调用，保证序号顺序与主线程的调用顺序一致）。 */
+    private long nextWriteSeq() {
+        return writeSeq.incrementAndGet();
+    }
 
     public PlayerGoodsManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
@@ -97,7 +156,8 @@ public final class PlayerGoodsManager {
         snapshot.effects = new ArrayList<>(player.getActivePotionEffects());
 
         goods.put(uuid, snapshot);
-        saveToDisk();
+        // 只登记一次防抖落盘：新建快照这一瞬间数据已进内存，写盘可以延后合并
+        scheduleSaveToDisk();
 
         // 保存后清空状态，准备进入游戏
         clearInventory(player);
@@ -148,7 +208,7 @@ public final class PlayerGoodsManager {
             player.addPotionEffect(effect);
         }
 
-        saveToDisk();
+        scheduleSaveToDisk();
         return true;
     }
 
@@ -223,7 +283,14 @@ public final class PlayerGoodsManager {
         }
     }
 
-    private void saveToDisk() {
+    /**
+     * 构建 goods 的 YAML 快照（仅读内存，不碰磁盘）。
+     *
+     * <p>刻意把「序列化」与「写文件」拆开：序列化读的是 Bukkit 的
+     * {@link YamlConfiguration}，线程安全性没有官方保证，因此留在主线程；
+     * 只有纯粹的 {@link java.nio.file.Files} 写入丢到异步线程。</p>
+     */
+    private YamlConfiguration buildYaml() {
         YamlConfiguration yaml = new YamlConfiguration();
         for (Map.Entry<UUID, Snapshot> entry : goods.entrySet()) {
             String path = "players." + entry.getKey();
@@ -255,11 +322,124 @@ public final class PlayerGoodsManager {
             }
             yaml.set(path + ".effects", effects);
         }
+        return yaml;
+    }
 
+    /**
+     * 临时文件 + 原子替换：避免写入中途被中断时留下半截 YAML。
+     *
+     * <p><b>为什么临时文件名要带唯一后缀：</b>防抖到期的异步写与关服时的
+     * {@link #saveNow()} 同步写可能并发。若共用固定的 {@code .tmp}，两个线程会同时
+     * {@link Files#write} 到同一个文件 —— 内容交错，可能写出<b>损坏的半截 YAML</b>；
+     * 而损坏的 {@code player-goods.yml} 会让下次启动 {@link #loadFromDisk()} 解析失败，
+     * 直接丢掉全部玩家的物品快照。用 {@link System#nanoTime()} 做后缀让每次写的临时文件
+     * 互不相干，再由 {@link #writeLock} 把「写临时文件 + 原子替换」整段串行化。</p>
+     *
+     * <p><b>为什么 {@code saveToString()} 也放进锁里：</b>它读的是 Bukkit 的
+     * {@link YamlConfiguration}，序列化本身没有官方并发保证，串行化更稳。
+     * 但 {@link #buildYaml()} 构建配置对象那一步仍然留在主线程，不挪进锁内。</p>
+     *
+     * <p><b>为什么要校验 {@code seq}（不是「与防抖同级」的折中）：</b>异步写手里拿的可能是
+     * 「上一 tick 的快照」，而 {@link #saveNow()} 拿的是「当前快照」。若异步写<b>后</b>拿到锁，
+     * 它会把已经写对的关服内容覆盖成陈旧内容 —— 那不是「丢一个 tick 的增量」，而是
+     * <b>关服屏障被破坏</b>：玩家已归还物品的删除记录被回退，下次登录会再归还一次（物品翻倍）。
+     * 因此每次写都带一个单调递增序号，锁内发现已有更新的写请求时直接放弃本次写入。</p>
+     *
+     * @param seq 本次写请求的序号（由 {@link #nextWriteSeq()} 分配）
+     */
+    private void writeYaml(YamlConfiguration yaml, long seq) {
+        // 临时文件名带唯一后缀：防抖异步写与 saveNow() 同步写可能并发，
+        // 共用固定的 ".tmp" 会让两个线程写同一个文件 → 内容交错、写出损坏的 YAML，
+        // 而损坏的 player-goods.yml 会让下次启动解析失败、丢掉全部物品快照。
+        File tmp = new File(goodsFile.getParentFile(),
+                FILE_NAME + "." + System.nanoTime() + ".tmp");
         try {
-            yaml.save(goodsFile);
+            synchronized (writeLock) {
+                // 已有更新的写请求（例如关服的 saveNow）→ 放弃本次，让新请求写正确内容
+                if (seq != writeSeq.get()) return;
+                Files.write(tmp.toPath(), yaml.saveToString().getBytes(StandardCharsets.UTF_8));
+                Files.move(tmp.toPath(), goodsFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
+            }
         } catch (IOException exception) {
             plugin.getLogger().log(Level.SEVERE, "无法保存 " + FILE_NAME, exception);
+        } finally {
+            // 写失败时清掉可能残留的临时文件，避免目录里堆积垃圾
+            if (tmp.exists() && !tmp.delete()) {
+                tmp.deleteOnExit();
+            }
+        }
+    }
+
+    /**
+     * 调度一次落盘（防抖合并）。
+     *
+     * <p>为什么不是每次 save/restore 都立刻写盘：一局结束时会有 N 名玩家先后离场，
+     * 每次都全量重建整份 YAML 再同步写盘 —— 含所有历史玩家的背包快照，
+     * 历史玩家越多越慢，且全部发生在主线程。改为「1 tick 防抖窗口内合并成一次」，
+     * 序列化仍留主线程，文件写丢到异步线程。</p>
+     *
+     * <p>代价：服务器崩溃时最多丢 1 tick（约 50ms）内的变更。关服走
+     * {@link #saveNow()} 仍会同步落盘，不受影响。</p>
+     *
+     * <p>只在主线程调用（save / restore 都是主线程语义）。</p>
+     */
+    private void scheduleSaveToDisk() {
+        if (saveScheduled) return;
+        // 禁用阶段（onDisable）禁止再调度任务：与 ArenaInstance#scheduleReset 同一范式 ——
+        // 此时插件正在关闭，延迟任务可能被取消或抛 IllegalPluginAccessException，
+        // 那样这次改动就彻底丢了。改为当场同步写完，保证关服路径不依赖调度器。
+        if (!plugin.isEnabled()) {
+            saveNow();
+            return;
+        }
+        saveScheduled = true;
+        pendingSaveTask = Bukkit.getScheduler().runTaskLater(plugin, this::flushToDisk, SAVE_DEBOUNCE_TICKS);
+    }
+
+    /** 防抖窗口到期：主线程序列化，异步线程写文件。 */
+    private void flushToDisk() {
+        saveScheduled = false;
+        pendingSaveTask = null;
+        if (!plugin.isEnabled()) {
+            // 禁用阶段：禁止再调度任务，直接同步写完
+            writeYaml(buildYaml(), nextWriteSeq());
+            return;
+        }
+        final YamlConfiguration yaml = buildYaml();
+        final long seq = nextWriteSeq();
+        Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> writeYaml(yaml, seq));
+    }
+
+    /**
+     * 强制同步落盘，并作废尚未到期的防抖任务。
+     *
+     * <p>两个调用场景：① 插件关闭（`onDisable`）；② 玩家退出服务器（`PlayerQuitEvent`）。</p>
+     *
+     * <p><b>为什么退出时也必须同步写（不能靠防抖）：</b>防抖引入了一条玩家可主动制造的
+     * 刷物品路径 ——</p>
+     * <pre>
+     *   restore(P)  → goods.remove(P)，只登记了防抖任务
+     *   P 立刻 /quit → Bukkit 把「已归还物品」的背包写进 P 的 .dat
+     *   下一个 tick 之前服务器非优雅关闭（kill / 断电 / OOM）→ 防抖任务未执行
+     *   → 磁盘上仍是 P 的【进竞技场前】旧快照
+     *   重启 → onPlayerJoin 的 has(P) 为 true → 再归还一次 → 物品翻倍
+     * </pre>
+     * <p>退出事件是这条时序里唯一能稳定插桩的位置：玩家一走就当场写完，之后无论进程怎么死，
+     * 磁盘状态都与内存一致。写盘仍走 {@link #writeYaml}（唯一临时名 + 锁），只是不等防抖窗口。</p>
+     */
+    public void saveNow() {
+        cancelScheduledSave();
+        // 序号在这里分配（主线程），锁内校验 —— 使任何更早发起、尚未落盘的在途异步写放弃写入，
+        // 从而不会把这次写对的内容覆盖成陈旧快照
+        writeYaml(buildYaml(), nextWriteSeq());
+    }
+
+    /** 取消尚未到期的防抖任务（幂等）；不清 saveScheduled 之外的任何状态。 */
+    private void cancelScheduledSave() {
+        saveScheduled = false;
+        if (pendingSaveTask != null) {
+            pendingSaveTask.cancel();
+            pendingSaveTask = null;
         }
     }
 

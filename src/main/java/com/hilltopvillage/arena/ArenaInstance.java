@@ -440,11 +440,21 @@ public class ArenaInstance implements IArena {
         }
         spectators.remove(uuid);
         plugin.getMultiArenaManager().forgetPlayerArena(uuid);
+
+        // 结算本局统计，必须在 gameManager.removeOfflinePlayer() <b>之前</b>取数：
+        // 后者会 playerDataMap.remove(uuid)，之后再读就只能拿到一份全新的空 PlayerData
+        // （kills / deaths / nodes-repaired 全为 0），等于该玩家这一局白打。
+        // 掉线玩家拿不到在线 Player 对象，因此走按 UUID 的 recordOffline 重载。
+        PlayerData sessionData = gameManager.getPlayerData(uuid);
+        if (sessionData != null) {
+            plugin.getStatsManager().recordOffline(uuid, playerName, sessionData, sessionVictory,
+                    gameManager.getCurrentWave());
+        }
+
         gameManager.removeOfflinePlayer(uuid);
 
         if (state != GameState.ENDING && playerName != null) {
-            broadcastI18n("player-left", playerName, String.valueOf(getPlayerCount()),
-                    String.valueOf(getMaxPlayers()));
+            broadcastI18n("player-left", playerName, getPlayerCount(), getMaxPlayers());
         }
     }
 
