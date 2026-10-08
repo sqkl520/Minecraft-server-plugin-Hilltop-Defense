@@ -89,6 +89,10 @@ public class DeployMenuSender {
                 lang.getFor(player, "deploy.desc-confirmclear"));
         sendClickableLine(player, "deploy.cmd-reloadnodes", "/hilltop deploy reloadnodes", hover,
                 lang.getFor(player, "deploy.desc-reloadnodes"));
+        sendClickableLine(player, "deploy.cmd-addvillager", "/hilltop deploy addvillager", hover,
+                lang.getFor(player, "deploy.desc-addvillager"));
+        sendClickableLine(player, "deploy.cmd-listvillagers", "/hilltop deploy listvillagers", hover,
+                lang.getFor(player, "deploy.desc-listvillagers"));
 
         player.sendMessage("");
     }

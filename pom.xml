@@ -31,6 +31,13 @@
             <version>1.21.4-R0.1-SNAPSHOT</version>
             <scope>provided</scope>
         </dependency>
+        <!-- STORY-0.3 Spike: JUnit5 仅 test-scope（示例测试用），不打进插件 JAR -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>5.10.1</version>
+            <scope>test</scope>
+        </dependency>
     </dependencies>
 
     <build>

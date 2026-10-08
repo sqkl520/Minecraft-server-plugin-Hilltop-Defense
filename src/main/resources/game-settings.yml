@@ -52,9 +52,9 @@ hammer:
   custom-model-data: 0
   # 是否启用 ItemsAdder 模型（true/false）
   use-itemsadder: false
-  # 基础伤害值（旧版兼容，v1.1+ 推荐使用下方 tier 节点）
+  # 基础伤害值（已废弃：v1.1+ 由 tier 三档直接定伤害，不再读取）
   base-damage: 20.0
-  # AOE 效果半径（旧版兼容）
+  # AOE 效果半径（已废弃：v1.1+ 由 tier 三档直接定范围，不再读取）
   effect-radius: 5.0
   # 余震减速持续时长（tick，20 tick = 1 秒）
   aftershock-ticks: 60
@@ -76,7 +76,7 @@ hammer:
       charge: 10.0    # 触发高档所需的下落距离（格）
       damage: 60.0    # 高档造成伤害
       radius: 6.5     # 高档AOE范围（格）
-  # === 旧版倍率字段（向后兼容，v1.1+ 不使用） ===
+  # 旧版倍率字段（向后兼容，已废弃：v1.1+ 由 tier 三档直接定伤害/范围，不再读取）
   damage-low-threshold: 5.0
   damage-medium-threshold: 10.0
   damage-low-multiplier: 1.5

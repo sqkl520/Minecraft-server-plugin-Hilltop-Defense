@@ -2,6 +2,11 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Added（2026-10-09 — 第一波 P0：STORY-0.2 + STORY-0.3）
+
+- **STORY-0.2 文档小债务批处理**：plugin.yml usage 补全 24 个子命令；messages.yml zh 区 13 个重复键去重（删旧版"喵"体、保留守卫战新版，en/zh 各 816 键对齐）；help 输出与 TabCompleter 的 admin 判定已一致（已分组、无需改代码）；deploy 菜单补村民两行 + 4 个新 i18n 键（en/zh）；goto 上限 1-7→1-8、deploy.cmd-setup 6步→8步、商店步骤"跳过"改为"必填"（en/zh 文案 + README 双语同步）；README 双语依赖统一 Paper 1.21.4+/Java 21、删不存在的 `deploy help`（实为 `confirmclear`）、补全 setup 子命令表（preview/goto/villagers-done，删不存在的 skip-shop）、help 标注管理员、README-EN 补齐商店必填/村民必填说明；game-settings.yml 废弃字段注释明确"已废弃：不再读取"
+- **STORY-0.3 工程地基**：新增 `docs/07-guides/JDK21-BUILD-GUIDE.md`（JDK21 构建指引）与 `docs/07-guides/TEST-FRAMEWORK-SPIKE.md`（JUnit5 go + MockBukkit no-go 结论）；新增示例测试 `src/test/java/.../SpikeSanityTest.java`（纯逻辑、零 Bukkit 依赖，`mvn test` 可跑，3/3 通过）；pom 仅加 JUnit5 test-scope 依赖（无 MockBukkit），`mvn clean package` 保持 BUILD SUCCESS 零警告
+
 > 本版本为持续开发与服务器实测版本，包含部署向导、Multi-Arena Phase 1、i18n 修复、性能优化和村民商店系统。
 
 ### Changed（2026-10-07 — 性能审计批次 C：热路径）

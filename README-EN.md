@@ -59,7 +59,7 @@ Killing wave monsters has a chance to drop **Energy Crystals** (currency; defaul
 
 **Shop villager deployment**:
 
-- Setup wizard Step 5 (`/hilltop setup`): stand at the target spot and click [Set Shop Location], or click [Skip] for no shop this map
+- Setup wizard Step 6 (`/hilltop setup`): stand at the target spot and click [Set Shop Location] (required — deployment cannot finish without a shop location)
 - The position persists per arena in the `arenas.<id>.shop-npc` node of `arenas.yml` and auto-restores on restart; leftover duplicate entities are cleaned up automatically on startup
 - The shop villager is invulnerable (all damage cancelled) and non-interactive — it exists purely as the shop entry
 
@@ -178,8 +178,8 @@ Go to the **arena world** and run:
 | 2/8 Set core | Stand at the village core location (the player respawn point) | Click [Set as Core] |
 | 3/8 Spawn points | Monster birth positions (**at least 1 required**) | Walk to each spawn location, click [Add Current Location] in chat; click [Open Spawn Manager] to review/delete; click [Done] in the GUI |
 | 4/8 Node registration | Register respawn anchors as energy nodes | **Place the respawn anchor blocks first**, stand next to one and click [Add Node]; click [Done] |
-| 5/8 Villagers | Positions of villagers to protect (**all dead = game lost**) | Walk to a spot and click [Add Villager]; use [List Villagers] to review; click [Done] |
-| 6/8 Shop location | Where the villager shop NPC stands (optional) | Stand where you want it and click [Set Shop Location], or click [Skip] |
+| 5/8 Villagers | Positions of villagers to protect (**all dead = game lost**, **at least 1 required**) | Walk to a spot and click [Add Villager]; click [Villager Manager] to review/delete; click [Done] when finished |
+| 6/8 Shop location | Where the villager shop NPC stands (**required — deployment cannot finish without it**) | Stand where you want it and click [Set Shop Location] |
 | 7/8 Config preview | Overview of core/spawns/nodes/villagers/players/waves | Click [Confirm & Save] in the GUI |
 | 8/8 Done | Shows the start entry | Click /hilltop start in chat |
 
@@ -392,7 +392,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop lang <en\|zh>` | Switch language |
 | `/hilltop start [arena]` | Start the game (Admin) |
 | `/hilltop stop [arena]` | Force stop the game (Admin) |
-| `/hilltop help` | Show command help |
+| `/hilltop help` | Show command help (Admin) |
 | `/hilltop list` | List all arenas |
 | `/hilltop arenas` | Detailed arena status (Admin) |
 | `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/spawn point/villager, edit game parameters, restore initial state (Admin) |
@@ -408,7 +408,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 
 | Command | Description |
 |------|------|
-| `help` | Show command help |
+| `confirmclear` | Confirm clearing all spawn points (the second confirmation for `clearspawns`) |
 | `setcore` | Set current location as game core |
 | `addspawn` | Add current location as monster spawn point |
 | `listspawns` | List all spawn points |
@@ -434,12 +434,15 @@ Available while the wizard is in progress (normally triggered via clickable chat
 | `spawns-done` | Finish spawn point setup (Step 3, kept for backward compat; use [Done] in the GUI) |
 | `confirm-nodes` | Confirm energy node scan result (Step 4) |
 | `rescan` | Rescan energy nodes and re-send the Step 4 message (Step 4) |
-| `confirm-shop` | Set current location as shop villager position and spawn the NPC immediately (Step 5) |
-| `skip-shop` | Skip shop deployment; no shop villager this map (Step 5) |
+| `villagers-done` | Finish villager placement and move to the shop step (Step 5, requires at least 1 villager) |
+| `confirm-shop` | Set current location as shop villager position and spawn the NPC immediately (Step 6, **required**) |
+| `preview` | Open the config preview GUI (Step 7; refused with a jump back if spawns/villagers/shop are missing) |
+| `goto <step>` | Jump to a specific step (1-8) |
 
 > Step 3 is chat-first: walk to a spawn location, then click the [Add Current Location] chat button to record it (feedback: "Spawn point #N added"). [Open Spawn Manager] opens a 54-slot GUI (45 entries per page) to review/delete spawn points at any time. The [Done] button lives in the manager GUI (slot 51) — no [Done] button in chat to avoid misclicks.
 > Step 4 explains that energy nodes are respawn anchors placed in the world (auto-detected); place more blocks and click [Rescan Nodes] to recount.
-> Step 5 shop location is optional: skipping means no shop villager this map. The shop villager position persists per arena in the `arenas.<id>.shop-npc` node of `arenas.yml` and auto-restores on server restart; leftover duplicate shop villager entities are cleaned up automatically on plugin startup.
+> Step 5 villagers are a **defeat condition**: the game is lost if all of them die, so place at least 1. Walk around and click [Add Villager] to record, [Villager Manager] to review, [Done] to continue.
+> Step 6 shop location is **required**: a shop villager position must be set before deployment can finish. The shop villager position persists per arena in the `arenas.<id>.shop-npc` node of `arenas.yml` and auto-restores on server restart; leftover duplicate shop villager entities are cleaned up automatically on plugin startup.
 > `/hilltop start` validates first: if a game is already running it tells you to stop first; if player count is below min-players it reports current/required counts instead of failing silently.
 
 ### Config Sub-commands (`/hilltop config`)
@@ -578,8 +581,8 @@ See the individual files under `plugins/HilltopVillage/` for the complete refere
 
 ## Dependencies
 
-- Paper 1.19+
-- Java 17+
+- Paper 1.21.4+
+- Java 21
 - ItemsAdder (optional, for custom item/monster models)
 
 ## Build
