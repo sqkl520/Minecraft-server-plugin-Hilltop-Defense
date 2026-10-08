@@ -41,6 +41,3 @@ permissions:
   hilltopvillage.config.nodes:
     description: Configure energy node settings
     default: false
-  hilltopvillage.player:
-    description: Player commands for Hilltop Village
-    default: true

@@ -52,7 +52,8 @@ public class HilltopTabCompleter implements TabCompleter {
                             || sub.equals("setup") || sub.equals("deploy") || sub.equals("config")
                             || sub.equals("reloadconfig") || sub.equals("shop") || sub.equals("tps")
                             || sub.equals("build") || sub.equals("arenas") || sub.equals("manage")
-                            || sub.equals("enable") || sub.equals("disable");
+                            || sub.equals("enable") || sub.equals("disable")
+                            || sub.equals("hammer") || sub.equals("fireball");
                     if (isAdmin && !sender.hasPermission("hilltopvillage.admin")) continue;
                     completions.add(sub);
                 }

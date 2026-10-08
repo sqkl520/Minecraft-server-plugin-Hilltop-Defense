@@ -192,6 +192,10 @@ public class HilltopCommandHandler {
             }
 
             case "hammer":
+                if (!sender.hasPermission("hilltopvillage.admin")) {
+                    sender.sendMessage(lang.getFor(player, "no-permission"));
+                    return true;
+                }
                 if (!isPlayer) {
                     sender.sendMessage(lang.get("players-only"));
                     return true;
@@ -201,6 +205,10 @@ public class HilltopCommandHandler {
                 break;
 
             case "fireball":
+                if (!sender.hasPermission("hilltopvillage.admin")) {
+                    sender.sendMessage(lang.getFor(player, "no-permission"));
+                    return true;
+                }
                 if (!isPlayer) {
                     sender.sendMessage(lang.get("players-only"));
                     return true;
@@ -240,6 +248,8 @@ public class HilltopCommandHandler {
                 }
                 plugin.getConfigManager().loadFromFile();
                 sender.sendMessage(lang.getFor(player, "config-reloaded"));
+                plugin.getLanguageManager().reload();
+                sender.sendMessage(lang.getFor(player, "messages-reloaded"));
                 // 竞技场参数来自 arenas.yml，无法热重载，明确告知管理员需重启
                 sender.sendMessage(lang.getFor(player, "config.reload-arena-notice"));
                 break;
@@ -249,6 +259,10 @@ public class HilltopCommandHandler {
                 break;
 
             case "setup":
+                if (!sender.hasPermission("hilltopvillage.admin")) {
+                    sender.sendMessage(lang.getFor(player, "no-permission"));
+                    return true;
+                }
                 if (!isPlayer) {
                     sender.sendMessage(lang.get("players-only"));
                     return true;
@@ -334,6 +348,20 @@ public class HilltopCommandHandler {
 
             case "disable":
                 handleDisableArena(sender, args, player);
+                break;
+
+            case "shop":
+                if (!sender.hasPermission("hilltopvillage.admin")) {
+                    sender.sendMessage(lang.getFor(player, "no-permission"));
+                    return true;
+                }
+                if (args.length >= 2 && args[1].equalsIgnoreCase("reload")) {
+                    plugin.getShopManager().reload();
+                    int itemCount = plugin.getShopManager().getShopConfig().getItems().size();
+                    sender.sendMessage(lang.getFor(player, "shop-reloaded", String.valueOf(itemCount)));
+                    break;
+                }
+                sender.sendMessage(lang.getFor(player, "usage-shop-reload"));
                 break;
 
             default:

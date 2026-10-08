@@ -293,8 +293,8 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 
 | Tool | How to get it | Effect |
 |------|--------------|--------|
-| **Sacred Hammer** | `/hilltop hammer` or the shop | Right-click to leap and charge, then smash down for three-tier area damage (higher fall = more damage) |
-| **Fireball** | `/hilltop fireball` or the shop | Right-click to throw; explodes on impact for area damage + knockback + ignite |
+| **Sacred Hammer** | Buy from the shop (or Admin `/hilltop hammer`) | Right-click to leap and charge, then smash down for three-tier area damage (higher fall = more damage) |
+| **Fireball** | Buy from the shop (or Admin `/hilltop fireball`) | Right-click to throw; explodes on impact for area damage + knockback + ignite |
 | **World Tree Sap** | Kill ghasts / buy from the shop | Right-click a destroyed energy node to repair it |
 | **Node buffs** | Stand near an active node | Resistance + Regeneration (nodes are mobile healing fountains) |
 
@@ -387,8 +387,8 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop status [arena]` | View game status (wave/players/mobs/nodes/awaiting respawn) |
 | `/hilltop stats [player]` | View your own or someone else's stats |
 | `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths) |
-| `/hilltop hammer` | Get the Sacred Hammer |
-| `/hilltop fireball` | Get a Fireball |
+| `/hilltop hammer` | Get the Sacred Hammer (Admin; players buy from the shop) |
+| `/hilltop fireball` | Get a Fireball (Admin; players buy from the shop) |
 | `/hilltop lang <en\|zh>` | Switch language |
 | `/hilltop start [arena]` | Start the game (Admin) |
 | `/hilltop stop [arena]` | Force stop the game (Admin) |
@@ -399,7 +399,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop deploy` | Open deploy menu (Admin) |
 | `/hilltop setup` | 8-step guided setup wizard (Admin) |
 | `/hilltop config` | Open config center GUI (Admin) |
-| `/hilltop reloadconfig` | Reload game settings (Admin) |
+| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) |
 | `/hilltop shop reload` | Reload villager shop config (Admin) |
 | `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) |
 | `/hilltop tps` | TPS/MSPT diagnostics (Admin) |
@@ -455,7 +455,6 @@ Available while the wizard is in progress (normally triggered via clickable chat
 
 | Permission Node | Default | Description |
 |------|------|------|
-| `hilltopvillage.player` | true | Basic player permissions |
 | `hilltopvillage.admin` | OP | Admin permissions (includes all sub-permissions) |
 | `hilltopvillage.config.admin` | OP | Config center GUI access |
 | `hilltopvillage.config.rules` | false | Game rules configuration |

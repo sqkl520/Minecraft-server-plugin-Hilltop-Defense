@@ -39,8 +39,6 @@ public class DeployMenuSender {
         sendClickableLine(sender, "usage-list", "/hilltop list", hover);
         sendClickableLine(sender, "usage-stats", "/hilltop stats ", hover);
         sendClickableLine(sender, "usage-top", "/hilltop top ", hover);
-        sendClickableLine(sender, "usage-hammer", "/hilltop hammer", hover);
-        sendClickableLine(sender, "usage-fireball", "/hilltop fireball", hover);
         sendClickableLine(sender, "usage-lang", "/hilltop lang ", hover);
 
         // 管理员命令
@@ -48,6 +46,8 @@ public class DeployMenuSender {
             sender.sendMessage(lang.getFor(player, "usage-admin-header"));
             sendClickableLine(sender, "usage-start", "/hilltop start", hover);
             sendClickableLine(sender, "usage-stop", "/hilltop stop", hover);
+            sendClickableLine(sender, "usage-hammer", "/hilltop hammer", hover);
+            sendClickableLine(sender, "usage-fireball", "/hilltop fireball", hover);
             sendClickableLine(sender, "usage-setup", "/hilltop setup", hover);
             sendClickableLine(sender, "usage-deploy", "/hilltop deploy", hover);
             sendClickableLine(sender, "usage-config", "/hilltop config", hover);

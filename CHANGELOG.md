@@ -2,6 +2,19 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-09 — 第一波 STORY-1.1 命令权限漏洞修复）
+
+- **`hammer` / `fireball` / `setup` 追加 `hilltopvillage.admin` 权限检查**：无权限回 `no-permission`（复用既有键），OP/管理员行为不变
+- **Tab 补全隐藏 `hammer` / `fireball`**：无权限玩家一级补全不再看到这两条（`setup` 已在 admin 列表，无需改）
+- **删除 `hilltopvillage.player` 权限节点**：代码零引用，同步删 plugin.yml 节点 + README 双语权限表相关行
+- **README 双语命令表**：hammer/fireball 标注（管理员），权限表删除 player 行
+
+### Fixed（2026-10-09 — 第一波 STORY-1.7 热重载补齐）
+
+- **新增 `/hilltop shop reload` 分支**：原为 TabCompleter/README/usage 提及但 Handler 无分支的死命令，现真实调用 `ShopManager.reload()` 并回显商品数；非 reload 子参数回 usage 行；非 admin 拒绝，控制台拒绝（players-only）
+- **`reloadconfig` 顺带重读 messages.yml**：追加 `LanguageManager.reload()`，回显新增 `messages-reloaded` 键（en/zh）
+- **README 双语重载口径**：reloadconfig = game-settings.yml + monsters-config.yml + messages.yml；arenas.yml 仍需重启（保留既有说明）
+
 ### Added（2026-10-09 — 第一波 P0：STORY-0.2 + STORY-0.3）
 
 - **STORY-0.2 文档小债务批处理**：plugin.yml usage 补全 24 个子命令；messages.yml zh 区 13 个重复键去重（删旧版"喵"体、保留守卫战新版，en/zh 各 816 键对齐）；help 输出与 TabCompleter 的 admin 判定已一致（已分组、无需改代码）；deploy 菜单补村民两行 + 4 个新 i18n 键（en/zh）；goto 上限 1-7→1-8、deploy.cmd-setup 6步→8步、商店步骤"跳过"改为"必填"（en/zh 文案 + README 双语同步）；README 双语依赖统一 Paper 1.21.4+/Java 21、删不存在的 `deploy help`（实为 `confirmclear`）、补全 setup 子命令表（preview/goto/villagers-done，删不存在的 skip-shop）、help 标注管理员、README-EN 补齐商店必填/村民必填说明；game-settings.yml 废弃字段注释明确"已废弃：不再读取"

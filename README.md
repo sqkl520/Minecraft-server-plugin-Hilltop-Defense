@@ -331,8 +331,8 @@ arenas:
 
 | 手段 | 获取方式 | 效果 |
 |------|---------|------|
-| **神圣重锤** | `/hilltop hammer` 或商店购买 | 右键腾空蓄力，落地猛击造成三档范围伤害（跳得越高伤害越高） |
-| **烈焰蛋** | `/hilltop fireball` 或商店购买 | 右键投掷，命中爆炸造成范围伤害 + 击退 + 点燃 |
+| **神圣重锤** | 商店购买（或管理员 `/hilltop hammer`） | 右键腾空蓄力，落地猛击造成三档范围伤害（跳得越高伤害越高） |
+| **烈焰蛋** | 商店购买（或管理员 `/hilltop fireball`） | 右键投掷，命中爆炸造成范围伤害 + 击退 + 点燃 |
 | **世界树汁液** | 击杀下界恶魂 / 商店购买 | 右键失活的能量节点修复它 |
 | **节点 Buff** | 站在活跃节点附近 | 抗性提升 + 生命恢复（节点 = 移动泉水） |
 
@@ -428,8 +428,8 @@ arenas:
 | `/hilltop status [竞技场]` | 查看游戏状态（波次/玩家/怪物/节点/等待复活） |
 | `/hilltop stats [玩家名]` | 查看自己或他人的统计 |
 | `/hilltop top <类型>` | 查看排行榜（kills/wins/games/best-wave/nodes/deaths） |
-| `/hilltop hammer` | 获取神圣重锤 |
-| `/hilltop fireball` | 获取烈焰蛋 |
+| `/hilltop hammer` | 获取神圣重锤（管理员；玩家请去商店购买） |
+| `/hilltop fireball` | 获取烈焰蛋（管理员；玩家请去商店购买） |
 | `/hilltop lang <en\|zh>` | 切换语言 |
 | `/hilltop start [竞技场]` | 启动游戏（管理员） |
 | `/hilltop stop [竞技场]` | 强制停止游戏（管理员） |
@@ -442,7 +442,7 @@ arenas:
 | `/hilltop deploy` | 打开部署菜单（管理员） |
 | `/hilltop setup` | 8 步引导式部署向导（管理员） |
 | `/hilltop config` | 打开配置中心 GUI（管理员） |
-| `/hilltop reloadconfig` | 重载游戏配置文件（管理员） |
+| `/hilltop reloadconfig` | 重载游戏配置（game-settings.yml + monsters-config.yml + messages.yml）（管理员；arenas.yml 仍需重启） |
 | `/hilltop shop reload` | 重载村民商店配置（管理员） |
 | `/hilltop build` | 切换大厅建造模式（管理员，用于整修大厅） |
 | `/hilltop tps` | TPS/MSPT 诊断（管理员） |
@@ -498,7 +498,6 @@ arenas:
 
 | 权限节点 | 默认 | 说明 |
 |------|------|------|
-| `hilltopvillage.player` | true | 普通玩家基础权限 |
 | `hilltopvillage.admin` | OP | 管理员权限（包含所有子权限） |
 | `hilltopvillage.config.admin` | OP | 配置中心 GUI 访问权限 |
 | `hilltopvillage.config.rules` | false | 游戏规则配置权限 |
