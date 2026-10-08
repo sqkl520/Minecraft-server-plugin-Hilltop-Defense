@@ -15,8 +15,6 @@ import org.bukkit.entity.*;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
-import org.bukkit.potion.PotionEffect;
-import org.bukkit.potion.PotionEffectType;
 
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
@@ -70,8 +68,10 @@ public class WaveManager {
 
         int totalWeight = waveConfig.getTotalWeight();
         if (totalWeight <= 0) {
-            spawnDefaultWave(waveNumber);
-            if (onComplete != null) onComplete.run();
+            // 兜底路径同样走分批：原来这里是单 tick 同步生成 5+2×波数 只（第 20 波 = 45 只），
+            // 每只都要跑一次 getRandomSpawnLocation() + spawnEntity + addGoal，
+            // 是整局里最尖的单 tick 分配峰值。改用与正常路径相同的 3 tick / 2 只节奏。
+            spawnDefaultWave(waveNumber, onComplete);
             return;
         }
 
@@ -125,18 +125,53 @@ public class WaveManager {
         return waveConfig.getCompositions().keySet().iterator().next();
     }
 
-    private void spawnDefaultWave(int waveNumber) {
-        World world = gameManager.getGameWorld();
-        int count = DEFAULT_WAVE_BASE_COUNT + waveNumber * DEFAULT_WAVE_COUNT_PER_WAVE;
+    /**
+     * 兜底刷怪：{@code compositions} 被清空 / 权重合计为 0 时使用。
+     *
+     * <p>与 {@link #spawnWave(int, Runnable)} 采用完全相同的节奏（3 tick 一批、一批 2 只），
+     * 单 tick 实体生成量从「5+2×波数」降到 2。任务句柄同样写入 {@link #spawnTask}，
+     * 因此 {@link #cancelSpawnTask()}、{@link #clearAllMobs()} 与游戏结束的守卫都能覆盖到它
+     * —— 这一点很关键：兜底路径原来是同步的，不存在「任务还活着但游戏已结束」的窗口，
+     * 改成异步后必须补上 {@code isGameRunning()} 守卫，否则失败结算后仍会继续刷怪。</p>
+     *
+     * @param waveNumber 波次号（决定总只数）
+     * @param onComplete 全部生成完毕后回调（可为 null）
+     */
+    private void spawnDefaultWave(int waveNumber, Runnable onComplete) {
+        final int count = DEFAULT_WAVE_BASE_COUNT + waveNumber * DEFAULT_WAVE_COUNT_PER_WAVE;
+        final int[] spawned = {0};
 
-        for (int i = 0; i < count; i++) {
-            Location loc = getRandomSpawnLocation();
-            if (loc == null) continue;
-            Entity entity = world.spawnEntity(loc, EntityType.ZOMBIE);
-            if (entity instanceof Mob mob) {
-                prepareWaveMob(mob);
+        spawnTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                // 与正常路径同一守卫：游戏已结束/已停止时立刻自我终止
+                if (!gameManager.isGameRunning()) {
+                    cancelSpawnTask();
+                    return;
+                }
+
+                World world = gameManager.getGameWorld();
+                int batchCount = 0;
+                while (batchCount < SPAWN_BATCH_SIZE && spawned[0] < count) {
+                    Location loc = getRandomSpawnLocation();
+                    if (loc != null && world != null) {
+                        Entity entity = world.spawnEntity(loc, EntityType.ZOMBIE);
+                        if (entity instanceof Mob mob) {
+                            prepareWaveMob(mob);
+                        }
+                    }
+                    spawned[0]++;
+                    batchCount++;
+                }
+
+                if (spawned[0] >= count) {
+                    // 先置空句柄，再回调（回调内若再次 spawnWave 会写入新句柄），最后取消自身
+                    spawnTask = null;
+                    if (onComplete != null) onComplete.run();
+                    cancel();
+                }
             }
-        }
+        }.runTaskTimer(gameManager.getPlugin(), 0L, 3L);
     }
 
     /**
@@ -396,7 +431,10 @@ public class WaveManager {
             return null;
         }
 
-        List<Location> fixedPoints = gameManager.getSpawnPoints();
+        // 只读视图而非 getSpawnPoints()：后者每次都 new ArrayList<>(...)，
+        // 一波 80 只怪就要拷 80 次小数组。取出的元素下面立刻 clone() 再偏移，
+        // 不会改到 GameManager 内部的 Location 本体（视图的元素安全约束见该方法 Javadoc）。
+        List<Location> fixedPoints = gameManager.getSpawnPointsView();
         Location basePoint = fixedPoints.get(random.nextInt(fixedPoints.size())).clone();
 
         // 应用扩散半径（默认3.0格）

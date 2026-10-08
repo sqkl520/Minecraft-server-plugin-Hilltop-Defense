@@ -57,12 +57,33 @@ public class FireballListener implements Listener {
     private BukkitRunnable trailTicker;
     private volatile boolean trailTickerRunning;
 
+    /**
+     * 单个烈焰蛋飞行期间所需的配置子集。
+     *
+     * <p>原来这里存的是 {@code cfg.snapshot()} —— 一次深拷贝整份 GameConfig（含 monsters 与
+     * waves，20+ 个对象），而实际只读 5 个标量。改用 record 后每发一弹只分配 1 个对象。</p>
+     *
+     * <p>仍然是「发射瞬间的快照」：与原实现一致，飞行途中不随 reloadconfig 改变
+     * （原注释的理由保留：GameConfig 是可变对象且 reloadconfig 会原地改写字段）。</p>
+     */
+    private record FireballSnapshot(double explosionRadius, double damage, double knockback,
+                                    double proximityFuse, int maxTravelTicks) {
+        static FireballSnapshot of(GameConfig cfg) {
+            return new FireballSnapshot(
+                    cfg.getFireballExplosionRadius(),
+                    cfg.getFireballDamage(),
+                    cfg.getFireballKnockback(),
+                    cfg.getFireballProximityFuse(),
+                    cfg.getFireballMaxTravelTicks());
+        }
+    }
+
     /** 单个烈焰蛋的飞行状态（由 {@code tickTrails()} 遍历更新） */
     private static final class TrailState {
         /** 投射物本体 */
         private final Snowball projectile;
         /** 发射瞬间快照的配置（与原实现一致：飞行途中不随重载改变） */
-        private final GameConfig cfg;
+        private final FireballSnapshot cfg;
         /** 失效阈值（服务器 tick）；使用 long 防止 max-travel-ticks × 2 溢出。 */
         private final long expireTicks;
         /** 已飞行服务器 tick 数 */
@@ -70,13 +91,13 @@ public class FireballListener implements Listener {
 
         private TrailState(Snowball projectile, GameConfig cfg) {
             this.projectile = projectile;
-            // 必须存深拷贝快照：GameConfig 是可变对象且 reloadconfig 会原地改写字段，
+            // 必须存快照：GameConfig 是可变对象且 reloadconfig 会原地改写字段，
             // 直接持有引用会让飞行中的烈焰蛋读到重载后的新伤害/半径/击退。
-            // snapshot() 会连 monsters / waves 一并深拷贝，但只在发射瞬间调用一次，
-            // 相对 launchProjectile / 粒子开销可忽略，不属于热路径。
-            this.cfg = cfg.snapshot();
+            // 这里只抽取飞行期间真正会用到的 5 个标量，避免深拷贝整份 GameConfig
+            // （monsters / waves 与本状态无关）。
+            this.cfg = FireballSnapshot.of(cfg);
             // 寿命同样只从快照读取，保证 TrailState 内所有数值来自同一个不可变副本。
-            int maxTravelTicks = this.cfg.getFireballMaxTravelTicks();
+            int maxTravelTicks = this.cfg.maxTravelTicks();
             this.expireTicks = maxTravelTicks <= 0
                     ? 0L
                     : (long) maxTravelTicks * LEGACY_TRAIL_PERIOD_TICKS;
@@ -340,7 +361,7 @@ public class FireballListener implements Listener {
 
     /** 每 2 tick 使用原始近炸 AABB 查询，不扩大查询盒、不缓存密集实体结果。 */
     private boolean probeProximity(TrailState state, Location loc) {
-        double fuse = state.cfg.getFireballProximityFuse();
+        double fuse = state.cfg.proximityFuse();
         World world = loc.getWorld();
         if (fuse <= 0 || world == null) return false;
 
@@ -404,9 +425,10 @@ public class FireballListener implements Listener {
         }
 
         // state == null 仅用于兼容升级前或其他旧路径创建、但仍带 metadata 的投射物。
-        GameConfig cfg = state != null
+        // 该分支改用当前配置即时构造快照，与旧行为一致（旧行为也是每次读取当时的 activeConfig）。
+        FireballSnapshot cfg = state != null
                 ? state.cfg
-                : plugin.getConfigManager().getActiveConfig();
+                : FireballSnapshot.of(plugin.getConfigManager().getActiveConfig());
         triggerExplosion(projectile, impact, cfg);
     }
 
@@ -414,7 +436,7 @@ public class FireballListener implements Listener {
      * 触发烈焰蛋爆炸效果。由 ProjectileHitEvent 或近炸检测调用。
      * 在入口处读取 shooter/metadata 到局部变量，再移除 metadata，确保近炸路径也能正常获取投掷者信息。
      */
-    private void triggerExplosion(Snowball projectile, Location impact, GameConfig cfg) {
+    private void triggerExplosion(Snowball projectile, Location impact, FireballSnapshot cfg) {
         // 只处理一次，并再次验证命中世界仍对应运行中的竞技场。
         if (!projectile.hasMetadata("hilltop_fireball")) return;
 
@@ -461,9 +483,9 @@ public class FireballListener implements Listener {
         }
 
         // 范围伤害与击退（BedWars1058 风格公式：水平推离爆炸点 + 智能 Y 轴处理）
-        double radius = cfg.getFireballExplosionRadius();
-        double damage = cfg.getFireballDamage();
-        double knockback = cfg.getFireballKnockback();
+        double radius = cfg.explosionRadius();
+        double damage = cfg.damage();
+        double knockback = cfg.knockback();
         Collection<LivingEntity> nearby = world.getNearbyLivingEntities(impact, radius, radius, radius,
                 entity -> entity != null && entity.isValid());
 

@@ -358,6 +358,10 @@ Blocks broken or placed during a match are **rolled back automatically** when th
 - Sources: block break, block place, entity explosion, block explosion, natural changes (ice/snow melting), **water/lava placement and flow**
 - Fidelity: full block data (`BlockData` — facing, half, waterlogged, etc.) plus block-entity data (`TileState` for containers, signs, …) is stored, not just the material
 - Rollback is batched (max 200 blocks per tick) and does not trigger chain physics updates; **the next match is not opened until rollback fully succeeds**, and blocks that fail to restore keep their snapshot for retry
+  - Tune the per-tick batch with a JVM flag: `-Dhilltop.maprestore.blocksPerTick=400` (default `200`). Higher = faster rollback but more work per tick; invalid values (non-numeric / ≤ 0) fall back to 200 with a console WARNING
+- **Recording cap**: at most 1,000,000 block changes per world (roughly 140–170 MB). Past the cap, recording **stops** and one `SEVERE` line is logged; the rollback at the end of that match will be incomplete
+  - Why a cap exists: servers typically run a 3 GB heap, and 5 million block records need ~700–850 MB — enough to OOM outright. Stopping at 1M with a warning beats crashing the whole server
+  - A normal match will practically never reach it; if your map genuinely needs more, raise the cap alongside your heap size
 - Disable with `map-restore.enabled` in `game-settings.yml`
 
 ### Item protection

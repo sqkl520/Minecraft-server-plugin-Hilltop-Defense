@@ -100,8 +100,26 @@ public final class LocationParticlePreview {
                     // === 方案C：符文 + 垂直光柱（与 AdminDeployManager 视觉一致）===
 
                     // 1. 垂直光柱（END_ROD 白色粒子，从地面到 y+20）
+                    //
+                    // 【为什么保留 51 次逐点调用，不做「一次调用 + 大 offset」合并】
+                    // 性能审计建议合并为 1 次（count=51、中心 y+10、offset y=10），前提是
+                    // offset 为「均匀覆盖范围」。反编译 paper-1.21.4 核实该前提不成立：
+                    //   ServerLevel.sendParticlesSource(ServerPlayer,...)
+                    //     → 构造 ClientboundLevelParticlesPacket（字段名 xDist/yDist/zDist
+                    //       已用 javap 确认）→ private sendParticles(...) 里只做
+                    //       同世界 + 距离（32 格 / overrideLimiter 时 512 格）判定，不做范围变换。
+                    //   offset 的语义在客户端 ClientPacketListener#handleParticleEvent，
+                    //   该 jar 为纯服务端包（无 net/minecraft/client/*），故此项无法在本机核实，
+                    //   依据既有知识：count>0 时 offset 是高斯散布的标准差 σ，
+                    //   count==0 时才当作速度。
+                    // 两种口径下结论相同：无论 σ 还是均匀半径，σ=10 都会让约 32% 粒子
+                    // 落到 y<0 或 y>20 之外，且密度中浓端淡、地面起点消失 ——
+                    // 与现状不一致。因此保留逐点循环（本类的真实收益来自别处）。
+                    //
+                    // 另外：本方法在循环开头已有 `viewer.getWorld() != world` 与 64 格距离剔除，
+                    // 且每 4 tick 才跑一次、每个 viewer 一个任务，因此这条路径并不是热路径。
                     double beamHeight = 20.0;
-                    double beamStep = 0.4;  // 每0.4格一个粒子
+                    double beamStep = 0.4;  // 每0.4格一个粒子（y=0→20 共 51 次迭代）
                     for (double y = 0; y <= beamHeight; y += beamStep) {
                         world.spawnParticle(Particle.END_ROD,
                             loc.getX() + 0.5, loc.getY() + y, loc.getZ() + 0.5,

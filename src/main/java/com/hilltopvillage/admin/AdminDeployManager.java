@@ -101,8 +101,14 @@ public class AdminDeployManager {
                     // === 方案C：符文 + 垂直光柱 ===
 
                     // 1. 垂直光柱（END_ROD 白色粒子，从地面到 y+20）
+                    //
+                    // 【刻意不合并为「一次调用 + 大 offset」，原因见 LocationParticlePreview 同类注释】
+                    // count>0 时 offset 是高斯散布的标准差 σ（客户端 ClientPacketListener
+                    // 对每个粒子执行 pos += nextGaussian() × offset），不是 ±均匀范围。
+                    // 合并成 σ=10、中心 y+10 会有约 32% 粒子溢出到柱外、密度中浓端淡，
+                    // 地面起点消失 —— 视觉与现状不一致，故保留逐点循环。
                     double beamHeight = 20.0;
-                    double beamStep = 0.4;  // 每0.4格一个粒子
+                    double beamStep = 0.4;  // 每0.4格一个粒子（y=0→20 共 51 次迭代）
                     for (double y = 0; y <= beamHeight; y += beamStep) {
                         world.spawnParticle(Particle.END_ROD,
                             loc.getX() + 0.5, loc.getY() + y, loc.getZ() + 0.5,

@@ -110,7 +110,14 @@ public class ShopListener implements Listener {
             return;
         }
 
-        shopManager.removeCurrency(player, item.getPrice());
+        // 复核返回值：上面刚数过余额，这里理论上不会失败，但忽略返回值会让「将来有人把
+        // 本流程挪进异步 / 改成多线程」变成静默错扣（发货但不扣款）。补一行纯防御。
+        if (!shopManager.removeCurrency(player, item.getPrice())) {
+            player.sendMessage(lang.getFor(player, "shop.not-enough",
+                    String.valueOf(item.getPrice() - have)));
+            player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_NO, 1.0f, 1.0f);
+            return;
+        }
 
         ItemStack product = shopManager.deliverItem(item, player);
         if (product == null) {
@@ -134,8 +141,16 @@ public class ShopListener implements Listener {
         player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
 
         // ✅ 购买成功后更新 ActionBar 余额显示
-        int newBalance = shopManager.countCurrency(player);
-        player.sendActionBar(lang.getFor(player, "shop.currency-balance", String.valueOf(newBalance)));
+        // 余额 = 购买前余额 - 实际花费（避免第三次全背包扫描）。
+        // have 是所有格子的货币总和，扣掉 price 后剩余总量必然等于 have - price，
+        // 与货币分布在哪几格无关；removeCurrency 失败与 deliverItem 返回 null 两条路径
+        // 都已提前 return，不会走到这里。
+        // price <= 0 时 removeCurrency 会直接返回 true 且不扣除任何货币（见 ShopManager#removeCurrency），
+        // 此时真实余额仍是 have —— 用 max(0, price) 让这一边界与旧实现逐字一致。
+        // （ShopConfigLoader 现已把负数价格钳到 0，但这里仍然保留 max 以覆盖 price == 0 与将来改动）
+        int spent = Math.max(0, item.getPrice());
+        player.sendActionBar(lang.getFor(player, "shop.currency-balance",
+                String.valueOf(have - spent)));
     }
 
     /** 商品名（消息占位用）：shop.yml 直配优先，否则用 i18n 键值，最后回退材质名 */

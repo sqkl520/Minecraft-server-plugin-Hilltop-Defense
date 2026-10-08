@@ -118,6 +118,14 @@ public class ShopConfigLoader {
         }
 
         int price = yaml.getInt(path + ".price", 1);
+        // 负数价格会被 removeCurrency 直接判为「无需扣除」（amount <= 0 时返回 true），
+        // 于是变成「免费发货」——服主误配 -1 就会白送商品。钳到 0 并明确告警，
+        // 让 0（有意免费）与负数（误配）分得开，也不至于让整个条目被 skip 掉。
+        if (price < 0) {
+            plugin.getLogger().warning("shop.yml: item '" + id + "' has negative price " + price
+                    + ", clamped to 0 (free)");
+            price = 0;
+        }
         int amount = yaml.getInt(path + ".amount", 1);
 
         String name = yaml.getString(path + ".name");

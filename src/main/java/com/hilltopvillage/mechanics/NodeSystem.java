@@ -586,11 +586,24 @@ public class NodeSystem {
 
     private int countActiveNodesNear(Location playerLoc) {
         int count = 0;
+        // buffRadius 与 playerLoc 在循环内不会变化，提到循环外只算一次
+        double buffRadiusSq = buffRadius * buffRadius;
+        World playerWorld = playerLoc.getWorld();
         for (NodeData node : activeNodes) {
             if (!isRegisteredActive(node)) continue;
-            Location nodeLoc = node.getLocation();
-            if (nodeLoc.getWorld() != playerLoc.getWorld()) continue;
-            if (nodeLoc.distanceSquared(playerLoc) <= buffRadius * buffRadius) {
+            // 直读 node.location 而非 getLocation()：后者每次返回 location.clone()，
+            // 本方法位于 NodeSystem 顶层类内，可访问静态嵌套类 NodeData 的私有字段，
+            // 而这里只读坐标、不把 Location 交给外部，无需副本。
+            Location nodeLoc = node.location;
+            if (nodeLoc.getWorld() != playerWorld) continue;
+
+            // 手算 3D 距离平方：Location#distanceSquared 内部会做三次 getWorld() 判空/同世界
+            // 校验（上面已手动比较过 world），且坐标通过 getX/getY/getZ 直取字段。
+            // 必须保留 dy——原实现是 3D 距离平方，漏掉 Y 轴会改变判定结果。
+            double dx = nodeLoc.getX() - playerLoc.getX();
+            double dy = nodeLoc.getY() - playerLoc.getY();
+            double dz = nodeLoc.getZ() - playerLoc.getZ();
+            if (dx * dx + dy * dy + dz * dz <= buffRadiusSq) {
                 count++;
             }
         }
@@ -632,15 +645,30 @@ public class NodeSystem {
     public NodeData getNearestNode(Location location) {
         NodeData nearest = null;
         double nearestDistSq = Double.MAX_VALUE;
+        // location 在整个循环内不变，world 与坐标提到循环外只取一次
+        World targetWorld = location.getWorld();
+        double targetX = location.getX();
+        double targetY = location.getY();
+        double targetZ = location.getZ();
 
         for (NodeData node : activeNodes) {
             // 身份校验防止 reload / remove 后仍把旧 NodeData 当作合法目标
             if (!isRegisteredActive(node)) continue;
 
-            Location nodeLoc = node.getLocation();
-            if (nodeLoc.getWorld() != location.getWorld()) continue;
+            // 直读 node.location 而非 getLocation()：后者每次返回 location.clone()，
+            // 本方法位于 NodeSystem 顶层类内，可访问静态嵌套类 NodeData 的私有字段；
+            // 这里只读坐标，不把 Location 交给外部，因此不需要副本。
+            Location nodeLoc = node.location;
+            // 与原实现一致的引用比较（两个 world 同为 null 时也会像原来一样跳过）
+            if (nodeLoc.getWorld() != targetWorld) continue;
 
-            double distSq = nodeLoc.distanceSquared(location);
+            // 手算 3D 距离平方：上面已手动比较过 world，Location#distanceSquared 内部的
+            // 判空与同世界校验就成了纯开销。必须保留 dy——原实现是 3D 距离平方。
+            double dx = nodeLoc.getX() - targetX;
+            double dy = nodeLoc.getY() - targetY;
+            double dz = nodeLoc.getZ() - targetZ;
+            double distSq = dx * dx + dy * dy + dz * dz;
+            // 严格小于：并列时保留先遍历到的节点，与原实现逐字一致
             if (distSq < nearestDistSq) {
                 nearestDistSq = distSq;
                 nearest = node;

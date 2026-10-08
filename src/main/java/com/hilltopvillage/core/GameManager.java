@@ -500,6 +500,26 @@ public class GameManager {
     }
 
     /**
+     * 生成点列表的<b>只读视图</b>（不拷贝列表，也不克隆其中的 {@link Location}）。
+     *
+     * <p>供「每只怪生成时都要读一次」的热路径使用：{@link #getSpawnPoints()} 每次都
+     * {@code new ArrayList<>(...)}，刷一波 80 只怪就要拷 80 次小数组。本方法只包一层
+     * {@code unmodifiableList}，调用方只能读，改不动内部列表。</p>
+     *
+     * <p><b>使用约束：</b>返回的视图绑定在<b>当前</b>的 {@code arenaSpawnPoints} 实例上。
+     * {@link #setSpawnPoints(List)} 会整体替换该字段，因此视图<b>不可跨部署改动缓存</b>，
+     * 每次需要时重新调用本方法即可（热路径调用方正是这样做的）。</p>
+     *
+     * <p><b>元素安全：</b>视图中的 {@link Location} 仍是内部对象本体，调用方若直接
+     * {@code add}/{@code setWorld} 会改到内部状态。当前唯一的热路径调用方
+     * {@code WaveManager.getRandomSpawnLocation()} 取出元素后立刻 {@code clone()}
+     * 再对副本做扩散偏移，不会改到内部对象，因此使用视图是安全的。</p>
+     */
+    public List<Location> getSpawnPointsView() {
+        return Collections.unmodifiableList(arenaSpawnPoints);
+    }
+
+    /**
      * 检查是否有配置的生成点
      */
     public boolean hasSpawnPoints() {

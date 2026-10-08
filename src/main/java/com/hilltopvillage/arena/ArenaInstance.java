@@ -1040,12 +1040,15 @@ public class ArenaInstance implements IArena {
     private void clearDroppedItems() {
         World world = gameManager.getGameWorld();
         if (world == null) return;
+        // 原来用 world.getEntities() 物化世界里全部实体（含玩家、怪物、展示实体、经验球等），
+        // 再逐个 instanceof 过滤。已反编译核实（CraftRegionAccessor）：两个方法都遍历同一份
+        // getNMSEntities()、都对每个实体调 getBukkitEntity()，差别只在往中间 List 里塞多少 ——
+        // getEntitiesByClass 只把类型匹配的塞进去，因此省掉的是「非掉落物实体」的那部分
+        // List.add 与数组扩容。收益不算大，但改法零风险、语义完全一致。
         int removed = 0;
-        for (var entity : world.getEntities()) {
-            if (entity instanceof org.bukkit.entity.Item) {
-                entity.remove();
-                removed++;
-            }
+        for (org.bukkit.entity.Item item : world.getEntitiesByClass(org.bukkit.entity.Item.class)) {
+            item.remove();
+            removed++;
         }
         if (removed > 0) {
             plugin.getLogger().info("已清理 " + removed + " 个残留掉落物 (竞技场 " + arenaId + ")");

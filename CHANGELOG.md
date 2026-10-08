@@ -4,6 +4,88 @@
 
 > 本版本为持续开发与服务器实测版本，包含部署向导、Multi-Arena Phase 1、i18n 修复、性能优化和村民商店系统。
 
+### Changed（2026-10-07 — 性能审计批次 C：热路径）
+
+> 来源：`docs/01-reviews/PERF-AUDIT-2026-10-06.md` 第 8–20 条。本批全部是热路径上的
+> 分配与发包优化，**不改任何配置格式、命令、权限与游戏规则**。逐项可独立回滚（按文件粒度）。
+
+- **`HammerEffectRenderer` 三档猛击特效改用 double 坐标重载**：原实现每次
+  `spawnParticle` 前都 `center.clone().add(...)` 造一个 `Location`，高档一次猛击要造 467 个。
+  改用 `(double x, double y, double z)` 重载后归零。三份恒定的
+  `Material#createBlockData()` 同时提为静态常量（每次猛击少建 5 个对象）
+- **猛击粒子调用次数 375 → 210（高档 257 → 140，降 45%）**：环上点位减半、单点 `count` 翻倍，
+  **粒子总数不减少**（1348 → 1367）。代价是高档第 2/3 环的点位间距由 0.8/0.9 格拉到
+  1.6/1.7 格，环上点位会变稀 —— 已列入实测单由服主目视确认。火焰旋涡（间距 0.25→0.50 格）
+  与中档内环视觉上看不出差别
+- **`ArenaScoreboard` 加两级短路**：① 整帧输入签名（波次/存活/旁观/节点/村民/击杀/阵亡 +
+  玩家 locale）命中即整帧跳过；② 未命中时逐行比对文本，只重发真正变化的行。
+  `PlayerTeam#setPlayerPrefix` 在服务端**没有**相等性检查（已反编译核实），文本没变也会
+  重发整个 Team 包 —— 静止时从「每秒 7 次发包」降到 0
+- **`ArenaScoreboard` 标题随 locale 刷新**：locale 纳入签名后，玩家用 `/hilltop lang` 切语言时
+  侧边栏标题一并跟进（原实现每秒重拼字符串，1 秒内必然跟上；只加签名会让标题停在旧语言）
+- **`LanguageManager` 颜色码预编译 + 单遍占位符替换**：`translateAlternateColorCodes` 从
+  「每次取词」提前到「`reload()` 构建缓存时」，且无 `&` 的文本走捷径直接返回原串；
+  `{0}` 填充改为单遍 `StringBuilder`，替代原来的 `String.replace` 链（每次分配 int[16] 索引数组）。
+  等价性已用对照程序穷举验证（模板字符集 {A,{,},0,1} 长度 ≤6 全部组合 + 40 万次随机 fuzz，
+  共 51.7 万组输入）：两者只在下述 **4 类**输入上不同，且 4 类在本插件中**均不可达** ——
+  ① 模板含嵌套/交叠大括号（`messages.yml` 匹配数为 0）；② 数字索引带前导零如 `{01}`
+  （全部占位符只有 `{0}`–`{3}` 与 `{world}`，`\{[0-9]{2,}\}` 匹配数为 0）；
+  ③ 替换值自身含大括号（55 处多参数调用点的参数来源全部核对过：玩家名、世界名、竞技场 ID、
+  数字、`String.format` 结果、`shop.yml` 商品名，无一能含大括号）；
+  ④ 模板含落单大括号（去掉成对占位符后匹配数为 0）。另有一处纯健壮性差异：
+  `args == null` 时原实现 NPE、新实现返回模板原串，本插件无 `null` 调用点
+- **`ShopManager` 缓存货币显示名 + `ShopListener` 复用余额**：`isCurrency` 原来每扫一格背包就跑一次
+  `translateAlternateColorCodes` + `lang.get`，现改为 reload 时算好；一次购买的 3 次全背包扫描降到 1 次
+- **`FireballListener` 快照收窄为 5 个标量**：原来每发烈焰蛋都 `cfg.snapshot()` 深拷贝整份
+  `GameConfig`（含 monsters + waves，20+ 对象），实际只读 5 个数值。改用 `record` 后每发只分配 1 个对象
+- **`WaveManager` 兜底刷怪改分批**：`compositions` 被清空 / 权重为 0 时，原来单 tick 同步生成
+  `5+2×波数` 只（第 20 波 = 45 只），现改为与正常路径相同的「3 tick 一批、一批 2 只」
+- **4 个自定义 AI Goal 复用常量**：`GoalKey.of(...)` 每次调用都新建对象（已反编译核实无缓存），
+  且顺带 `new NamespacedKey(...)`；`EnumSet.of(...)` 同样每次新建。全部提为静态常量
+- **`NodeSystem` 半径扫描直读 `node.location`**：`getLocation()` 每次返回 `location.clone()`，
+  而两处扫描只读坐标。改为直读不可变字段 + 手算 3D 距离平方，省掉每节点一次 `Location` 分配
+- **`GameManager` 新增 `getSpawnPointsView()`**：`getSpawnPoints()` 每次 `new ArrayList<>(...)`，
+  刷一波 80 只怪就要拷 80 次小数组。热路径改用只读视图（元素仍 `clone()` 后再偏移，不改内部状态）
+- **`ArenaInstance.clearDroppedItems` 改用 `getEntitiesByClass(Item.class)`**：不再把世界里
+  全部实体物化进 List 再过滤
+- **`MapRestoreManager` 日志加容量上限（100 万条/世界）**：`OriginalBlock` 单条约 140–170 B，
+  500 万方块 ≈ 700–850 MB，而堆只有 3 GB。超限后停止记账并 SEVERE 告警一次
+  （每世界一次，日志销毁时重置标记），让服主知道本局回滚将不完整，而不是整个服务器 OOM
+- **`MapRestoreManager.BlockPos` 由 record 改为手写并缓存哈希**：record 的默认 `hashCode`
+  走 `ObjectMethods` + `StringConcatFactory`（拼字符串再哈希），而本类型是爆炸/水流记账路径上的
+  HashMap key，每方块都要查表。**收益来自「构造时缓存」而非公式选择**（手写不缓存的实测值与
+  record 基本相同），哈希公式 `(x*31+y)*31+z` 与 record 默认实现**不等价**（差常数项 `31³`），
+  但 HashMap 只要求 `hashCode` 与 `equals` 自洽，任何一致映射都合法
+
+#### Fixed（2026-10-07 — 批次 C 三维测试发现的 2 项，均非本批引入）
+
+> 来源：`docs/05-test-reports/batchC-code-rest.md`。两项都是**既有**问题（HEAD 上即可复现），
+> 属"改动极小、零风险、顺手清掉"，与本批优化无功能耦合。
+
+- **`ShopConfigLoader` 负数价格未钳制**：`price` 直接取 `yaml.getInt(path + ".price", 1)`，无下限。
+  而 `ShopManager#removeCurrency` 在 `amount <= 0` 时直接 `return true` 且不扣任何货币 ——
+  服主误配 `price: -1` 会变成**免费发货**。现钳到 `0` 并打 WARNING，使「0（有意免费）」与
+  「负数（误配）」在日志里分得开，且不会像非法 type/slot 那样整条 skip 掉
+- **`ShopListener.purchase` 忽略 `removeCurrency` 返回值**：当前同 tick 同线程内不会失败
+  （调用前刚数过余额，且 `removeCurrency` 内部会复核），属**安全但脆弱** —— 将来若有人把购买
+  流程挪进异步或改成多线程，就会退化成「发货但不扣款」的静默错扣。补一行防御性
+  `if (!shopManager.removeCurrency(...)) { 提示余额不足并 return; }`，走与前置检查相同的反馈
+
+#### 批次 C 中**刻意未做**的项（附理由）
+
+- **光柱粒子不做「一次调用 + 大 offset」合并**：性能审计原建议把整根柱子合并成 1 次
+  `spawnParticle`（count=51、offset=(0,10,0)），但那要求 offset 是「均匀覆盖范围」。
+  已用 `javap` 在 paper-1.21.4 上核实 `ServerLevel.sendParticlesSource` 与
+  `ClientboundLevelParticlesPacket`（字段 `xDist`/`yDist`/`zDist`）只是把 offset 原样下发，
+  不做范围变换；但 offset 在**客户端**的语义（`count > 0` 时为高斯标准差 σ、
+  `count == 0` 时才当速度）来自既有知识 —— 该 jar 是纯服务端包，
+  不含 `net/minecraft/client/*`，本机无法核实这一点。
+  好在两种口径下结论一致：σ=10 或 ±10 均匀范围都会让约 32% 粒子溢出柱外、
+  密度中浓端淡、地面起点消失。收益（51→1 次调用）远小于视觉回归，故保留逐点循环
+- **猛击环不做「按弧长动态取点」**：曾考虑按周长算点位以恒定间距，但那样半径 7.0 的外环
+  仍要 29 个点（省不下多少），而本次的「点位减半」方案省得更多、代价只是环变稀。
+  两者不能兼得，取了「省包优先」并如实记录视觉代价
+
 ### Changed（2026-10-07 — 性能审计批次 B：主线程 I/O 异步化）
 
 > 来源：`docs/01-reviews/PERF-AUDIT-2026-10-06.md`。本批把两个持久化组件的主线程全量同步写盘

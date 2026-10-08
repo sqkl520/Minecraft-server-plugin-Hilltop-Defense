@@ -33,6 +33,20 @@ public class AirdropSpawnGoal implements Goal<Mob> {
      */
     private static final int SCAN_RETRY_INTERVAL_TICKS = 20;
 
+    /**
+     * Goal 的身份键。
+     *
+     * <p>{@code GoalKey.of(...)} 每次调用都新建对象（已反编译 paper-api 1.21.4 的
+     * {@code GoalKey.of} 核实：字节码只有 {@code new GoalKey} + 构造，无任何缓存），
+     * 且还会顺带 {@code new NamespacedKey(...)}（其构造含键名合法性校验）。
+     * GoalKey 不可变并已实现 equals/hashCode，故提为常量复用完全安全。</p>
+     */
+    private static final GoalKey<Mob> KEY =
+            GoalKey.of(Mob.class, new NamespacedKey("hilltopvillage", "airdrop_spawn"));
+
+    /** GoalType 集合：{@code EnumSet.of} 每次都新建，同样提为常量。 */
+    private static final EnumSet<GoalType> TYPES = EnumSet.of(GoalType.MOVE, GoalType.LOOK);
+
     private final Mob dropper;
     private final GameManager gameManager;
     private final Random random;
@@ -111,12 +125,16 @@ public class AirdropSpawnGoal implements Goal<Mob> {
 
     @Override
     public GoalKey<Mob> getKey() {
-        return GoalKey.of(Mob.class, new NamespacedKey("hilltopvillage", "airdrop_spawn"));
+        return KEY;
     }
 
     @Override
     public EnumSet<GoalType> getTypes() {
-        return EnumSet.of(GoalType.MOVE, GoalType.LOOK);
+        // 返回副本：已反编译核实服务端只读取该集合（PaperMobGoals#getHandle 只做
+        // contains(TARGET)，MobGoalHelper#paperToVanilla 只迭代），但本实例经
+        // MobGoals#getGoal/getAllGoals 对外暴露，而 EnumSet 可变，故保留防御性副本。
+        // clone() 只是一次位掩码拷贝，比原来的 EnumSet.of（noneOf + 两次 add）更便宜。
+        return TYPES.clone();
     }
 
     private Location findDropLocation() {
