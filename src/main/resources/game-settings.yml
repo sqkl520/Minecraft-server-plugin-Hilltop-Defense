@@ -62,11 +62,15 @@ hammer:
   smash-timeout-ticks: 600
   # 铁砧特效显示时长（tick）
   visual-display-ticks: 20
+  # 每次猛击后的冷却时长（秒，0 表示无冷却）
+  cooldown-seconds: 8.0
+  # 重锤总可用次数（耗尽碎裂需商店回购，0 表示无限）
+  max-uses: 30
   # === 三档独立配置（每档设定自己的蓄力距离 / 伤害 / 范围） ===
+  # 注意：低档无 charge 阈值 —— 下落距离 < medium.charge 即判低档
   tier:
     low:
-      charge: 1.0     # 触发低档所需的下落距离（格）
-      damage: 30.0    # 低档造成伤害
+      damage: 20.0    # 低档造成伤害（甲虫 40 血需两下低档，中心命中）
       radius: 4.0     # 低档AOE范围（格）
     medium:
       charge: 5.0     # 触发中档所需的下落距离（格）

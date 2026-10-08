@@ -92,6 +92,17 @@ public class NodeListener implements Listener {
         if (!gameManager.getNodeSystem().isNodeBlock(clickedBlock)) return;
 
         Player player = event.getPlayer();
+
+        // STORY-1.8：只在对局运行（含休整整备）时允许修节点，等待区/结算期拒绝并提示
+        if (!gameManager.isGameRunning()) {
+            ItemStack probe = player.getInventory().getItemInMainHand();
+            if (isRepairItem(probe)) {
+                event.setCancelled(true);
+                player.sendMessage(lang.getFor(player, "node.repair-not-running"));
+            }
+            return;
+        }
+
         ItemStack item = player.getInventory().getItemInMainHand();
 
         if (isRepairItem(item)) {

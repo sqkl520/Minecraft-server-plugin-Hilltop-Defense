@@ -520,6 +520,7 @@ en:
   # === 节点修复物品 Lore ===
   node.repair-item-lore1: "&7Right-click an energy node to repair it"
   node.repair-item-lore2: "&aRestores {0} health per repair item consumed"
+  node.repair-not-running: "&cYou can only repair nodes while a game is running."
 
   # === 物品名称 ===
   item.hammer-name: "&6&lSacred Hammer"
@@ -539,6 +540,10 @@ en:
   hammer.tier.high: "High"
   hammer.tier.medium: "Medium"
   hammer.tier.low: "Low"
+  hammer.lore-uses: "&7Uses left: &f{0}"
+  hammer.cooldown: "&cHammer cooling down, {0}s left"
+  hammer.broken: "&cYour Sacred Hammer has shattered! Buy a new one from the shop."
+  hammer.not-running: "&cYou can only use the hammer while a game is running."
 
   # === 烈焰蛋 ===
   fireball.lore-use: "&7Right-click to throw. Explodes on hit."
@@ -702,8 +707,10 @@ en:
   config.menu.items.hammer.aftershock: "Aftershock Duration (tick)"
   config.menu.items.hammer.aftershock-desc: "Slowness duration for monsters after landing"
   config.menu.items.hammer.low-tier: "&a&lLow Tier"
-  config.menu.items.hammer.low-charge: "Charge Distance (blocks)"
-  config.menu.items.hammer.low-charge-desc: "Fall distance to trigger low tier"
+  config.menu.items.hammer.cooldown: "Cooldown (sec)"
+  config.menu.items.hammer.cooldown-desc: "Cooldown after each smash (0 = none)"
+  config.menu.items.hammer.max-uses: "Max Uses"
+  config.menu.items.hammer.max-uses-desc: "Hammer shatters after this many smashes (0 = infinite)"
   config.menu.items.hammer.low-damage: "Damage"
   config.menu.items.hammer.low-damage-desc: "Damage dealt at low tier"
   config.menu.items.hammer.low-radius: "Radius (blocks)"
@@ -1423,6 +1430,7 @@ zh:
   # === 节点修复物品 Lore ===
   node.repair-item-lore1: "&7右键能量节点来修复它"
   node.repair-item-lore2: "&a每消耗一个修复物品恢复 {0} 点生命值"
+  node.repair-not-running: "&c只有在对局进行中才能修复节点。"
   node.destroyed: "&c一个能量节点已被摧毁！"
   node.repaired: "&a一个能量节点已被修复！"
   nodes.scan-empty-hint: "&e未找到能量节点。请在地图上放置重生锚方块，然后在部署向导 Step 4 中注册为节点。"
@@ -1447,6 +1455,10 @@ zh:
   hammer.tier.high: "高档"
   hammer.tier.medium: "中档"
   hammer.tier.low: "低档"
+  hammer.lore-uses: "&7剩余次数: &f{0}"
+  hammer.cooldown: "&c重锤冷却中，还剩 {0} 秒"
+  hammer.broken: "&c你的神圣重锤碎裂了！去商店回购一把新的吧。"
+  hammer.not-running: "&c只有在对局进行中才能使用重锤。"
 
   # === 烈焰蛋 ===
   fireball.lore-use: "&7右键投掷，命中后爆炸。"
@@ -1610,8 +1622,10 @@ zh:
   config.menu.items.hammer.aftershock: "余震时长(tick)"
   config.menu.items.hammer.aftershock-desc: "落地后怪物减速的持续时间"
   config.menu.items.hammer.low-tier: "&a&l低档"
-  config.menu.items.hammer.low-charge: "蓄力距离(格)"
-  config.menu.items.hammer.low-charge-desc: "下落距离达到此值触发低档"
+  config.menu.items.hammer.cooldown: "冷却(秒)"
+  config.menu.items.hammer.cooldown-desc: "每次猛击后的冷却时长（0 = 无冷却）"
+  config.menu.items.hammer.max-uses: "总次数"
+  config.menu.items.hammer.max-uses-desc: "猛击此次数后锤子碎裂（0 = 无限）"
   config.menu.items.hammer.low-damage: "伤害"
   config.menu.items.hammer.low-damage-desc: "低档造成的伤害值"
   config.menu.items.hammer.low-radius: "范围(格)"

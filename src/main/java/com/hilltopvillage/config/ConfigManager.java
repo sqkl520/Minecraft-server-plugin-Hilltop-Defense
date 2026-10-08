@@ -90,7 +90,10 @@ public class ConfigManager {
         settingsYaml.set("hammer.aftershock-ticks", activeConfig.getHammerAftershockTicks());
         settingsYaml.set("hammer.smash-timeout-ticks", activeConfig.getHammerSmashTimeoutTicks());
         settingsYaml.set("hammer.visual-display-ticks", activeConfig.getHammerVisualDisplayTicks());
-        settingsYaml.set("hammer.tier.low.charge", activeConfig.getHammerLowCharge());
+        settingsYaml.set("hammer.cooldown-seconds", activeConfig.getHammerCooldownSeconds());
+        settingsYaml.set("hammer.max-uses", activeConfig.getHammerMaxUses());
+        // tier.low.charge 已删除（fall < medium 即 low，阈值无用）；磁盘残留键在此清掉，避免复活
+        settingsYaml.set("hammer.tier.low.charge", null);
         settingsYaml.set("hammer.tier.low.damage", activeConfig.getHammerLowDamage());
         settingsYaml.set("hammer.tier.low.radius", activeConfig.getHammerLowRadius());
         settingsYaml.set("hammer.tier.medium.charge", activeConfig.getHammerMediumCharge());
@@ -268,7 +271,9 @@ public class ConfigManager {
         if (settingsYaml.contains("hammer.damage-medium-multiplier")) activeConfig.setHammerDamageMediumMultiplier(settingsYaml.getDouble("hammer.damage-medium-multiplier"));
         if (settingsYaml.contains("hammer.damage-high-multiplier")) activeConfig.setHammerDamageHighMultiplier(settingsYaml.getDouble("hammer.damage-high-multiplier"));
         if (settingsYaml.contains("hammer.item-name")) activeConfig.setHammerItemName(settingsYaml.getString("hammer.item-name"));
-        if (settingsYaml.contains("hammer.tier.low.charge")) activeConfig.setHammerLowCharge(settingsYaml.getDouble("hammer.tier.low.charge"));
+        if (settingsYaml.contains("hammer.cooldown-seconds")) activeConfig.setHammerCooldownSeconds(settingsYaml.getDouble("hammer.cooldown-seconds"));
+        if (settingsYaml.contains("hammer.max-uses")) activeConfig.setHammerMaxUses(settingsYaml.getInt("hammer.max-uses"));
+        // tier.low.charge 已删除：load 时忽略磁盘残留键，不再读入
         if (settingsYaml.contains("hammer.tier.low.damage")) activeConfig.setHammerLowDamage(settingsYaml.getDouble("hammer.tier.low.damage"));
         if (settingsYaml.contains("hammer.tier.low.radius")) activeConfig.setHammerLowRadius(settingsYaml.getDouble("hammer.tier.low.radius"));
         if (settingsYaml.contains("hammer.tier.medium.charge")) activeConfig.setHammerMediumCharge(settingsYaml.getDouble("hammer.tier.medium.charge"));

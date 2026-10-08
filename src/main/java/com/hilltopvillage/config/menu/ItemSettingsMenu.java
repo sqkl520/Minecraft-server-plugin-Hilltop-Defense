@@ -71,11 +71,15 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
                 10, 200, 10, () -> cfg.getHammerAftershockTicks(), v -> cfg.setHammerAftershockTicks(v),
                 lang.getFor(admin, "config.menu.items.hammer.aftershock-desc"));
 
-        // Row 4: Low + Medium tier
+        addIntItem(23, Material.ANVIL, lang.getFor(admin, "config.menu.items.hammer.max-uses"), cfg.getHammerMaxUses(),
+                0, 1000, 5, () -> cfg.getHammerMaxUses(), v -> cfg.setHammerMaxUses(v),
+                lang.getFor(admin, "config.menu.items.hammer.max-uses-desc"));
+
+        // Row 4: Cooldown + Low tier
         setItem(28, Material.GREEN_WOOL, lang.getFor(admin, "config.menu.items.hammer.low-tier"));
-        addDblItem(29, Material.FEATHER, lang.getFor(admin, "config.menu.items.hammer.low-charge"), cfg.getHammerLowCharge(),
-                0.5, 30, 0.5, cfg::getHammerLowCharge, cfg::setHammerLowCharge,
-                lang.getFor(admin, "config.menu.items.hammer.low-charge-desc"));
+        addDblItem(29, Material.CLOCK, lang.getFor(admin, "config.menu.items.hammer.cooldown"), cfg.getHammerCooldownSeconds(),
+                0, 120, 1, cfg::getHammerCooldownSeconds, cfg::setHammerCooldownSeconds,
+                lang.getFor(admin, "config.menu.items.hammer.cooldown-desc"));
         addDblItem(30, Material.IRON_SWORD, lang.getFor(admin, "config.menu.items.hammer.low-damage"), cfg.getHammerLowDamage(),
                 1, 500, 5, cfg::getHammerLowDamage, cfg::setHammerLowDamage,
                 lang.getFor(admin, "config.menu.items.hammer.low-damage-desc"));

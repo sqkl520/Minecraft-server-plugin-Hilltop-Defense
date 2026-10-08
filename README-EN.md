@@ -15,7 +15,7 @@ A cooperative PvE tower defense plugin for Minecraft servers. Players must work 
 - **Energy Node System** — Respawn anchors act as energy nodes, buffing nearby players with Resistance + Regeneration; monsters can destroy them, players repair them with World Tree Sap; **when all are destroyed, fallen players can no longer respawn**
 - **Villagers to Protect** — Monsters attack villagers; **if every villager dies, the game is lost** (count set by the admin during deployment)
 - **Death & Respawn** — Fallen players spectate until the next wave, then respawn at the core; impossible while no node is active
-- **Sacred Hammer** — Right-click to leap and charge a smash attack from above, dealing three-tier area damage + particle shockwaves + aftershock slowdown; supports ItemsAdder custom models
+- **Sacred Hammer** — Right-click to leap and charge a smash attack from above, dealing three-tier area damage + particle shockwaves + aftershock slowdown; supports ItemsAdder custom models; smashes have a cooldown (8s default) and a use limit (30 default, shatters when exhausted — buy a new one from the shop); smashing and node repair only work while a game is running
 - **Fireball** — BedWars-style Fireball: right-click to throw with flame particle trail, explodes on impact for area damage + knockback + ignite; configurable cooldown
 - **Villager Shop** — Killing monsters drops Energy Crystals (configurable chance); right-click the shop villager to buy items; everything customizable in `shop.yml`
 - **Special Monster AI** — Explode Beetle (rushes nodes to self-destruct), Hook Claw Hunter (ranged hook grab + blindness), Flying Dropper (airdrops zombie squads); each supports armor/weapons/custom models
@@ -293,7 +293,7 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 
 | Tool | How to get it | Effect |
 |------|--------------|--------|
-| **Sacred Hammer** | Buy from the shop (or Admin `/hilltop hammer`) | Right-click to leap and charge, then smash down for three-tier area damage (higher fall = more damage) |
+| **Sacred Hammer** | Buy from the shop (or Admin `/hilltop hammer`) | Right-click to leap and charge, then smash down for three-tier area damage (higher fall = more damage); has a cooldown and a use limit — shatters when exhausted and must be repurchased |
 | **Fireball** | Buy from the shop (or Admin `/hilltop fireball`) | Right-click to throw; explodes on impact for area damage + knockback + ignite |
 | **World Tree Sap** | Kill ghasts / buy from the shop | Right-click a destroyed energy node to repair it |
 | **Node buffs** | Stand near an active node | Resistance + Regeneration (nodes are mobile healing fountains) |

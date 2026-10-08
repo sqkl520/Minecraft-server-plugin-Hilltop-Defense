@@ -2,6 +2,17 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-09 — 第一波 STORY-1.3 重锤冷却 + 耐久 + 低档下调）
+
+- **新增 `hammer.cooldown-seconds`**（默认 8 秒，时间戳方案无需 ticker，冷却中激活被拒 + ActionBar 提示剩余秒数）
+- **新增 `hammer.max-uses`**（默认 30 次，每次猛击耗 1 次，剩余次数显示在 lore 第 4 行，耗尽碎裂需商店回购）
+- **`tier.low.damage` 30.0→20.0**（甲虫 40 血需两下低档，中心命中）；删除未使用的 `tier.low.charge` 开关（GameConfig/ConfigManager/YAML/GUI 同步删，对应 GUI 槽位改放冷却配置）
+
+### Fixed（2026-10-09 — 第一波 STORY-1.6 B组部分 + STORY-1.8 B组部分）
+
+- **STORY-1.6（B 组部分）重锤 AOE 豁免村民**：`VillagerSystem` 新增公共方法 `isVillageVillager(Entity)` 供三处 AOE 共用（C 组 FireballListener/甲虫直接调用）；`HammerListener.applyAreaDamage`/`applyAftershock` 跳过标记村民（伤害/击退/减速全豁免）
+- **STORY-1.8（B 组部分）重锤/修节点对局状态检查**：`HammerListener.onPlayerInteract` 与 `NodeListener.onPlayerInteract` 加 `isGameRunning()` 检查（休整期允许，RUNNING/休整期均正常），等待区/结算期触发被拒并提示
+
 ### Fixed（2026-10-09 — 第一波 STORY-1.1 命令权限漏洞修复）
 
 - **`hammer` / `fireball` / `setup` 追加 `hilltopvillage.admin` 权限检查**：无权限回 `no-permission`（复用既有键），OP/管理员行为不变

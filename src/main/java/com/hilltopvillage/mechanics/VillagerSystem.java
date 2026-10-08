@@ -36,6 +36,28 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public class VillagerSystem {
 
+    /**
+     * 村民标记 PDC 键名（{@code hilltopvillage:village-villager} 的键部分）。
+     *
+     * <p>字符串常量化后，静态方法可不依赖插件实例构造 {@link NamespacedKey}，
+     * 供烈焰蛋 / 重锤 / 甲虫自爆三处 AOE 共用同一判定。</p>
+     */
+    public static final String VILLAGE_VILLAGER_KEY = "village-villager";
+
+    /**
+     * 判断实体是否为本插件生成的待保护村民（供三处 AOE 豁免共用）。
+     *
+     * @param entity 待判定实体（null 安全）
+     * @return PDC 含 {@code hilltopvillage:village-villager} 标记时返回 true
+     */
+    public static boolean isVillageVillager(Entity entity) {
+        if (entity == null) return false;
+        HilltopVillagePlugin plugin = HilltopVillagePlugin.getPlugin(HilltopVillagePlugin.class);
+        if (plugin == null) return false;
+        return entity.getPersistentDataContainer().has(
+                new NamespacedKey(plugin, VILLAGE_VILLAGER_KEY), PersistentDataType.BYTE);
+    }
+
     private final HilltopVillagePlugin plugin;
     private final GameManager gameManager;
     private final NamespacedKey villagerKey;
@@ -44,7 +66,7 @@ public class VillagerSystem {
     public VillagerSystem(HilltopVillagePlugin plugin, GameManager gameManager) {
         this.plugin = plugin;
         this.gameManager = gameManager;
-        this.villagerKey = new NamespacedKey(plugin, "village-villager");
+        this.villagerKey = new NamespacedKey(plugin, VILLAGE_VILLAGER_KEY);
     }
 
     /* ========== 生成 / 清理 ========== */

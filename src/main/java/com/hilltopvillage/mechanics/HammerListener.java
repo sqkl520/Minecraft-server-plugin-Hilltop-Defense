@@ -21,7 +21,9 @@ import org.bukkit.event.player.PlayerMoveEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.inventory.meta.Damageable;
 import org.bukkit.inventory.meta.ItemMeta;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.plugin.Plugin;
 import org.bukkit.potion.PotionEffect;
 import org.bukkit.potion.PotionEffectType;
@@ -33,6 +35,9 @@ import java.util.concurrent.ConcurrentHashMap;
 
 public class HammerListener implements Listener {
 
+    /** 重锤剩余次数 PDC 键（存发锤时的 max-uses 快照，每次猛击 -1） */
+    private static final String HAMMER_USES_KEY = "hammer-uses-left";
+
     private final HilltopVillagePlugin plugin;
     private final LanguageManager lang;
     private final String hammerName;
@@ -40,6 +45,8 @@ public class HammerListener implements Listener {
     private final Map<UUID, Integer> lastChargeTier;
     private final Map<UUID, Integer> lastBossBarTick;
     private final Set<UUID> recentlyLanded;
+    /** 猛击冷却：玩家 UUID → 下次可用时间戳（毫秒，System.currentTimeMillis） */
+    private final Map<UUID, Long> smashCooldowns;
 
     public HammerListener(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
@@ -53,6 +60,7 @@ public class HammerListener implements Listener {
         this.lastChargeTier = new ConcurrentHashMap<>();
         this.lastBossBarTick = new ConcurrentHashMap<>();
         this.recentlyLanded = Collections.newSetFromMap(new ConcurrentHashMap<>());
+        this.smashCooldowns = new ConcurrentHashMap<>();
     }
 
     /** 解析玩家所在竞技场的 GameManager（不在任何竞技场时返回 null） */
@@ -86,6 +94,12 @@ public class HammerListener implements Listener {
         lore.add(lang.get("hammer.lore1"));
         lore.add(lang.get("hammer.lore2"));
         lore.add(lang.get("hammer.lore3"));
+        int maxUses = cfg.getHammerMaxUses();
+        if (maxUses > 0) {
+            meta.getPersistentDataContainer().set(
+                    new NamespacedKey(plugin, HAMMER_USES_KEY), PersistentDataType.INTEGER, maxUses);
+            lore.add(lang.get("hammer.lore-uses", lang.getLocale(), maxUses));
+        }
         meta.setLore(lore);
         hammer.setItemMeta(meta);
         return hammer;
@@ -135,6 +149,16 @@ public class HammerListener implements Listener {
         GameManager gameManager = gm(player);
         if (gameManager == null) return;
 
+        // STORY-1.8：只在对局运行（含整备期，休整期允许开锤）时允许开锤，等待区/结算期拒绝并提示
+        if (!gameManager.isGameRunning()) {
+            ItemStack probe = player.getInventory().getItemInMainHand();
+            if (isHammer(probe)) {
+                player.sendMessage(lang.getFor(player, "hammer.not-running"));
+                event.setCancelled(true);
+            }
+            return;
+        }
+
         PlayerData data = gameManager.getPlayerData(player);
         if (data == null || !data.isAlive()) return;
 
@@ -142,6 +166,19 @@ public class HammerListener implements Listener {
         if (!isHammer(item)) return;
 
         if (data.isSmashActive()) return;
+
+        // STORY-1.3：冷却检查（时间戳方案，无 ticker）
+        double cooldownSeconds = plugin.getConfigManager().getActiveConfig().getHammerCooldownSeconds();
+        if (cooldownSeconds > 0) {
+            Long readyAt = smashCooldowns.get(player.getUniqueId());
+            long now = System.currentTimeMillis();
+            if (readyAt != null && now < readyAt) {
+                long remainSeconds = (readyAt - now + 999) / 1000;
+                player.sendActionBar(lang.getFor(player, "hammer.cooldown", remainSeconds));
+                event.setCancelled(true);
+                return;
+            }
+        }
 
         data.activateSmash(player.getLocation().getY(), gameManager.getGameWorld().getGameTime());
         player.playSound(player.getLocation(), Sound.ENTITY_ENDER_DRAGON_FLAP, 0.8f, 1.5f);
@@ -281,6 +318,21 @@ public class HammerListener implements Listener {
         double finalDamage = getTierDamage(cfg, tier);
         double radius = getTierRadius(cfg, tier);
 
+        // STORY-1.3：冷却计时起点（猛击落地成功触发）
+        double cooldownSeconds = cfg.getHammerCooldownSeconds();
+        if (cooldownSeconds > 0) {
+            smashCooldowns.put(player.getUniqueId(),
+                    System.currentTimeMillis() + (long) (cooldownSeconds * 1000));
+        }
+
+        // STORY-1.3：扣使用次数（max-uses 方案，原版/ItemsAdder 统一行为）
+        if (!consumeUse(player)) {
+            // 次数刚好耗尽 → 碎裂，本次猛击照常结算（伤害已打出）
+            player.getInventory().setItemInMainHand(null);
+            player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 1.0f, 1.0f);
+            player.sendMessage(lang.getFor(player, "hammer.broken"));
+        }
+
         // 弹起玩家自身
         player.setVelocity(new Vector(0, 0.8 + Math.min(fallDistance * 0.05, 1.2), 0));
         player.playSound(player.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 1.0f, 1.2f);
@@ -315,6 +367,45 @@ public class HammerListener implements Listener {
         UUID uuid = player.getUniqueId();
         removeChargeBar(player);
         recentlyLanded.remove(uuid);
+        smashCooldowns.remove(uuid);
+    }
+
+    /**
+     * 消耗主手重锤 1 次使用次数（STORY-1.3 耐久方案）。
+     *
+     * <p>无 PDC 计数器（max-uses=0 时发的锤、或玩家普通攻击消耗耐久中）→ 返回 true 不处理；
+     * 剩余次数 &gt; 1 → PDC -1 并同步 lore 显示、映射原版耐久条（如 meta 支持）；剩余 1 次 →
+     * 返回 false，由调用方碎裂（本次猛击已结算）。</p>
+     *
+     * @return 锤子是否还有剩余次数（false = 已耗尽，调用方应碎裂）
+     */
+    private boolean consumeUse(Player player) {
+        ItemStack item = player.getInventory().getItemInMainHand();
+        if (!isHammer(item)) return true;
+        ItemMeta meta = item.getItemMeta();
+        Integer left = meta.getPersistentDataContainer().get(
+                new NamespacedKey(plugin, HAMMER_USES_KEY), PersistentDataType.INTEGER);
+        if (left == null) return true;
+        int remain = left - 1;
+        if (remain <= 0) return false;
+
+        meta.getPersistentDataContainer().set(
+                new NamespacedKey(plugin, HAMMER_USES_KEY), PersistentDataType.INTEGER, remain);
+        List<String> lore = meta.getLore();
+        if (lore != null && !lore.isEmpty()) {
+            lore.set(lore.size() - 1, lang.getFor(player, "hammer.lore-uses", remain));
+            meta.setLore(lore);
+        }
+        // 原版耐久条映射显示（ItemsAdder 等非 Damageable meta 自动跳过）
+        if (meta instanceof Damageable damageable) {
+            int maxUses = plugin.getConfigManager().getActiveConfig().getHammerMaxUses();
+            if (maxUses > 0 && item.getType().getMaxDurability() > 0) {
+                double fraction = (double) remain / maxUses;
+                damageable.setDamage((int) (item.getType().getMaxDurability() * (1.0 - fraction)));
+            }
+        }
+        item.setItemMeta(meta);
+        return true;
     }
 
     /* ========== 群体攻击（AOE + 玩家击飞） ========== */
@@ -322,7 +413,8 @@ public class HammerListener implements Listener {
     private void applyAreaDamage(Player attacker, Location center, double damage, double radius) {
         World world = center.getWorld();
         Collection<LivingEntity> nearby = world.getNearbyLivingEntities(center, radius, radius, radius,
-                entity -> entity != null && entity.isValid() && entity != attacker);
+                entity -> entity != null && entity.isValid() && entity != attacker
+                        && !VillagerSystem.isVillageVillager(entity));
 
         for (LivingEntity entity : nearby) {
             double distance = entity.getLocation().distance(center);
@@ -354,7 +446,8 @@ public class HammerListener implements Listener {
 
         World world = center.getWorld();
         Collection<LivingEntity> nearby = world.getNearbyLivingEntities(center, radius, radius, radius,
-                entity -> entity != null && !(entity instanceof Player) && entity.isValid());
+                entity -> entity != null && !(entity instanceof Player) && entity.isValid()
+                        && !VillagerSystem.isVillageVillager(entity));
 
         for (LivingEntity entity : nearby) {
             entity.addPotionEffect(new PotionEffect(

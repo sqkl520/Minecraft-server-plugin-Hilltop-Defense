@@ -44,15 +44,20 @@ public class GameConfig {
     private double hammerDamageMediumMultiplier = 2.0;
     private double hammerDamageHighMultiplier = 3.0;
     // 每档独立配置（伤害 / 范围 / 蓄力距离）
-    private double hammerLowDamage = 30.0;
+    private double hammerLowDamage = 20.0;
     private double hammerMediumDamage = 40.0;
     private double hammerHighDamage = 60.0;
     private double hammerLowRadius = 4.0;
     private double hammerMediumRadius = 5.0;
     private double hammerHighRadius = 6.5;
-    private double hammerLowCharge = 1.0;
+    // 注意：tier.low.charge 已删除（STORY-1.3）—— fall < medium 即判低档，该阈值从未被读取。
+    // YAML/GUI 中的对应键同步删除，旧存档残留键由 ConfigManager 清理。此处不保留字段。
     private double hammerMediumCharge = 5.0;
     private double hammerHighCharge = 10.0;
+    /** 猛击冷却时长（秒），0 表示无冷却 */
+    private double hammerCooldownSeconds = 8.0;
+    /** 重锤总可用次数（发锤时写入 lore，耗尽碎裂），0 表示无限 */
+    private int hammerMaxUses = 30;
     // 物品显示名（留空则回退 messages.yml 的 item.hammer-name）
     private String hammerItemName = "";
 
@@ -374,8 +379,10 @@ public class GameConfig {
         snap.hammerHighDamage = this.hammerHighDamage;
         snap.hammerLowRadius = this.hammerLowRadius; snap.hammerMediumRadius = this.hammerMediumRadius;
         snap.hammerHighRadius = this.hammerHighRadius;
-        snap.hammerLowCharge = this.hammerLowCharge; snap.hammerMediumCharge = this.hammerMediumCharge;
+        snap.hammerMediumCharge = this.hammerMediumCharge;
         snap.hammerHighCharge = this.hammerHighCharge;
+        snap.hammerCooldownSeconds = this.hammerCooldownSeconds;
+        snap.hammerMaxUses = this.hammerMaxUses;
         snap.hammerItemName = this.hammerItemName;
         snap.nodeBlockTypes = new ArrayList<>(this.nodeBlockTypes);
         snap.nodeBaseHealth = this.nodeBaseHealth; snap.nodeBuffRadius = this.nodeBuffRadius;
@@ -480,12 +487,14 @@ public class GameConfig {
     public void setHammerMediumRadius(double v) { this.hammerMediumRadius = v; }
     public double getHammerHighRadius() { return hammerHighRadius; }
     public void setHammerHighRadius(double v) { this.hammerHighRadius = v; }
-    public double getHammerLowCharge() { return hammerLowCharge; }
-    public void setHammerLowCharge(double v) { this.hammerLowCharge = v; }
     public double getHammerMediumCharge() { return hammerMediumCharge; }
     public void setHammerMediumCharge(double v) { this.hammerMediumCharge = v; }
     public double getHammerHighCharge() { return hammerHighCharge; }
     public void setHammerHighCharge(double v) { this.hammerHighCharge = v; }
+    public double getHammerCooldownSeconds() { return hammerCooldownSeconds; }
+    public void setHammerCooldownSeconds(double v) { this.hammerCooldownSeconds = v; }
+    public int getHammerMaxUses() { return hammerMaxUses; }
+    public void setHammerMaxUses(int v) { this.hammerMaxUses = v; }
     public List<Material> getNodeBlockTypes() { return nodeBlockTypes; }
     public void setNodeBlockTypes(List<Material> v) { this.nodeBlockTypes = v; }
     public double getNodeBaseHealth() { return nodeBaseHealth; }
