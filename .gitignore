@@ -4,3 +4,6 @@
 /tasks
 /ralph
 /.claude/agent-memory
+# 编译产物不入库：发布走 GitHub Releases，versions/ 仅本地备份
+/versions/
+*.jar
