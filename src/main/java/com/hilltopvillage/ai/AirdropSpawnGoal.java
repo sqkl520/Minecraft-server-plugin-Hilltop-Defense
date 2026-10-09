@@ -6,12 +6,9 @@ import com.destroystokyo.paper.entity.ai.GoalType;
 import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import org.bukkit.*;
-import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.EntityType;
-import org.bukkit.entity.LivingEntity;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
-import org.bukkit.scheduler.BukkitRunnable;
 
 import java.util.EnumSet;
 import java.util.Random;
@@ -53,6 +50,8 @@ public class AirdropSpawnGoal implements Goal<Mob> {
     private int airdropCooldown;
     /** 距下次允许扫描落点还剩多少 tick；扫描失败时用于退避 */
     private int scanCooldown;
+    /** 本抛投者生涯已执行的空投轮数；达到 {@code airdrop-max-per-dropper} 后不再空投（P0-D） */
+    private int airdropsDone;
     private Location targetDropLocation;
 
     public AirdropSpawnGoal(Mob dropper, GameManager gameManager) {
@@ -61,11 +60,18 @@ public class AirdropSpawnGoal implements Goal<Mob> {
         this.random = new Random();
         this.airdropCooldown = 0;
         this.scanCooldown = 0;
+        this.airdropsDone = 0;
     }
 
     @Override
     public boolean shouldActivate() {
         if (!gameManager.isGameRunning()) return false;
+
+        // P0-D：抛投者生涯空投次数达上限后永不再空投（防止无限空投导致实体数指数膨胀卡服）。
+        // airdrop-max-per-dropper <= 0 时 airdropsDone(>=0) 恒 >= 上限 → 等效于禁用空投。
+        if (airdropsDone >= gameManager.getConfigManager().getActiveConfig().getAirdropMaxPerDropper()) {
+            return false;
+        }
 
         if (airdropCooldown > 0) {
             airdropCooldown--;
@@ -76,6 +82,13 @@ public class AirdropSpawnGoal implements Goal<Mob> {
         // （每次 = 玩家数 × 5 + 10 次同步高度图 / 方块读取）
         if (scanCooldown > 0) {
             scanCooldown--;
+            return false;
+        }
+
+        // P0-D：全局/人均怪物上限已满时本轮不发起空投（否则抛投者无视上限持续空投），
+        // 退避 SCAN_RETRY_INTERVAL_TICKS 后再评估。
+        if (gameManager.getWaveManager().isMobCapReached()) {
+            scanCooldown = SCAN_RETRY_INTERVAL_TICKS;
             return false;
         }
 
@@ -213,6 +226,7 @@ public class AirdropSpawnGoal implements Goal<Mob> {
     private void executeAirdrop() {
         Location dropLoc = targetDropLocation;
         World world = dropLoc.getWorld();
+        if (world == null) return;
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
         GameConfig.MonsterConfig monsterCfg = cfg.getMonsters().get("flying-dropper");
         int count = monsterCfg != null ? monsterCfg.getAirdropMobCount() : 3;
@@ -227,30 +241,10 @@ public class AirdropSpawnGoal implements Goal<Mob> {
         world.playSound(dropLoc, Sound.ENTITY_PHANTOM_SWOOP, 1.0f, 0.3f);
         world.spawnParticle(Particle.CLOUD, dropLoc.clone().add(0, 5, 0), 30, 2, 1, 2, 0.05);
 
-        final EntityType finalMobType = mobType;
-        new BukkitRunnable() {
-            int spawned = 0;
-
-            @Override
-            public void run() {
-                if (spawned >= count || !gameManager.isGameRunning()) {
-                    cancel();
-                    return;
-                }
-
-                double offsetX = (random.nextDouble() - 0.5) * 4;
-                double offsetZ = (random.nextDouble() - 0.5) * 4;
-                Location spawnLoc = dropLoc.clone().add(offsetX, 3, offsetZ);
-
-                LivingEntity mob = (LivingEntity) world.spawnEntity(spawnLoc, finalMobType);
-                mob.getAttribute(Attribute.FOLLOW_RANGE).setBaseValue(40.0);
-                gameManager.getWaveManager().addActiveMob(mob);
-
-                world.playSound(spawnLoc, Sound.ENTITY_ZOMBIE_INFECT, 0.3f, 0.5f);
-                world.spawnParticle(Particle.DRIPPING_OBSIDIAN_TEAR, spawnLoc, 5, 0.3, 0.3, 0.3, 0);
-
-                spawned++;
-            }
-        }.runTaskTimer(gameManager.getPlugin(), 0L, 10L);
+        // P0-D：空投小怪统一交由 WaveManager 生成 —— 容量上限裁剪 + prepareWaveMob 纳管
+        // （persistent + NodeAttackGoal，不再是游离实体污染清波）+ 不掉货币 + 批次任务登记进
+        // airdropTasks（波次切换 / 结算 / 停服时随 clearAllMobs 统一取消）。本 Goal 不再直接 spawnEntity。
+        gameManager.getWaveManager().spawnAirdropMobs(dropper, dropLoc, count, mobType, gameManager.getCurrentWave());
+        airdropsDone++;
     }
 }

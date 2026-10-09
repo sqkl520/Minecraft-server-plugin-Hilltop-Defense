@@ -584,6 +584,7 @@ min-players: 2                   # 开始游戏所需最少玩家（仅对「未
 max-players: 6                   # 单局最大玩家数
 victory-waves: 20                # 胜利所需波次
 wave-interval-seconds: 30        # 波次之间休整时间
+wave-timeout-seconds: 120        # 波次超时保险：某波超时未清波时先把残怪传送到玩家并高亮，再宽限 15 秒强制清除（打破卡死软锁），0=禁用
 
 # 阶段 1-3 新增
 defeat-countdown-seconds: 20     # 失败后显示战报到传送回大厅的倒计时
@@ -616,6 +617,7 @@ spawning:
   spawn-y-offset: 0              # 生成高度偏移
   mob-cap-per-player: 15
   global-mob-cap: 80
+  airdrop-max-per-dropper: 3     # 单个飞行抛投者整局空投轮数上限（防止空投失控卡服），0=禁用空投
 ```
 
 # 开局初始套装（开局传送后向每名在场玩家发放；背包满则掉脚下）

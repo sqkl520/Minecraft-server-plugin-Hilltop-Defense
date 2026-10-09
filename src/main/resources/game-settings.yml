@@ -23,6 +23,10 @@ max-players: 6
 victory-waves: 20
 # 波次间隔（秒）
 wave-interval-seconds: 30
+# 波次超时保险（秒）：某波持续超过此时长仍未清波（例如残怪卡地形 / 木桩怪 / 节点不可达），
+# 先把全部残存怪物传送到最近玩家身边并高亮，再宽限约 15 秒后强制清除，打破任何形态的卡死。
+# 0 或负数 = 禁用该保险（不推荐，关闭后极端卡怪只能 /hilltop stop）
+wave-timeout-seconds: 120
 
 # 失败结算倒计时（秒）：显示本局战报后传送回大厅的等待时间
 defeat-countdown-seconds: 20
@@ -181,6 +185,9 @@ spawning:
   global-mob-cap: 80
   # 每名玩家的怪物数量上限
   mob-cap-per-player: 15
+  # 单个飞行抛投者整局最多执行多少轮空投（防止抛投者无限空投导致实体数指数膨胀卡服）
+  # 每轮空投受 global-mob-cap 与 mob-cap-per-player 双重限制；0 或负数 = 禁用空投
+  airdrop-max-per-dropper: 3
 
 # ============================================================
 #  特殊怪物属性 (Monsters)

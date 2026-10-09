@@ -26,6 +26,12 @@ public class GameManager {
     private GameState state;
     private int currentWave;
     private int totalWaves;
+    /** 本波开始刷怪的时间戳（毫秒）；波次超时保险据此计算该波已持续多久（P0-C） */
+    private long waveStartMillis;
+    /** 本波是否已执行过超时保险的第一阶段（传送+高亮），避免每 3 秒重复传送 */
+    private boolean waveStuckRelocated;
+    /** 第一阶段（传送高亮）之后，再宽限多少秒仍未清波则强制清除残怪（第二阶段硬兜底） */
+    private static final int WAVE_STUCK_PURGE_GRACE_SECONDS = 15;
     private final ConcurrentHashMap<UUID, PlayerData> playerDataMap;
     private final Set<UUID> players;
     private final WaveManager waveManager;
@@ -231,6 +237,10 @@ public class GameManager {
 
         waveManager.spawnWave(currentWave);
 
+        // P0-C 波次超时保险：记录本波开始时间并重置保险阶段标记（见 handleWaveTimeout）
+        waveStartMillis = System.currentTimeMillis();
+        waveStuckRelocated = false;
+
         // Cancel any leftover check task from a previous wave before starting a new one
         if (waveCheckTask != null) {
             waveCheckTask.cancel();
@@ -325,6 +335,10 @@ public class GameManager {
             return;
         }
 
+        // P0-C 波次超时保险：清波判定前先跑一次超时检查，必要时传送高亮残怪或强制清除。
+        // 放在 isWaveCleared() 之前，使「第二阶段强制清除」后同一 tick 即判为清波，无需多等 3 秒。
+        handleWaveTimeout();
+
         if (waveManager.isWaveCleared()) {
             // Wave done — cancel task before proceeding
             if (waveCheckTask != null) {
@@ -334,6 +348,44 @@ public class GameManager {
             onWaveComplete();
         }
         // else: wave still in progress, task will fire again in 60 ticks
+    }
+
+    /**
+     * 波次超时保险（P0-C 根因兜底，独立于 AI 修复的最终安全网）。
+     *
+     * <p>三种特殊怪在无合法目标时可能静止但仍 persistent 占着 activeMobs，而清波判定只剔除
+     * {@code !isValid()} 的怪 —— 对卡地形 / 木桩但仍 valid 的最后一只怪恒为 false，波次永不清，
+     * 玩家存活却死等，形成只能 {@code /stop} 的软锁。本方法保证任何形态的卡死最终都会被打破：</p>
+     * <ol>
+     *   <li>某波持续超过 {@code wave-timeout-seconds} 仍未清 → 第一阶段：把残怪传送到最近玩家身边并高亮，
+     *       让玩家能找到并清掉（{@link WaveManager#relocateStuckMobsToPlayers()}）；</li>
+     *   <li>再宽限 {@link #WAVE_STUCK_PURGE_GRACE_SECONDS} 秒仍未清 → 第二阶段：强制清除残怪
+     *       （{@link WaveManager#purgeStuckMobs()}），硬保证清波。</li>
+     * </ol>
+     *
+     * <p>仅在 {@link GameState#RUNNING}（本波刷怪中）生效；休整期 activeMobs 已空，无需介入。
+     * {@code wave-timeout-seconds <= 0} 表示管理员显式禁用该保险。</p>
+     */
+    private void handleWaveTimeout() {
+        if (state != GameState.RUNNING) return;
+        int timeoutSeconds = configManager.getActiveConfig().getWaveTimeoutSeconds();
+        if (timeoutSeconds <= 0) return; // 显式禁用
+
+        long elapsedSeconds = (System.currentTimeMillis() - waveStartMillis) / 1000L;
+        if (elapsedSeconds < timeoutSeconds) return;
+
+        if (!waveStuckRelocated) {
+            int handled = waveManager.relocateStuckMobsToPlayers();
+            if (handled > 0) {
+                broadcastI18n("wave-stuck-relocate", currentWave, handled);
+            }
+            waveStuckRelocated = true;
+        } else if (elapsedSeconds >= (long) timeoutSeconds + WAVE_STUCK_PURGE_GRACE_SECONDS) {
+            int purged = waveManager.purgeStuckMobs();
+            if (purged > 0) {
+                broadcastI18n("wave-stuck-purge", currentWave, purged);
+            }
+        }
     }
 
     private void onWaveComplete() {

@@ -679,6 +679,41 @@ public class NodeSystem {
     }
 
     /**
+     * 查找离给定位置最近、但<b>排除</b>指定节点的活跃节点（P0-C：卡死怪放弃当前节点改选次近节点）。
+     *
+     * <p>与 {@link #getNearestNode(Location)} 同样只遍历 {@link #activeNodes} 并做身份校验；
+     * {@code excluded} 为 null 时等价于 {@link #getNearestNode(Location)}。无其它可选节点时返回 null，
+     * 由调用方（卡死放弃计数）兜底自毁出列。</p>
+     */
+    public NodeData getNearestNodeExcluding(Location location, NodeData excluded) {
+        NodeData nearest = null;
+        double nearestDistSq = Double.MAX_VALUE;
+        World targetWorld = location.getWorld();
+        double targetX = location.getX();
+        double targetY = location.getY();
+        double targetZ = location.getZ();
+
+        for (NodeData node : activeNodes) {
+            if (node == excluded) continue;
+            if (!isRegisteredActive(node)) continue;
+
+            Location nodeLoc = node.location;
+            if (nodeLoc.getWorld() != targetWorld) continue;
+
+            double dx = nodeLoc.getX() - targetX;
+            double dy = nodeLoc.getY() - targetY;
+            double dz = nodeLoc.getZ() - targetZ;
+            double distSq = dx * dx + dy * dy + dz * dz;
+            if (distSq < nearestDistSq) {
+                nearestDistSq = distSq;
+                nearest = node;
+            }
+        }
+
+        return nearest;
+    }
+
+    /**
      * 判断 NodeData 是否仍是当前坐标注册的同一个活跃对象。
      * 查询由 ConcurrentHashMap 与活跃索引完成，单次为 O(1)。
      */

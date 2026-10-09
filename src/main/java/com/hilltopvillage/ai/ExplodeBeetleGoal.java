@@ -25,6 +25,13 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
     private static final double PATHFINDER_SPEED   = 1.5;
     /** 重新搜索最近节点的间隔（tick）：避免每 tick 全量扫描节点表 */
     private static final int    RETARGET_INTERVAL_TICKS = 30;
+    /**
+     * 无节点目标时的自毁宽限（tick）：持续这么久仍找不到任何可攻击节点（例如节点全毁 /
+     * 全部超出搜索半径）就自毁出列，不再 persistent 占着 activeMobs 罚站卡波（P0-C）。
+     */
+    private static final int    NO_TARGET_SELF_DESTRUCT_TICKS = 100;
+    /** 卡死放弃上限：对同一/相邻节点连续卡死这么多次后自毁出列，避免无限重寻路（P0-C） */
+    private static final int    MAX_STUCK_GIVEUPS = 3;
 
     /**
      * Goal 的身份键。
@@ -51,6 +58,10 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
     private double searchRadiusSq;
     private int stuckTicks;
     private Location lastPosition;
+    /** 连续找不到节点目标的 tick 数；达到 {@link #NO_TARGET_SELF_DESTRUCT_TICKS} 则自毁出列 */
+    private int noTargetTicks;
+    /** 卡死放弃次数；达到 {@link #MAX_STUCK_GIVEUPS} 则自毁出列 */
+    private int stuckGiveUps;
 
     public ExplodeBeetleGoal(Mob beetle, GameManager gameManager) {
         this.beetle = beetle;
@@ -60,10 +71,10 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
 
     @Override
     public boolean shouldActivate() {
-        if (!gameManager.isGameRunning()) return false;
-
-        retargetIfNeeded();
-        return targetNode != null;
+        // P0-C：始终激活（只要游戏进行中且甲虫存活）。原实现要求 targetNode != null 才激活，
+        // 「无节点目标」时 Goal 根本不运行 → 甲虫静止罚站、既不自毁也不离场，永久占着 activeMobs
+        // 让波次判定恒为 false。改为常驻后，由 tick() 统一处理「有节点→推进引爆 / 无节点→计时自毁出列」。
+        return gameManager.isGameRunning() && beetle.isValid();
     }
 
     /**
@@ -111,23 +122,21 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
 
     @Override
     public boolean shouldStayActive() {
-        if (!gameManager.isGameRunning() || !beetle.isValid() || targetNode == null) return false;
-        if (!gameManager.getNodeSystem().isRegisteredActive(targetNode)) {
-            clearTarget();
-            nextRetargetTick = 0;
-            return false;
-        }
-        return true;
+        // 常驻：目标的有效性与自毁判定都移到 tick() 内处理（见 shouldActivate 说明）
+        return gameManager.isGameRunning() && beetle.isValid();
     }
 
     @Override
     public void start() {
-        if (targetNode == null || targetApproach == null) return;
-
         stuckTicks = 0;
+        noTargetTicks = 0;
+        stuckGiveUps = 0;
         lastPosition = beetle.getLocation();
-        beetle.setGlowing(true);
-        beetle.getPathfinder().moveTo(targetApproach, PATHFINDER_SPEED);
+        retargetIfNeeded();
+        if (targetNode != null && targetApproach != null) {
+            beetle.setGlowing(true);
+            beetle.getPathfinder().moveTo(targetApproach, PATHFINDER_SPEED);
+        }
     }
 
     @Override
@@ -140,12 +149,19 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
     @Override
     public void tick() {
         boolean targetChanged = retargetIfNeeded();
-        if (targetNode == null || targetApproach == null) return;
-        if (!gameManager.getNodeSystem().isRegisteredActive(targetNode)) {
-            clearTarget();
-            nextRetargetTick = 0;
+
+        // 无节点目标（节点全毁 / 全部超出搜索半径）：停下、不发光、累计计时；超过宽限即自毁出列，
+        // 不再 persistent 占着 activeMobs 罚站卡波（P0-C）。节点若被修复，retargetIfNeeded 会重新锁定。
+        if (targetNode == null || targetApproach == null) {
+            beetle.getPathfinder().stopPathfinding();
+            beetle.setGlowing(false);
+            if (++noTargetTicks >= NO_TARGET_SELF_DESTRUCT_TICKS) {
+                gameManager.getWaveManager().discardMob(beetle);
+            }
             return;
         }
+        noTargetTicks = 0;
+        beetle.setGlowing(true);
 
         Location beetleLoc = beetle.getLocation();
         if (targetChanged) {
@@ -168,8 +184,13 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
         lastPosition = beetleLoc;
 
         if (stuckTicks >= STUCK_TICK_LIMIT) {
-            beetle.getPathfinder().moveTo(targetApproach, PATHFINDER_SPEED);
             stuckTicks = 0;
+            // 卡死放弃：对卡地形的甲虫无限重寻路毫无意义，累计到上限直接自毁出列（P0-C）
+            if (++stuckGiveUps >= MAX_STUCK_GIVEUPS) {
+                gameManager.getWaveManager().discardMob(beetle);
+                return;
+            }
+            beetle.getPathfinder().moveTo(targetApproach, PATHFINDER_SPEED);
         }
     }
 

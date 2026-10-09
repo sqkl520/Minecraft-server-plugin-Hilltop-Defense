@@ -18,6 +18,12 @@ public class GameConfig {
     private int maxPlayers = 6;
     private int victoryWaves = 20;
     private int waveIntervalSeconds = 30;
+    /**
+     * 波次超时保险（秒，P0-C 卡死软锁兜底）：某波持续超过此时长仍未清波时，
+     * 先把全部残存怪物传送到最近玩家身边并高亮，再宽限一段时间后强制清除，
+     * 打破任何形态的卡死（木桩怪 / 卡地形 / 不可达节点）。{@code <=0} 表示禁用该保险。
+     */
+    private int waveTimeoutSeconds = 120;
     /** 失败结算倒计时（秒）：显示统计后传送回大厅的等待时间 */
     private int defeatCountdownSeconds = 20;
     /** 村民最大生命值 */
@@ -92,6 +98,12 @@ public class GameConfig {
     private int globalMobCap = 80;
     private int mobCapPerPlayer = 15;
     private int spawnYOffset = 0;
+    /**
+     * 单个飞行抛投者整局最多执行多少轮空投（P0-D 空投失控兜底）。
+     * 抛投者存活期间每隔冷却时间就空投一批小怪，无上限会使实体数指数膨胀卡服。
+     * {@code <=0} 表示禁用空投（抛投者仍会飞行但不再投怪）。
+     */
+    private int airdropMaxPerDropper = 3;
 
     // ---- 村民商店货币掉落 (Shop) ----
     // 击杀波次怪物的货币掉落概率（0~1，0=不掉）
@@ -410,6 +422,7 @@ public class GameConfig {
         snap.coreX = this.coreX; snap.coreY = this.coreY; snap.coreZ = this.coreZ;
         snap.minPlayers = this.minPlayers; snap.maxPlayers = this.maxPlayers;
         snap.victoryWaves = this.victoryWaves; snap.waveIntervalSeconds = this.waveIntervalSeconds;
+        snap.waveTimeoutSeconds = this.waveTimeoutSeconds;
         snap.defeatCountdownSeconds = this.defeatCountdownSeconds;
         snap.villagerHealth = this.villagerHealth;
         snap.rejoinTimeoutSeconds = this.rejoinTimeoutSeconds;
@@ -458,6 +471,7 @@ public class GameConfig {
         snap.spawnRadiusMin = this.spawnRadiusMin; snap.spawnRadiusMax = this.spawnRadiusMax;
         snap.globalMobCap = this.globalMobCap; snap.mobCapPerPlayer = this.mobCapPerPlayer;
         snap.spawnYOffset = this.spawnYOffset;
+        snap.airdropMaxPerDropper = this.airdropMaxPerDropper;
         snap.fireballMaterial = this.fireballMaterial; snap.fireballSpeed = this.fireballSpeed;
         snap.fireballDamage = this.fireballDamage; snap.fireballExplosionRadius = this.fireballExplosionRadius;
         snap.fireballCooldownTicks = this.fireballCooldownTicks; snap.fireballMaxTravelTicks = this.fireballMaxTravelTicks;
@@ -491,6 +505,8 @@ public class GameConfig {
     public void setVictoryWaves(int v) { this.victoryWaves = v; }
     public int getWaveIntervalSeconds() { return waveIntervalSeconds; }
     public void setWaveIntervalSeconds(int v) { this.waveIntervalSeconds = v; }
+    public int getWaveTimeoutSeconds() { return waveTimeoutSeconds; }
+    public void setWaveTimeoutSeconds(int v) { this.waveTimeoutSeconds = v; }
     public int getDefeatCountdownSeconds() { return defeatCountdownSeconds; }
     public void setDefeatCountdownSeconds(int v) { this.defeatCountdownSeconds = v; }
     public double getVillagerHealth() { return villagerHealth; }
@@ -588,6 +604,8 @@ public class GameConfig {
     public void setGlobalMobCap(int v) { this.globalMobCap = v; }
     public int getMobCapPerPlayer() { return mobCapPerPlayer; }
     public void setMobCapPerPlayer(int v) { this.mobCapPerPlayer = v; }
+    public int getAirdropMaxPerDropper() { return airdropMaxPerDropper; }
+    public void setAirdropMaxPerDropper(int v) { this.airdropMaxPerDropper = v; }
     public int getSpawnYOffset() { return spawnYOffset; }
     public void setSpawnYOffset(int v) { this.spawnYOffset = v; }
 

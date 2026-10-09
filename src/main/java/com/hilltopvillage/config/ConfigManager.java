@@ -75,6 +75,7 @@ public class ConfigManager {
         settingsYaml.set("max-players", activeConfig.getMaxPlayers());
         settingsYaml.set("victory-waves", activeConfig.getVictoryWaves());
         settingsYaml.set("wave-interval-seconds", activeConfig.getWaveIntervalSeconds());
+        settingsYaml.set("wave-timeout-seconds", activeConfig.getWaveTimeoutSeconds());
         settingsYaml.set("defeat-countdown-seconds", activeConfig.getDefeatCountdownSeconds());
         settingsYaml.set("villager-health", activeConfig.getVillagerHealth());
         settingsYaml.set("rejoin-timeout-seconds", activeConfig.getRejoinTimeoutSeconds());
@@ -136,6 +137,7 @@ public class ConfigManager {
         settingsYaml.set("spawning.global-mob-cap", activeConfig.getGlobalMobCap());
         settingsYaml.set("spawning.mob-cap-per-player", activeConfig.getMobCapPerPlayer());
         settingsYaml.set("spawning.spawn-y-offset", activeConfig.getSpawnYOffset());
+        settingsYaml.set("spawning.airdrop-max-per-dropper", activeConfig.getAirdropMaxPerDropper());
 
         // ---- 烈焰蛋配置 ----
         settingsYaml.set("fireball.material", activeConfig.getFireballMaterial().name());
@@ -257,6 +259,7 @@ public class ConfigManager {
         if (settingsYaml.contains("max-players")) activeConfig.setMaxPlayers(settingsYaml.getInt("max-players"));
         if (settingsYaml.contains("victory-waves")) activeConfig.setVictoryWaves(settingsYaml.getInt("victory-waves"));
         if (settingsYaml.contains("wave-interval-seconds")) activeConfig.setWaveIntervalSeconds(settingsYaml.getInt("wave-interval-seconds"));
+        if (settingsYaml.contains("wave-timeout-seconds")) activeConfig.setWaveTimeoutSeconds(settingsYaml.getInt("wave-timeout-seconds"));
         if (settingsYaml.contains("defeat-countdown-seconds")) activeConfig.setDefeatCountdownSeconds(settingsYaml.getInt("defeat-countdown-seconds"));
         if (settingsYaml.contains("villager-health")) activeConfig.setVillagerHealth(settingsYaml.getDouble("villager-health"));
         if (settingsYaml.contains("rejoin-timeout-seconds")) activeConfig.setRejoinTimeoutSeconds(settingsYaml.getInt("rejoin-timeout-seconds"));
@@ -386,6 +389,7 @@ public class ConfigManager {
         if (settingsYaml.contains("spawning.global-mob-cap")) activeConfig.setGlobalMobCap(settingsYaml.getInt("spawning.global-mob-cap"));
         if (settingsYaml.contains("spawning.mob-cap-per-player")) activeConfig.setMobCapPerPlayer(settingsYaml.getInt("spawning.mob-cap-per-player"));
         if (settingsYaml.contains("spawning.spawn-y-offset")) activeConfig.setSpawnYOffset(settingsYaml.getInt("spawning.spawn-y-offset"));
+        if (settingsYaml.contains("spawning.airdrop-max-per-dropper")) activeConfig.setAirdropMaxPerDropper(settingsYaml.getInt("spawning.airdrop-max-per-dropper"));
 
         String fireballMat = settingsYaml.getString("fireball.material");
         if (fireballMat != null) {

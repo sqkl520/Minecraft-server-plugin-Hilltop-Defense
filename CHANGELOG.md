@@ -2,6 +2,29 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-10 — P0 修复：波次卡死软锁簇 + 空投失控）
+
+#### P0-C 波次卡死软锁簇
+
+- **波次超时保险（根因兜底，最终安全网）**：新增可配置 `wave-timeout-seconds`（默认 120 秒）。`GameManager.startNextWave` 记录开波时间戳，`checkWaveCompletion`（每 3 秒）在清波判定前跑 `handleWaveTimeout`：某波持续超时仍未清波时，第一阶段把全部残怪传送到最近存活玩家身边并高亮（`WaveManager.relocateStuckMobsToPlayers`，无存活玩家可传送时直接出列），再宽限 15 秒仍未清则第二阶段强制清除（`WaveManager.purgeStuckMobs`）。这一层独立于下方 AI 修复，保证任何形态的卡死最终都会被打破，不再出现"玩家存活却死等、只能 /stop"的软锁
+- **自爆甲虫不再罚站**：`ExplodeBeetleGoal` 由"有节点目标才激活"改为常驻激活，`tick` 内统一处理——无节点目标（节点全毁 / 全部超出搜索半径）累计 `NO_TARGET_SELF_DESTRUCT_TICKS`(100tick) 后自毁出列；卡地形连续卡死到 `MAX_STUCK_GIVEUPS`(3) 次后同样自毁出列，不再 persistent 占着 activeMobs
+- **钩爪猎手不再木桩**：`WaveManager.spawnHookClawHunter` 为猎手追加低优先级（3）`NodeAttackGoal` 作为退化行为——平地无高差目标（钩爪需玩家在上方≥4格）无法钩拉时，推进并攻击最近活跃节点；一旦出现可钩拉目标仍由优先级 1 的钩爪 AI 抢占。节点全毁的极端情形由波次超时保险兜底
+- **普通怪 NodeAttackGoal 卡死放弃**：原实现卡死后只对同一节点无限重发 `moveTo`；改为卡死累计放弃次数，记下卡点后优先改选"次近节点"（新增 `NodeSystem.getNearestNodeExcluding`，retarget 排除刚放弃的节点），连续放弃到 `MAX_STUCK_GIVEUPS`(3) 次或无其它可达节点时自毁出列；成功够到节点则重置放弃预算
+- **清波判定剔除扩展**：卡死 / 无目标的怪物现在会主动 `WaveManager.discardMob`（移出世界 + 从 activeMobs 剔除，不掉货币不记击杀），`isWaveCleared` 不再因最后一只 valid 但静止的怪恒为 false
+
+#### P0-D 空投失控
+
+- **空投受容量上限约束**：空投小怪统一改由 `WaveManager.spawnAirdropMobs` 生成，开投前按 `min(global-mob-cap, mob-cap-per-player × 人数)` 裁剪本轮只数、批次内每只再复查，满了即停；`AirdropSpawnGoal.shouldActivate` 额外在上限已满时退避重试，不再无视上限持续空投导致实体数指数膨胀
+- **抛投者生涯空投上限**：新增可配置 `spawning.airdrop-max-per-dropper`（默认 3）。`AirdropSpawnGoal` 记录已空投轮数，达上限后永不再空投；`<=0` 等效于禁用空投
+- **批次任务一致性与取消**：空投批次任务记录发起时的波次号，运行期带"dropper 存活 / 波次号一致 / 游戏进行中 / 容量未满"四重守卫，波次切换即停；任务登记进 `WaveManager.airdropTasks`，波次结束 / `haltGame` 结算 / `stopGame` / 停服时随 `clearAllMobs` 统一取消（修复 haltGame 不改状态导致空投任务拦不住、结算期间仍刷怪的问题）
+- **空投怪纳管 + 不掉货币**：空投怪现在走 `prepareWaveMob`（获得 persistent + `NodeAttackGoal`），不再是"远离即消失、不触发死亡事件、永久残留 activeMobs 污染下一波清波"的游离实体；并打 PDC 标记 `hilltopvillage:airdrop-mob`，`dropCurrency` 据此跳过，杜绝挂机刷钱与经济污染（击杀统计仍保留）
+
+#### 新增配置项（load/save/snapshot/YAML 四处齐全）
+
+- `wave-timeout-seconds`（顶层，默认 120）：波次超时保险阈值，`<=0` 禁用
+- `spawning.airdrop-max-per-dropper`（默认 3）：单个抛投者整局空投轮数上限，`<=0` 禁用空投
+- 新增 i18n 键 `wave-stuck-relocate` / `wave-stuck-purge`（en/zh 双语对称）
+
 ### Fixed（2026-10-10 — P0 修复：村民环境伤害强制失败漏洞 P0-B）
 
 > 来源：P0 破坏漏洞排查。普通玩家可用泥土活埋 / 挖井摔死 / 引岩浆点燃等零门槛手段杀光村民，

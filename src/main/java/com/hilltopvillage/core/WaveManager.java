@@ -9,12 +9,16 @@ import com.hilltopvillage.shop.ShopManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
+import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.*;
 import org.bukkit.inventory.EntityEquipment;
 import org.bukkit.inventory.EquipmentSlot;
 import org.bukkit.inventory.ItemStack;
+import org.bukkit.persistence.PersistentDataType;
 
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.scheduler.BukkitTask;
@@ -29,9 +33,21 @@ public class WaveManager {
     private final Random random;
     /** 当前波次的刷怪任务句柄；null 表示没有正在进行的刷怪任务 */
     private BukkitTask spawnTask;
+    /**
+     * 未完成的空投批次任务（P0-D）。
+     *
+     * <p>抛投者的空投是独立的分批任务，不走 {@link #spawnTask}；若不单独追踪，
+     * {@code haltGame()}（结算期间刻意不改游戏状态）之后它们不会被任何守卫停下，
+     * 会在倒计时期间继续往世界里写实体。{@link #clearAllMobs()} 统一取消本集合。</p>
+     */
+    private final Set<BukkitTask> airdropTasks;
+    /** PDC 标记：空投小怪（dropCurrency 据此跳过，避免挂机刷钱；见 {@link #markAirdropMob}） */
+    private final NamespacedKey airdropKey;
     private static final int SPAWN_BATCH_SIZE = 2;
     private static final int DEFAULT_WAVE_BASE_COUNT = 5;
     private static final int DEFAULT_WAVE_COUNT_PER_WAVE = 2;
+    /** 空投分批节奏：每 10 tick 落 1 只（与历史手感一致） */
+    private static final long AIRDROP_SPAWN_PERIOD_TICKS = 10L;
 
     public WaveManager(GameManager gameManager) {
         this.gameManager = gameManager;
@@ -40,6 +56,8 @@ public class WaveManager {
         // 与怪物死亡都是密集写，单波 80 只会产生 O(n²) 的引用拷贝。
         // ConcurrentHashMap.newKeySet 的 add/remove 是 O(1) 哈希操作，contains 同样是 O(1)。
         this.activeMobs = ConcurrentHashMap.newKeySet();
+        this.airdropTasks = ConcurrentHashMap.newKeySet();
+        this.airdropKey = new NamespacedKey(gameManager.getPlugin(), "airdrop-mob");
         this.random = new Random();
     }
 
@@ -492,6 +510,11 @@ public class WaveManager {
 
         Bukkit.getMobGoals().removeAllGoals(skeleton);
         Bukkit.getMobGoals().addGoal(skeleton, 1, new HookClawHunterGoal(skeleton, gameManager));
+        // P0-C 木桩修复：钩爪需要玩家在上方≥4格才能激活，平地无落差时猎手原本无任何
+        // 移动/攻击 AI → 永久静止占着 activeMobs → 波次永不清。补一个低优先级 NodeAttackGoal
+        // 作为退化行为：无法钩拉时推进并攻击最近的活跃节点（优先级 3 低于钩爪的 1，
+        // 一旦出现可钩拉目标仍优先钩拉）。节点全毁的极端情形由波次超时保险兜底。
+        Bukkit.getMobGoals().addGoal(skeleton, 3, new NodeAttackGoal(skeleton, gameManager));
 
         activeMobs.add(skeleton);
     }
@@ -583,6 +606,9 @@ public class WaveManager {
     private void dropCurrency(LivingEntity mob) {
         if (!gameManager.isGameRunning()) return;
         if (mob.getLocation().getWorld() == null) return;
+        // P0-D：空投小怪不掉货币 —— 抛投者可无限空投，若空投怪也掉币，玩家挂机即可刷钱，
+        // 且会污染经济。空投怪在生成时打了 PDC 标记（见 markAirdropMob），此处据此跳过。
+        if (isAirdropMob(mob)) return;
 
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
         ShopManager shopManager = gameManager.getPlugin().getShopManager();
@@ -612,6 +638,9 @@ public class WaveManager {
     public void clearAllMobs() {
         // 先停刷怪任务再清实体：否则清理期间任务仍会补刷出新怪（结算 / stopGame / 关闭服务器路径都会走到这里）
         cancelSpawnTask();
+        // P0-D：同步取消未完成的空投批次任务。haltGame() 结算期间刻意不改游戏状态，
+        // 空投任务的 isGameRunning() 守卫因此拦不住它，必须在这里显式取消。
+        cancelAirdropTasks();
 
         for (LivingEntity mob : activeMobs) {
             if (mob != null && mob.isValid()) {
@@ -619,6 +648,14 @@ public class WaveManager {
             }
         }
         activeMobs.clear();
+    }
+
+    /** 取消并清空所有未完成的空投批次任务（幂等）。 */
+    private void cancelAirdropTasks() {
+        for (BukkitTask task : airdropTasks) {
+            if (task != null) task.cancel();
+        }
+        airdropTasks.clear();
     }
 
     public boolean isWaveCleared() {
@@ -640,6 +677,115 @@ public class WaveManager {
         if (mob != null) activeMobs.add(mob);
     }
 
+    /** 给空投小怪打上 PDC 标记（dropCurrency / 调试据此识别空投来源的怪物）。 */
+    private void markAirdropMob(LivingEntity mob) {
+        mob.getPersistentDataContainer().set(airdropKey, PersistentDataType.BYTE, (byte) 1);
+    }
+
+    /** 是否为空投小怪（带 {@link #airdropKey} PDC 标记）。 */
+    private boolean isAirdropMob(LivingEntity mob) {
+        return mob != null && mob.getPersistentDataContainer().has(airdropKey, PersistentDataType.BYTE);
+    }
+
+    /**
+     * 当前存活怪物数是否已达容量上限（全局上限与人均上限取最小）。
+     *
+     * <p>P0-D：空投前的快速门控 —— 已满则本轮不再空投（抛投者转入冷却重试），
+     * 避免抛投者无视上限持续空投导致实体数指数膨胀。</p>
+     */
+    public boolean isMobCapReached() {
+        return activeMobs.size() >= resolveMobCap();
+    }
+
+    /** 全局上限与「人均上限 × 当前人数」取最小；人数为 0 时退化为全局上限。 */
+    private int resolveMobCap() {
+        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
+        int playerCount = Math.max(1, gameManager.getPlayers().size());
+        return Math.min(cfg.getGlobalMobCap(), cfg.getMobCapPerPlayer() * playerCount);
+    }
+
+    /**
+     * 执行一轮空投（P0-D 统一纳管入口，由 {@link com.hilltopvillage.ai.AirdropSpawnGoal} 调用）。
+     *
+     * <p>与旧实现（AirdropSpawnGoal 内直接 {@code spawnEntity + addActiveMob}）的区别：</p>
+     * <ul>
+     *   <li><b>受容量上限约束</b>：开投前按 {@link #resolveMobCap()} 裁剪本轮只数，批次内每只再复查，满了即停；</li>
+     *   <li><b>纳入波次管理</b>：每只走 {@link #prepareWaveMob}（persistent + NodeAttackGoal），
+     *       不再是「远离即消失、不触发死亡事件、永久残留 activeMobs 污染清波」的游离实体；</li>
+     *   <li><b>不掉货币</b>：打 {@link #markAirdropMob} 标记，{@link #dropCurrency} 跳过；</li>
+     *   <li><b>任务可被统一取消</b>：批次任务登记进 {@link #airdropTasks}，波次结束 / 结算 / 停服时随
+     *       {@link #clearAllMobs()} 一并取消；运行期自带 dropper 存活、波次号一致、游戏进行中三重守卫。</li>
+     * </ul>
+     *
+     * @param dropper    发起本轮空投的抛投者（死亡即终止本轮，不再继续刷）
+     * @param dropLoc    空投落点
+     * @param count      本轮期望空投数量
+     * @param mobType    空投小怪的实体类型
+     * @param originWave 发起本轮空投时的波次号（波次切换即终止，避免跨波补刷）
+     */
+    public void spawnAirdropMobs(Mob dropper, Location dropLoc, int count, EntityType mobType, int originWave) {
+        if (dropLoc == null || dropLoc.getWorld() == null || mobType == null) return;
+        if (!gameManager.isGameRunning()) return;
+
+        final World world = dropLoc.getWorld();
+        // 开投前按剩余容量裁剪本轮只数（批次内每只还会再复查一次，双保险）
+        int room = resolveMobCap() - activeMobs.size();
+        final int toSpawn = Math.min(Math.max(0, count), Math.max(0, room));
+        if (toSpawn <= 0) return;
+
+        final int[] spawned = {0};
+        BukkitTask[] handle = new BukkitTask[1];
+        handle[0] = new BukkitRunnable() {
+            @Override
+            public void run() {
+                // dropper 死亡 / 波次切换 / 游戏结束 / 容量已满 → 立即终止本轮空投
+                if (dropper == null || !dropper.isValid()
+                        || !gameManager.isGameRunning()
+                        || gameManager.getCurrentWave() != originWave
+                        || spawned[0] >= toSpawn
+                        || activeMobs.size() >= resolveMobCap()) {
+                    airdropTasks.remove(handle[0]);
+                    cancel();
+                    return;
+                }
+
+                double offsetX = (random.nextDouble() - 0.5) * 4;
+                double offsetZ = (random.nextDouble() - 0.5) * 4;
+                Location spawnLoc = dropLoc.clone().add(offsetX, 3, offsetZ);
+
+                Entity entity = world.spawnEntity(spawnLoc, mobType);
+                if (entity instanceof Mob mob) {
+                    var followAttr = mob.getAttribute(Attribute.FOLLOW_RANGE);
+                    if (followAttr != null) followAttr.setBaseValue(40.0);
+                    markAirdropMob(mob);
+                    prepareWaveMob(mob); // persistent + NodeAttackGoal + 登记 activeMobs
+                } else if (entity instanceof LivingEntity living) {
+                    markAirdropMob(living);
+                    activeMobs.add(living);
+                }
+
+                world.playSound(spawnLoc, Sound.ENTITY_ZOMBIE_INFECT, 0.3f, 0.5f);
+                world.spawnParticle(Particle.DRIPPING_OBSIDIAN_TEAR, spawnLoc, 5, 0.3, 0.3, 0.3, 0);
+
+                spawned[0]++;
+            }
+        }.runTaskTimer(gameManager.getPlugin(), 0L, AIRDROP_SPAWN_PERIOD_TICKS);
+        airdropTasks.add(handle[0]);
+    }
+
+    /**
+     * 把一只怪物移出波次（P0-C/D）：从世界移除并从 {@link #activeMobs} 剔除，<b>不</b>掉货币、不记击杀。
+     *
+     * <p>用于「自毁出列」（甲虫无节点、普通怪卡死放弃）与波次超时保险的强制清除——这些都不是
+     * 玩家击杀，不应产生经济或击杀统计。{@code entity.remove()} 不触发 {@code EntityDeathEvent}，
+     * 因此必须在这里主动从集合剔除，否则会留下无效实体永久卡住清波判定。</p>
+     */
+    public void discardMob(LivingEntity mob) {
+        if (mob == null) return;
+        if (mob.isValid()) mob.remove();
+        activeMobs.remove(mob);
+    }
+
     /** 只读视图：调用方只能查询，写入请用 {@link #addActiveMob(LivingEntity)} */
     public Set<LivingEntity> getActiveMobs() {
         return Collections.unmodifiableSet(activeMobs);
@@ -647,5 +793,92 @@ public class WaveManager {
 
     public int getRemainingMobCount() {
         return activeMobs.size();
+    }
+
+    /**
+     * 波次超时保险 · 第一阶段（P0-C 根因兜底）：把全部存活怪物传送到最近存活玩家身边并高亮，
+     * 让任何形态的卡死怪（木桩猎手 / 卡地形甲虫 / 节点不可达的普通怪）都能被玩家找到并清掉。
+     *
+     * <p>没有任何存活玩家可传送时（例如人全死但节点尚存、未判负），这些怪物无人能战，
+     * 直接 {@link #discardMob} 出列，避免永久卡住清波。</p>
+     *
+     * @return 被处理（传送高亮或出列）的怪物数
+     */
+    public int relocateStuckMobsToPlayers() {
+        List<Player> alive = getAlivePlayersInWorld();
+        int handled = 0;
+        for (LivingEntity mob : new ArrayList<>(activeMobs)) {
+            if (mob == null || !mob.isValid()) {
+                activeMobs.remove(mob);
+                continue;
+            }
+            if (alive.isEmpty()) {
+                // 无人可战：留着只会永久卡波，直接出列
+                discardMob(mob);
+                handled++;
+                continue;
+            }
+            Player nearest = nearestPlayer(alive, mob.getLocation());
+            Location dest = nearest.getLocation().clone().add(
+                    (random.nextDouble() - 0.5) * 2, 0, (random.nextDouble() - 0.5) * 2);
+            mob.teleport(dest);
+            mob.setGlowing(true);
+            if (mob instanceof Mob aggressive) {
+                aggressive.setTarget(nearest); // 尽力让具备目标 AI 的怪物转向玩家
+            }
+            handled++;
+        }
+        return handled;
+    }
+
+    /**
+     * 波次超时保险 · 第二阶段（最终安全网）：第一阶段宽限后仍未清波时，强制清除全部残存怪物。
+     * 这是「保证波次一定能清」的硬兜底，{@link #discardMob} 出列后 {@link #isWaveCleared()} 即为 true。
+     *
+     * @return 被强制清除的怪物数
+     */
+    public int purgeStuckMobs() {
+        int purged = 0;
+        for (LivingEntity mob : new ArrayList<>(activeMobs)) {
+            if (mob != null && mob.isValid()) {
+                mob.getWorld().spawnParticle(Particle.LARGE_SMOKE, mob.getLocation().add(0, 1, 0),
+                        10, 0.3, 0.5, 0.3, 0.02);
+            }
+            discardMob(mob);
+            purged++;
+        }
+        activeMobs.clear();
+        return purged;
+    }
+
+    /** 本竞技场世界内、仍存活且在线的玩家（供波次超时保险定位传送目标）。 */
+    private List<Player> getAlivePlayersInWorld() {
+        List<Player> result = new ArrayList<>();
+        World world = gameManager.getGameWorld();
+        if (world == null) return result;
+        for (UUID uuid : gameManager.getPlayers()) {
+            PlayerData data = gameManager.getPlayerData(uuid);
+            if (data == null || !data.isAlive()) continue;
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null || !player.isOnline() || player.getWorld() != world) continue;
+            result.add(player);
+        }
+        return result;
+    }
+
+    /** 从给定玩家列表中取离 {@code from} 最近的一个（列表非空时保证返回非 null）。 */
+    private Player nearestPlayer(List<Player> players, Location from) {
+        Player best = players.get(0);
+        double bestDistSq = Double.MAX_VALUE;
+        for (Player player : players) {
+            Location loc = player.getLocation();
+            if (loc.getWorld() != from.getWorld()) continue;
+            double distSq = loc.distanceSquared(from);
+            if (distSq < bestDistSq) {
+                bestDistSq = distSq;
+                best = player;
+            }
+        }
+        return best;
     }
 }

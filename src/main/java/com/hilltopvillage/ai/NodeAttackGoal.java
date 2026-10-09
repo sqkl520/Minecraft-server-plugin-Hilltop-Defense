@@ -40,6 +40,8 @@ public class NodeAttackGoal implements Goal<Mob> {
     private static final double STUCK_THRESHOLD_SQ = 0.01;
     /** 卡住超时（tick）后重新寻路 */
     private static final int STUCK_TICK_LIMIT = 60;
+    /** 卡死放弃上限：连续卡死这么多次后放弃节点改选次近节点，次近也不可达则自毁出列（P0-C） */
+    private static final int MAX_STUCK_GIVEUPS = 3;
 
     /**
      * Goal 的身份键。
@@ -67,6 +69,10 @@ public class NodeAttackGoal implements Goal<Mob> {
     private int attackCooldown;
     private int stuckTicks;
     private Location lastPosition;
+    /** 卡死放弃次数；达到 {@link #MAX_STUCK_GIVEUPS} 则自毁出列（P0-C） */
+    private int stuckGiveUps;
+    /** 最近一次因卡死而放弃的节点；retarget 时优先排除它，避免立即重新锁定同一卡点 */
+    private NodeSystem.NodeData lastGivenUpNode;
 
     public NodeAttackGoal(Mob mob, GameManager gameManager) {
         this.mob = mob;
@@ -103,7 +109,14 @@ public class NodeAttackGoal implements Goal<Mob> {
 
         NodeSystem.NodeData nearest = null;
         if (radius > 0) {
-            nearest = nodeSystem.getNearestNode(mob.getLocation());
+            // P0-C：若刚因卡死放弃过某节点，优先改选排除它的次近节点；次近不存在（只剩放弃过的那个）
+            // 时回退到它，由卡死放弃计数最终兜底自毁。
+            nearest = lastGivenUpNode != null
+                    ? nodeSystem.getNearestNodeExcluding(mob.getLocation(), lastGivenUpNode)
+                    : nodeSystem.getNearestNode(mob.getLocation());
+            if (nearest == null && lastGivenUpNode != null) {
+                nearest = nodeSystem.getNearestNode(mob.getLocation());
+            }
             if (nearest != null && !isWithinSearchRadius(nearest)) {
                 nearest = null;
             }
@@ -139,6 +152,8 @@ public class NodeAttackGoal implements Goal<Mob> {
     public void start() {
         attackCooldown = 0;
         stuckTicks = 0;
+        stuckGiveUps = 0;
+        lastGivenUpNode = null;
         lastPosition = mob.getLocation();
         pathToNode();
     }
@@ -175,6 +190,9 @@ public class NodeAttackGoal implements Goal<Mob> {
 
         if (mobLoc.distance(targetCenter) <= ATTACK_RANGE) {
             mob.getPathfinder().stopPathfinding();
+            // 成功够到节点：重置卡死放弃预算与排除标记，下次卡死重新计数（P0-C）
+            stuckGiveUps = 0;
+            lastGivenUpNode = null;
             attackNode();
             return;
         }
@@ -188,8 +206,23 @@ public class NodeAttackGoal implements Goal<Mob> {
         lastPosition = mobLoc;
 
         if (stuckTicks >= STUCK_TICK_LIMIT) {
-            pathToNode();
             stuckTicks = 0;
+            // P0-C：原实现只是对同一节点无限重发 moveTo，节点不可达时怪物永久卡住、波次永不清。
+            // 改为：累计放弃次数到上限直接自毁出列；否则记下卡点、立即改选次近节点再寻路。
+            if (++stuckGiveUps >= MAX_STUCK_GIVEUPS) {
+                gameManager.getWaveManager().discardMob(mob);
+                return;
+            }
+            lastGivenUpNode = targetNode;
+            nextRetargetTick = 0; // 解除 30-tick 节流，立即重选
+            retargetIfNeeded();
+            if (targetNode == null) {
+                // 没有其它可达节点可选：出列，避免木桩占位卡波
+                gameManager.getWaveManager().discardMob(mob);
+                return;
+            }
+            lastPosition = mob.getLocation();
+            pathToNode();
         }
     }
 

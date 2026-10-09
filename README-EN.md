@@ -542,6 +542,7 @@ min-players: 2                   # players required to start (only applies to ar
 max-players: 6                   # max players per match
 victory-waves: 20                # waves needed to win
 wave-interval-seconds: 30        # rest time between waves
+wave-timeout-seconds: 120        # stall safeguard: if a wave stalls, stuck mobs are pulled to players and highlighted, then force-cleared after a 15s grace, 0=disable
 
 # Added in phases 1-3
 defeat-countdown-seconds: 20     # time from battle report to teleport back to lobby
@@ -574,6 +575,7 @@ spawning:
   spawn-y-offset: 0              # spawn height offset
   mob-cap-per-player: 15
   global-mob-cap: 80
+  airdrop-max-per-dropper: 3     # max airdrop rounds per flying dropper for the whole match (prevents airdrop runaway), 0=disable airdrops
 ```
 
 # Starter kit (granted to every player on match start; overflow drops at their feet)
