@@ -2,6 +2,11 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-10 — P0 修复：自动开局永久失效）
+
+- **P0-E 自动开局永久失效**：`ArenaInstance` 开局倒计时 Runnable 的四个终止分支（state 非 STARTING / 人数不足 / 不可开局 / 倒计时归零自然开局）此前只调 `BukkitRunnable.cancel()`，任务停了但 `startCountdownTask` 字段残留非空；而 `checkAutoStart()` 以 `startCountdownTask == null` 为「可开新倒计时」守卫，且自然结算路径（`finishSession→ENDING→reset→completeResetAfterRestore`）全程不碰该句柄 → 首局自动结束后守卫被永久挡住，等待区再不自动倒计时，只剩管理员手动 `/hilltop start`（每局必现）。四个分支统一改走 `cancelCountdown()`（取消 + 置空），`completeResetAfterRestore()` 回到 WAITING 前再幂等兜底一次 `cancelCountdown()`，确保连续多局都能自动开局；手动开局、人数跌破取消等路径行为不变（无玩家可见文案改动）
+- **结算倒计时残留句柄一并收尾**：`endSequenceTask` 的「过期回调静默丢弃」分支补 `endSequenceTask = null`，与 `finishSession` 收尾一致（该字段无 `== null` 守卫、`beginEndSequence` 本就先 `cancelEndSequence` 自愈，属低风险加固）
+
 ### Fixed（2026-10-09 — 三维测试 FAIL 修正：code 维度 12 项全修）
 
 > 来源：三维测试 code 维度 FAIL（build/arch 同轮已 PASS）。本轮只动 code 维度指出的问题，

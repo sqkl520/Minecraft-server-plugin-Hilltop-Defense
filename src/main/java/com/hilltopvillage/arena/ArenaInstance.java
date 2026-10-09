@@ -600,6 +600,10 @@ public class ArenaInstance implements IArena {
                 // 本局已被 stop / reset 中断，或已翻到下一局：静默丢弃
                 if (!isCurrentEndSequence(session)) {
                     cancel();
+                    // 置空残留句柄（与 finishSession 的收尾一致）。此分支执行时 endSequenceTask
+                    // 必为本任务或已被 cancelEndSequence 置 null：新一局的 beginEndSequence 必先
+                    // cancelEndSequence 取消旧任务，被取消的任务不会再 run()，故不存在误伤新任务。
+                    endSequenceTask = null;
                     return;
                 }
                 if (remaining <= 0) {
@@ -881,14 +885,19 @@ public class ArenaInstance implements IArena {
         startCountdownTask = new BukkitRunnable() {
             @Override
             public void run() {
+                // ⚠️ 以下每个终止分支都走 cancelCountdown()（取消 + 置空 startCountdownTask），
+                // 绝不能只调 BukkitRunnable.cancel()：那样任务停了但 startCountdownTask 残留非空，
+                // 而 checkAutoStart() 以 startCountdownTask == null 为「可开新倒计时」守卫——
+                // 自然结算路径（finishSession→reset→completeResetAfterRestore）回到 WAITING 时
+                // 不会碰这个句柄，残留非空会永久挡住后续自动开局（P0-E）。
                 if (state != GameState.STARTING) {
-                    cancel();
+                    cancelCountdown();
                     return;
                 }
 
                 if (getPlayerCount() < getMinPlayers()) {
                     // Not enough players, cancel countdown
-                    cancel();
+                    cancelCountdown();
                     setState(GameState.WAITING);
                     broadcastI18n("countdown-cancelled");
                     return;
@@ -896,15 +905,15 @@ public class ArenaInstance implements IArena {
 
                 if (!isPlayable()) {
                     // 竞技场在倒计时途中变为不可用（如管理员清空了生成点）
-                    cancel();
+                    cancelCountdown();
                     setState(GameState.WAITING);
                     broadcastI18n("countdown-cancelled");
                     return;
                 }
 
                 if (countdown <= 0) {
-                    // Start game
-                    cancel();
+                    // Start game（自然开局：与 startGame() 手动开局一致，先 cancelCountdown 再切 RUNNING）
+                    cancelCountdown();
                     setState(GameState.RUNNING);
                     return;
                 }
@@ -1040,6 +1049,10 @@ public class ArenaInstance implements IArena {
         restoreStarted = false;
         resetScheduled = false;
         sessionVictory = null;
+        // 保险（幂等）：回到 WAITING 之前确保倒计时句柄干净。正常路径下主修复已在倒计时
+        // 终止分支置空，但无论经由哪条结算路径（自然结束 / stopGame）回到 WAITING，
+        // 都在此兜底一次，保证 checkAutoStart() 的 startCountdownTask == null 守卫必然成立。
+        cancelCountdown();
         state = GameState.WAITING;
         plugin.getLogger().info("Arena " + arenaId + " has been reset");
     }
