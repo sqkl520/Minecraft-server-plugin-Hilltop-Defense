@@ -8,6 +8,7 @@ import org.bukkit.NamespacedKey;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Entity;
+import org.bukkit.entity.Monster;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Villager;
 import org.bukkit.event.EventHandler;
@@ -26,7 +27,9 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * <p>设计对应「村民全部阵亡 = 游戏失败」：管理员在部署向导中手动放置村民，
  * 数量取决于管理员放了多少个；村民血量在 {@code /hilltop config} 中配置。</p>
  *
- * <p>村民会被怪物自然攻击（原版僵尸本就以村民为目标），玩家无法伤害村民。</p>
+ * <p>村民会被怪物自然攻击（原版僵尸本就以村民为目标）；<b>只有怪物的直接攻击能伤害村民</b>——
+ * 玩家攻击与一切环境伤害（活埋 / 摔落 / 岩浆 / 溺水 / 爆炸 / 雷击 / 火 / 仙人掌等）全部被取消，
+ * 且村民以 {@code setAI(false)} 锁定在部署位置，杜绝被玩家推入岩浆或坑洞。</p>
  *
  * <p><b>事件注册方式：</b>本类<b>不再</b>实现 {@link Listener}，也不再由
  * {@code ArenaInstance} 逐个注册。村民事件统一由 {@link GlobalListener} 在
@@ -98,6 +101,10 @@ public class VillagerSystem {
             villager.setInvulnerable(false);
             villager.setCollidable(true);
             villager.setSilent(false);
+            // P0-B：锁定村民位置 —— 禁用自身 AI，村民不再游走，也不会被玩家推入岩浆/坑洞。
+            // NoAI 实体仍是怪物的合法攻击目标（怪物照常寻路过来击杀），且不影响受伤判定；
+            // 配合 setInvulnerable(false) 保证怪物伤害照常生效（村民可被怪物杀，不是全无敌）。
+            villager.setAI(false);
 
             var maxHealth = villager.getAttribute(Attribute.MAX_HEALTH);
             if (maxHealth != null) {
@@ -162,19 +169,70 @@ public class VillagerSystem {
 
     /* ========== 事件处理（由 GlobalListener 按世界路由后调用） ========== */
 
-    /** 玩家不能伤害村民（怪物照常可以） */
+    /**
+     * 村民伤害策略：<b>白名单放行</b>（取代早期只拦玩家直击的黑名单，堵死环境伤害绕过）。
+     *
+     * <p>唯一放行条件 = <b>战斗类 cause</b> 且 <b>溯源到敌对怪物</b>，其余一切来源全部取消：</p>
+     * <ul>
+     *   <li><b>放行</b>：溯源命中原版 {@link Monster} 或本插件登记的波次怪
+     *       （{@code WaveManager.activeMobs}），且 cause 属战斗类
+     *       —— 近战 {@code ENTITY_ATTACK} / 横扫 {@code ENTITY_SWEEP_ATTACK} /
+     *       投射物 {@code PROJECTILE} / 怪物触发的实体爆炸 {@code ENTITY_EXPLOSION}
+     *       （后者即甲虫自爆 STORY-1.6，溯源实体是甲虫）。</li>
+     *   <li><b>取消</b>：玩家溯源的直击 / 横扫 / 投射物 / 药水；以及所有环境伤害
+     *       —— 窒息 / 摔落 / 岩浆 / 溺水 / 雷击 / 火 / 点燃 / 仙人掌 / 虚空 等
+     *       要么不在战斗白名单，要么溯源不到怪物，统一取消。从根上堵死
+     *       「用泥土活埋、挖井摔死、引岩浆/点燃村民」零门槛强制全场失败。</li>
+     * </ul>
+     *
+     * <p>烈焰蛋 / 重锤 AOE 的村民豁免（STORY-1.6）走各自目标过滤、不经本方法；
+     * 即便漏到这里，其溯源实体是玩家，也会被白名单取消，豁免不受影响。</p>
+     */
     public void handleVillagerDamage(EntityDamageEvent event) {
         if (!(event.getEntity() instanceof Villager villager)) return;
         if (!villagers.contains(villager)) return;
 
-        if (event.getCause() == EntityDamageEvent.DamageCause.ENTITY_ATTACK
-                || event.getCause() == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK
-                || event.getCause() == EntityDamageEvent.DamageCause.PROJECTILE) {
-            var damager = event.getDamageSource().getCausingEntity();
-            if (damager instanceof Player) {
-                event.setCancelled(true);
-            }
+        // 白名单：战斗类 cause + 溯源到敌对怪物，两者同时满足才放行；否则一律取消。
+        if (isMonsterCombatCause(event.getCause()) && isHostileMonsterSource(event)) {
+            return;
         }
+        event.setCancelled(true);
+    }
+
+    /**
+     * 战斗类伤害 cause 白名单：只有这几种 cause 才<i>可能</i>来自怪物的直接攻击。
+     *
+     * <p>{@code ENTITY_EXPLOSION} 保留在白名单内是为放行甲虫自爆（溯源是甲虫）；
+     * 玩家点燃的 TNT 同为该 cause，但溯源是玩家，会在 {@link #isHostileMonsterSource}
+     * 处被拦下。其余所有 cause（含 {@code BLOCK_EXPLOSION} 与全部环境伤害）
+     * 不在白名单，直接取消。</p>
+     */
+    private static boolean isMonsterCombatCause(EntityDamageEvent.DamageCause cause) {
+        return cause == EntityDamageEvent.DamageCause.ENTITY_ATTACK
+                || cause == EntityDamageEvent.DamageCause.ENTITY_SWEEP_ATTACK
+                || cause == EntityDamageEvent.DamageCause.PROJECTILE
+                || cause == EntityDamageEvent.DamageCause.ENTITY_EXPLOSION;
+    }
+
+    /**
+     * 溯源判定：伤害是否来自敌对怪物（原版 {@link Monster} 或本插件波次怪）。
+     *
+     * <p>同时检查 {@code getCausingEntity()}（责任实体，如射箭的骷髅、引爆的甲虫）
+     * 与 {@code getDirectEntity()}（直接实体，如箭矢、爆炸源），任一命中怪物即放行；
+     * 波次怪可能被配置成非 {@link Monster} 的实体类型（如 Phantom），故以
+     * {@code activeMobs} 登记表兜底。玩家及无溯源（纯环境）一律返回 false。</p>
+     */
+    private boolean isHostileMonsterSource(EntityDamageEvent event) {
+        var source = event.getDamageSource();
+        return isHostileMonster(source.getCausingEntity())
+                || isHostileMonster(source.getDirectEntity());
+    }
+
+    /** 实体是否为敌对怪物（原版 {@link Monster} 或已登记的波次怪）；玩家 / null 均否。 */
+    private boolean isHostileMonster(Entity entity) {
+        if (entity == null || entity instanceof Player) return false;
+        if (entity instanceof Monster) return true;
+        return gameManager.getWaveManager().getActiveMobs().contains(entity);
     }
 
     /** 村民阵亡：更新名牌，全部阵亡则触发失败 */

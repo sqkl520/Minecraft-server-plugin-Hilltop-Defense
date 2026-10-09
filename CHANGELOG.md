@@ -2,6 +2,16 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-10 — P0 修复：村民环境伤害强制失败漏洞 P0-B）
+
+> 来源：P0 破坏漏洞排查。普通玩家可用泥土活埋 / 挖井摔死 / 引岩浆点燃等零门槛手段杀光村民，
+> 触发 `triggerDefeat` 强制全场失败。本轮只收敛村民伤害策略，不改游戏规则 / 配置格式 / 权限节点。
+
+- **村民伤害改为白名单放行**：`VillagerSystem.handleVillagerDamage` 由"只拦玩家直击/横扫/投射物"的黑名单改为白名单——唯一放行条件 = 战斗类 cause（`ENTITY_ATTACK` / `ENTITY_SWEEP_ATTACK` / `PROJECTILE` / `ENTITY_EXPLOSION`）且经 `getDamageSource()` 的 `getCausingEntity()`/`getDirectEntity()` 溯源命中敌对怪物（原版 `Monster` 或 `WaveManager.activeMobs` 登记的波次怪）；其余一切来源（玩家溯源的直击/投射物/药水，及窒息/摔落/岩浆/溺水/爆炸/雷击/火/点燃/仙人掌/虚空等全部环境伤害）一律 `setCancelled(true)`
+- **村民锁定部署位置**：生成时追加 `setAI(false)`，村民不再游走、也不会被玩家推入岩浆或坑洞；`setInvulnerable(false)` 保持不变，怪物伤害照常生效（村民可被怪物击杀，非全无敌）
+- **回归保留**：甲虫自爆（STORY-1.6，溯源为甲虫，`ENTITY_EXPLOSION` 在白名单内）、普通怪 `NodeAttackGoal`、钩爪猎手仍能正常伤害/击杀村民；烈焰蛋/重锤 AOE 的村民豁免（STORY-1.6 目标过滤）不受影响（玩家溯源本就被白名单取消）
+- **无新增 i18n/配置/权限**：拦截为静默取消，不引入面向玩家的新文本
+
 ### Fixed（2026-10-10 — P0 修复：自动开局永久失效）
 
 - **P0-E 自动开局永久失效**：`ArenaInstance` 开局倒计时 Runnable 的四个终止分支（state 非 STARTING / 人数不足 / 不可开局 / 倒计时归零自然开局）此前只调 `BukkitRunnable.cancel()`，任务停了但 `startCountdownTask` 字段残留非空；而 `checkAutoStart()` 以 `startCountdownTask == null` 为「可开新倒计时」守卫，且自然结算路径（`finishSession→ENDING→reset→completeResetAfterRestore`）全程不碰该句柄 → 首局自动结束后守卫被永久挡住，等待区再不自动倒计时，只剩管理员手动 `/hilltop start`（每局必现）。四个分支统一改走 `cancelCountdown()`（取消 + 置空），`completeResetAfterRestore()` 回到 WAITING 前再幂等兜底一次 `cancelCountdown()`，确保连续多局都能自动开局；手动开局、人数跌破取消等路径行为不变（无玩家可见文案改动）
