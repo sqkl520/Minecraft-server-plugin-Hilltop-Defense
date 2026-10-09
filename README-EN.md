@@ -16,9 +16,9 @@ A cooperative PvE tower defense plugin for Minecraft servers. Players must work 
 - **Villagers to Protect** — Monsters attack villagers; **if every villager dies, the game is lost** (count set by the admin during deployment)
 - **Death & Respawn** — Fallen players spectate until the next wave, then respawn at the core; impossible while no node is active
 - **Sacred Hammer** — Right-click to leap and charge a smash attack from above, dealing three-tier area damage + particle shockwaves + aftershock slowdown; supports ItemsAdder custom models; smashes have a cooldown (8s default) and a use limit (30 default, shatters when exhausted — buy a new one from the shop); smashing and node repair only work while a game is running
-- **Fireball** — BedWars-style Fireball: right-click to throw with flame particle trail, explodes on impact for area damage + knockback + ignite; configurable cooldown
+- **Fireball** — BedWars-style Fireball: right-click to throw with flame particle trail, explodes on impact for area damage + knockback + ignite (zero damage to players — knockback only, no ignite; villagers fully exempt and no longer trigger proximity fuse); configurable cooldown
 - **Villager Shop** — Killing monsters drops Energy Crystals (configurable chance); right-click the shop villager to buy items; everything customizable in `shop.yml`
-- **Special Monster AI** — Explode Beetle (rushes nodes to self-destruct), Hook Claw Hunter (ranged hook grab + blindness), Flying Dropper (airdrops zombie squads); each supports armor/weapons/custom models
+- **Special Monster AI** — Explode Beetle (rushes nodes to self-destruct; its entity explosion can be toggled off), Hook Claw Hunter (ranged hook grab + blindness), Flying Dropper (airdrops zombie squads); each supports armor/weapons/custom models
 
 **Architecture & Quality of Life**
 
@@ -302,7 +302,7 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 | Tool | How to get it | Effect |
 |------|--------------|--------|
 | **Sacred Hammer** | Buy from the shop (or Admin `/hilltop hammer`) | Right-click to leap and charge, then smash down for three-tier area damage (higher fall = more damage); has a cooldown and a use limit — shatters when exhausted and must be repurchased |
-| **Fireball** | Buy from the shop (or Admin `/hilltop fireball`) | Right-click to throw; explodes on impact for area damage + knockback + ignite |
+| **Fireball** | Buy from the shop (or Admin `/hilltop fireball`) | Right-click to throw; explodes on impact for area damage + knockback + ignite (0 damage to players, knockback only; monsters unchanged; villagers exempt) |
 | **World Tree Sap** | Kill ghasts / buy from the shop | Right-click a destroyed energy node to repair it |
 | **Node buffs** | Stand near an active node | Resistance + Regeneration (nodes are mobile healing fountains) |
 
@@ -598,7 +598,7 @@ See the individual files under `plugins/HilltopVillage/` for the complete refere
 
 | Monster | Entity Type | Ability |
 |------|------|------|
-| **Explode Beetle** | Cave Spider | Rushes energy nodes and self-destructs, dealing massive node damage |
+| **Explode Beetle** | Cave Spider | Rushes energy nodes and self-destructs, dealing massive node damage (`monsters.explode-beetle.entity-explosion` can disable the attached entity explosion, keeping node damage only) |
 | **Hook Claw Hunter** | Skeleton | Fires hooks at range, teleporting players and applying blindness + slowness |
 | **Flying Dropper** | Phantom | Flies above players and airdrops zombie squads |
 

@@ -8,6 +8,8 @@ import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.mechanics.NodeSystem;
 import org.bukkit.Location;
 import org.bukkit.NamespacedKey;
+import org.bukkit.Particle;
+import org.bukkit.Sound;
 import org.bukkit.World;
 import org.bukkit.attribute.Attribute;
 import org.bukkit.attribute.AttributeInstance;
@@ -206,7 +208,16 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
         double nodeDamage = resolveBaseDamage(monsterCfg) * explodeMultiplier * nodeMultiplier;
 
         if (world == null) return;
-        world.createExplosion(nodeLoc, (float) explodeMultiplier, false, false, beetle);
+        if (monsterCfg != null && !monsterCfg.isEntityExplosion()) {
+            // STORY-1.6：纯视觉自爆 —— 只结算节点伤害（damageNode 见下），不再附带原版实体爆炸，
+            // 节点旁的村民/玩家不受波及；粒子 + 音效保留爆炸观感。
+            world.spawnParticle(Particle.EXPLOSION_EMITTER, nodeLoc, 1, 0, 0, 0, 0);
+            world.spawnParticle(Particle.EXPLOSION, nodeLoc, 8, 0.5, 0.5, 0.5, 0.2);
+            world.spawnParticle(Particle.LARGE_SMOKE, nodeLoc, 10, 0.6, 0.5, 0.6, 0.05);
+            world.playSound(nodeLoc, Sound.ENTITY_GENERIC_EXPLODE, 0.8f, 1.0f);
+        } else {
+            world.createExplosion(nodeLoc, (float) explodeMultiplier, false, false, beetle);
+        }
         nodeSystem.damageNode(nodeLoc, nodeDamage);
         gameManager.getDisplayEntityManager().spawnNodeDestroyEffect(nodeLoc);
 

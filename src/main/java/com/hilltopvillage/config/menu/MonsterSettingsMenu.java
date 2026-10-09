@@ -177,11 +177,23 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
                     0.5, 10, 0.5, mc::getExplodeDamageMultiplier, mc::setExplodeDamageMultiplier,
                     lang.getFor(admin, "config.menu.monsters.explode-multiplier-desc"));
 
-            setItem(47, Material.KNOWLEDGE_BOOK, lang.getFor(admin, "config.menu.monsters.explode-logic"),
+            // STORY-1.6：自爆是否附带原版实体爆炸（关 → 只结算节点伤害 + 纯视觉，不炸村民/玩家）
+            Material toggleIcon = mc.isEntityExplosion() ? Material.GREEN_WOOL : Material.RED_WOOL;
+            setClickableItem(47, toggleIcon, lang.getFor(admin, "config.menu.monsters.entity-explosion"),
+                    ct -> { mc.setEntityExplosion(!mc.isEntityExplosion()); reopen(); },
+                    lang.getFor(admin, "config.menu.monsters.entity-explosion-desc"),
+                    lang.getFor(admin, "config.menu.common.current")
+                            + lang.getFor(admin, mc.isEntityExplosion()
+                                    ? "config.menu.monsters.entity-explosion-on"
+                                    : "config.menu.monsters.entity-explosion-off"),
+                    lang.getFor(admin, "config.menu.common.click-cycle"));
+
+            setItem(48, Material.KNOWLEDGE_BOOK, lang.getFor(admin, "config.menu.monsters.explode-logic"),
                     lang.getFor(admin, "config.menu.monsters.explode-lore1"),
                     lang.getFor(admin, "config.menu.monsters.explode-lore2"),
                     lang.getFor(admin, "config.menu.monsters.explode-lore3"),
-                    lang.getFor(admin, "config.menu.monsters.explode-lore4"));
+                    lang.getFor(admin, "config.menu.monsters.explode-lore4"),
+                    lang.getFor(admin, "config.menu.monsters.explode-lore5"));
 
         } else if (currentPage == Page.HOOK_CLAW_HUNTER) {
             addAdjustableItem(46, Material.FISHING_ROD, lang.getFor(admin, "config.menu.monsters.hook-velocity"), mc.getHookVelocity(),

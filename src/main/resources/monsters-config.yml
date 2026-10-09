@@ -20,7 +20,8 @@
 #  === 本文件中【不生效】的字段 ===
 #  以下字段请改 game-settings.yml 的 monsters 段（本文件中的同名值会被忽略）：
 #  health, speed, display-egg, display-name, hook-velocity,
-#  cooldown-ticks, stun-duration-ticks, airdrop-mob-count, explode-damage-multiplier
+#  cooldown-ticks, stun-duration-ticks, airdrop-mob-count, explode-damage-multiplier,
+#  entity-explosion (explode-beetle)
 # ============================================================
 
 # ============================================================
@@ -42,6 +43,7 @@ explode-beetle:
   leggings: ""
   boots: ""
   explode-damage-multiplier: 3.0
+  entity-explosion: true
   hook-velocity: 1.0
   cooldown-ticks: 0
   stun-duration-ticks: 0

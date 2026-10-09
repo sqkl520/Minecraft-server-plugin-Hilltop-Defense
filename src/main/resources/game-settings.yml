@@ -196,6 +196,8 @@ monsters:
     # 显示名留空时使用 messages.yml 的 mob.explode-beetle（随玩家语言切换）
     display-name: ""
     explode-damage-multiplier: 3.0
+    # 自爆是否附带原版实体爆炸（false 时只结算节点伤害 + 纯视觉效果，不炸伤村民/玩家）
+    entity-explosion: true
     cooldown-ticks: 0
     stun-duration-ticks: 0
     airdrop-mob-count: 0

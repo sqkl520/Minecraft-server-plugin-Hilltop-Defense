@@ -194,6 +194,8 @@ public class GameConfig {
 
         // 自爆虫专用
         private double explodeDamageMultiplier; // 自爆对节点伤害倍率
+        // 自爆是否附带原版实体爆炸（false 时只结算节点伤害 + 纯视觉效果，不炸伤村民/玩家）
+        private boolean entityExplosion = true;
 
         // 钩爪猎手专用
         private double hookVelocity;          // 钩爪投射速度
@@ -279,6 +281,8 @@ public class GameConfig {
         public void setDisplayName(String v) { this.displayName = v; }
         public double getExplodeDamageMultiplier() { return explodeDamageMultiplier; }
         public void setExplodeDamageMultiplier(double v) { this.explodeDamageMultiplier = v; }
+        public boolean isEntityExplosion() { return entityExplosion; }
+        public void setEntityExplosion(boolean v) { this.entityExplosion = v; }
         public int getCooldownTicks() { return cooldownTicks; }
         public void setCooldownTicks(int v) { this.cooldownTicks = v; }
         public int getStunDurationTicks() { return stunDurationTicks; }
@@ -311,6 +315,7 @@ public class GameConfig {
             c.boots = this.boots;
             c.airdropMobType = this.airdropMobType;
             c.airdropIntervalTicks = this.airdropIntervalTicks;
+            c.entityExplosion = this.entityExplosion;
             return c;
         }
     }

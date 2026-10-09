@@ -369,9 +369,10 @@ public class FireballListener implements Listener {
                 loc, fuse, fuse, fuse, FireballListener::isValidTarget).isEmpty();
     }
 
-    /** 目标筛选条件，与原实现保持一致：存活中的非玩家 LivingEntity。 */
+    /** 目标筛选条件：存活中的非玩家 LivingEntity，且剔除待保护村民（STORY-1.6：蛋飞过村民头顶不再空爆）。 */
     private static boolean isValidTarget(LivingEntity entity) {
-        return entity != null && entity.isValid() && !entity.isDead() && !(entity instanceof Player);
+        return entity != null && entity.isValid() && !entity.isDead() && !(entity instanceof Player)
+                && !VillagerSystem.isVillageVillager(entity);
     }
 
     /** 主动清理投射物时先移除标记，防止任何后续命中路径重复引爆。 */
@@ -487,7 +488,8 @@ public class FireballListener implements Listener {
         double damage = cfg.damage();
         double knockback = cfg.knockback();
         Collection<LivingEntity> nearby = world.getNearbyLivingEntities(impact, radius, radius, radius,
-                entity -> entity != null && entity.isValid());
+                entity -> entity != null && entity.isValid()
+                        && !VillagerSystem.isVillageVillager(entity));
 
         for (LivingEntity entity : nearby) {
             double distance = entity.getLocation().distance(impact);
@@ -498,10 +500,9 @@ public class FireballListener implements Listener {
 
             boolean isThrower = throwerUuid != null && entity.getUniqueId().equals(throwerUuid);
 
-            if (entity instanceof Player) {
-                entity.damage(isThrower ? 2.0 : 4.0);
-                entity.setFireTicks(20);
-            } else {
+            // STORY-1.8：零友伤 —— 玩家分支只弹飞不伤、去点燃（弹飞在循环尾统一处理）；
+            // 怪物分支伤害/点燃不变。
+            if (!(entity instanceof Player)) {
                 entity.damage(damage * falloff);
                 entity.setFireTicks(40);
             }

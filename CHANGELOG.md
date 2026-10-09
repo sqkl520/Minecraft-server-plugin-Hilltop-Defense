@@ -2,6 +2,16 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-09 — 第二波 STORY-1.6 C组部分：烈焰蛋/甲虫 AOE 豁免村民 + 甲虫自爆可配置化）
+
+- **烈焰蛋爆炸豁免村民**：`FireballListener.triggerExplosion` 跳过 `VillagerSystem.isVillageVillager` 标记实体（伤害/点燃/击退全豁免）；`isValidTarget` 探针过滤同步剔除村民，蛋飞过村民头顶不再空爆
+- **甲虫自爆可配置化**：新增 `monsters.explode-beetle.entity-explosion`（默认 true 保持行为）；设为 false 时自爆只结算节点伤害 + 纯视觉效果（爆炸粒子/烟雾/音效），不再调用原版 `createExplosion` 炸伤周围村民与玩家；伤害数值不动（P1-2 归 STORY-2.4）
+- **怪物配置 GUI**：自爆甲虫页新增实体爆炸开关（绿色/红色羊毛点击切换，en/zh 双语键 `config.menu.monsters.entity-explosion*`）
+
+### Fixed（2026-10-09 — 第二波 STORY-1.8 C组部分：烈焰蛋友伤统一为零）
+
+- **烈焰蛋对玩家伤害统一为 0**：投掷者自伤 2.0 与队友 4.0 全部归零，移除玩家点燃；击退保留（含投掷者延迟 1 tick 击退，火箭跳手感不变）；炸怪伤害/点燃不变；全技能友伤规则统一为零（与重锤只弹飞不伤一致）
+
 ### Fixed（2026-10-09 — 第二波 D 组：STORY-1.4 波次 count 精确配比）
 
 - **刷怪配比按 `count` 精确**：每种怪刷 `count × 玩家数` 只（不再纯权重随机），待刷队列打散顺序后按既有节奏（3 tick / 2 只）分批；`total-mobs` 语义修正为"精确总数上限"（`sum(count)×人数` 超过它时按比例裁剪，向后兼容保留字段）

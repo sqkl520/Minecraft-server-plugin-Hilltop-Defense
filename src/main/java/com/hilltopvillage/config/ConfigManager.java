@@ -175,6 +175,9 @@ public class ConfigManager {
             settingsYaml.set(path + "hook-velocity", mc.getHookVelocity());
             settingsYaml.set(path + "display-name", mc.getDisplayName());
             settingsYaml.set(path + "explode-damage-multiplier", mc.getExplodeDamageMultiplier());
+            if ("explode-beetle".equals(key)) {
+                settingsYaml.set(path + "entity-explosion", mc.isEntityExplosion());
+            }
             settingsYaml.set(path + "cooldown-ticks", mc.getCooldownTicks());
             settingsYaml.set(path + "stun-duration-ticks", mc.getStunDurationTicks());
             settingsYaml.set(path + "airdrop-mob-count", mc.getAirdropMobCount());
@@ -452,6 +455,7 @@ public class ConfigManager {
                 if (settingsYaml.contains("monsters." + key + ".hook-velocity")) mc.setHookVelocity(settingsYaml.getDouble("monsters." + key + ".hook-velocity"));
                 if (settingsYaml.contains("monsters." + key + ".display-name")) mc.setDisplayName(settingsYaml.getString("monsters." + key + ".display-name"));
                 if (settingsYaml.contains("monsters." + key + ".explode-damage-multiplier")) mc.setExplodeDamageMultiplier(settingsYaml.getDouble("monsters." + key + ".explode-damage-multiplier"));
+                if (settingsYaml.contains("monsters." + key + ".entity-explosion")) mc.setEntityExplosion(settingsYaml.getBoolean("monsters." + key + ".entity-explosion"));
                 if (settingsYaml.contains("monsters." + key + ".cooldown-ticks")) mc.setCooldownTicks(settingsYaml.getInt("monsters." + key + ".cooldown-ticks"));
                 if (settingsYaml.contains("monsters." + key + ".stun-duration-ticks")) mc.setStunDurationTicks(settingsYaml.getInt("monsters." + key + ".stun-duration-ticks"));
                 if (settingsYaml.contains("monsters." + key + ".airdrop-mob-count")) mc.setAirdropMobCount(settingsYaml.getInt("monsters." + key + ".airdrop-mob-count"));
