@@ -2,6 +2,14 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Added（2026-10-09 — 第一波 STORY-1.2 出生点分离 + starter-kit）
+
+- **出生点分离**：玩家出生点（`spawn-points`）与怪物刷怪点（`mob-spawn-points`）分离为两套独立坐标；旧存档仅有 `spawn-points` 时视为双用点（记 warning 提示补部署），仍可开局；两套点都为空时开局被拦截并提示
+- **starter-kit**：开局向每名在场玩家发放 `game-settings.yml` 的 `starter-kit` 套装（默认石剑 + 面包×16 + 火把×8，可配置开关与物品列表）
+- **deploy 命令新增** `addmobspawn` / `listmobspawns` / `delmobspawn` / `clearmobspawns` 管理怪物刷怪点；SetupWizard 第 3 步扩展为两套点部署（新增怪物刷怪点管理 GUI + 强制校验 + 预览统计）
+- **新增 messages.yml 键**：`arena-no-mob-spawns`、`deploy.mobspawns.*`（16 个）、`setup.step3-mobspawns`、`setup.mobspawn-added`、`setup.mobspawn-removed`、`setup.mobspawns-required`、`setup.gui-mobspawns-title`、`setup.preview-mobspawns`、`setup.btn-open-mobspawn-gui`、`setup.mobspawn-entry`、`setup.kit-received`（en/zh 双语齐全）
+- **GameManager 新增接口**：`getMobSpawnPointsView()` / `hasMobSpawnPoints()` / `hasEffectiveMobSpawnPoints()` / `isLegacyDualUseSpawns()` / `setMobSpawnPoints()`（D 组 STORY-1.4/1.5 接口先行）
+
 ### Fixed（2026-10-09 — 第一波 STORY-1.3 重锤冷却 + 耐久 + 低档下调）
 
 - **新增 `hammer.cooldown-seconds`**（默认 8 秒，时间戳方案无需 ticker，冷却中激活被拒 + ActionBar 提示剩余秒数）

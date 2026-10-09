@@ -2,6 +2,7 @@ package com.hilltopvillage.arena;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.config.ConfigManager;
+import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.core.PlayerData;
@@ -105,13 +106,15 @@ public class ArenaInstance implements IArena {
         // Create GameManager for this arena (使用多竞技场构造函数)
         Location coreLocation = definition.getCore();
         List<Location> spawnPoints = definition.getSpawnPoints();
+        List<Location> mobSpawnPoints = definition.getMobSpawnPoints();
 
         this.gameManager = new GameManager(
             plugin,
             arenaId,
             coreLocation.getWorld(),
             coreLocation,
-            spawnPoints
+            spawnPoints,
+            mobSpawnPoints
         );
         this.nodeSystem = gameManager.getNodeSystem();
 
@@ -665,12 +668,16 @@ public class ArenaInstance implements IArena {
      * <p>生成点与核心都按<b>实时值</b>判定（读 {@link GameManager} / {@link #getCoreLocation()}）：
      * 部署命令只刷新 GameManager，若用 {@code definition} 的构造期快照，
      * 刚部署好的竞技场仍会被判成「不能开局」。</p>
+     *
+     * <p>STORY-1.2：追加「怪物刷怪坐标非空」条件。旧存档（仅 {@code spawn-points}）
+     * 走双用回退，{@code hasEffectiveMobSpawnPoints()} 同样通过 —— 仅当两套点都为空时才拦截。</p>
      */
     @Override
     public boolean canStart() {
         return isEnabled()
             && getPlayerCount() >= getMinPlayers()
             && gameManager.hasSpawnPoints()
+            && gameManager.hasEffectiveMobSpawnPoints()
             && getCoreLocation() != null;
     }
 
@@ -748,7 +755,10 @@ public class ArenaInstance implements IArena {
     }
 
     /**
-     * 本竞技场的怪物生成点列表（防御性拷贝）。
+     * 本竞技场的玩家出生点列表（防御性拷贝）。
+     *
+     * <p>STORY-1.2：本列表的语义固定为<b>玩家出生点</b>（开局传送用），怪物刷怪点另见
+     * {@code GameManager#getMobSpawnPointsView()}。旧存档仅有本列表时，刷怪会双用回退到这里。</p>
      *
      * <p><b>为什么实时读 {@link GameManager} 而不是 {@code definition}：</b>部署命令
      * （{@code /hilltop deploy addspawn} 等）只经
@@ -790,10 +800,10 @@ public class ArenaInstance implements IArena {
             && getPlayerCount() < getMaxPlayers();
     }
 
-    /** 是否已完成部署（至少配置了 1 个怪物生成点） */
+    /** 是否已完成部署（玩家出生点与怪物刷怪坐标至少各有一套：旧存档的双用点同样算部署完成） */
     @Override
     public boolean isDeployed() {
-        return gameManager.hasSpawnPoints();
+        return gameManager.hasSpawnPoints() && gameManager.hasEffectiveMobSpawnPoints();
     }
 
     /** 竞技场世界是否已加载（false = 地图存档缺失/未加载，竞技场不可用） */
@@ -927,12 +937,16 @@ public class ArenaInstance implements IArena {
         broadcastI18n("game-started");
 
         // ✅ Teleport all players from waiting area to game spawn points
+        // STORY-1.2：此处仍读玩家出生点（getSpawnPoints 语义已固定为玩家出生），怪物刷怪点不影响传送
         List<Location> spawns = getSpawnPoints();
         if (!spawns.isEmpty()) {
             int index = 0;
             for (Player player : getPlayers()) {
                 player.teleport(spawns.get(index % spawns.size()));
                 player.setGameMode(GameMode.SURVIVAL);
+                // STORY-1.2 starter-kit：背包在 join 时已由 PlayerGoodsManager 快照并清空，
+                // 此时直接发放初始套装；背包满兜底掉脚下
+                grantStarterKit(player);
                 index++;
             }
         }
@@ -1052,6 +1066,55 @@ public class ArenaInstance implements IArena {
         }
         if (removed > 0) {
             plugin.getLogger().info("已清理 " + removed + " 个残留掉落物 (竞技场 " + arenaId + ")");
+        }
+    }
+
+    /**
+     * 向一名开局玩家发放 starter-kit（STORY-1.2）。
+     *
+     * <p>配置来源：{@code game-settings.yml} 的 {@code starter-kit} 节
+     * （{@code enabled} 总开关 + {@code items} 物品列表）。
+     * 时序安全：玩家背包在 join 时已由 {@code PlayerGoodsManager.save()} 快照并清空，
+     * 开局发放不会污染玩家原有物品；离场时整包清空、快照归还，套装不会被带走。</p>
+     *
+     * <p>背包满兜底：{@code addItem} 放不下的部分直接掉在玩家脚下（世界为 null 时丢弃并记日志）。</p>
+     */
+    private void grantStarterKit(Player player) {
+        GameConfig cfg = configManager.getActiveConfig();
+        if (!cfg.isStarterKitEnabled()) return;
+        List<GameConfig.StarterKitItem> kit = cfg.getStarterKitItems();
+        if (kit == null || kit.isEmpty()) return;
+
+        boolean granted = false;
+        for (GameConfig.StarterKitItem entry : kit) {
+            if (entry == null || entry.getMaterial() == null || !entry.getMaterial().isItem()) continue;
+            int amount = Math.max(1, entry.getAmount());
+            // 超过单叠上限的数量必须拆叠：new ItemStack(mat, 70) 这类写法会被静默截断，
+            // addItem 只认每叠各自的数量
+            int maxStack = entry.getMaterial().getMaxStackSize();
+            int remaining = amount;
+            while (remaining > 0) {
+                int stack = Math.min(remaining, maxStack);
+                Map<Integer, org.bukkit.inventory.ItemStack> overflow =
+                        player.getInventory().addItem(new org.bukkit.inventory.ItemStack(entry.getMaterial(), stack));
+                if (!overflow.isEmpty()) {
+                    Location feet = player.getLocation();
+                    World world = feet != null ? feet.getWorld() : null;
+                    if (world == null) {
+                        plugin.getLogger().warning("Starter-kit overflow dropped for " + player.getName()
+                                + " (world unavailable)");
+                    } else {
+                        for (org.bukkit.inventory.ItemStack item : overflow.values()) {
+                            world.dropItemNaturally(feet, item);
+                        }
+                    }
+                }
+                granted = true;
+                remaining -= stack;
+            }
+        }
+        if (granted) {
+            languageManager.send(player, "setup.kit-received");
         }
     }
 

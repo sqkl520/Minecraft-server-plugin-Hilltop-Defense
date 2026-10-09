@@ -94,15 +94,17 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         LIST,
         DETAIL,
         SPAWN_LIST,
+        MOB_SPAWN_LIST,
         NODE_LIST,
         VILLAGER_LIST,
         PARAMS,
         RESET_CONFIRM
     }
 
-    /** 三个坐标列表视图的差异（数据源 / 图标 / 标题键），渲染与删除逻辑共用一份。 */
+    /** 四个坐标列表视图的差异（数据源 / 图标 / 标题键），渲染与删除逻辑共用一份。 */
     private enum ListKind {
         SPAWN,
+        MOB_SPAWN,
         NODE,
         VILLAGER
     }
@@ -145,6 +147,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
             case LIST -> renderList();
             case DETAIL -> renderDetail();
             case SPAWN_LIST -> renderLocationList(ListKind.SPAWN);
+            case MOB_SPAWN_LIST -> renderLocationList(ListKind.MOB_SPAWN);
             case NODE_LIST -> renderLocationList(ListKind.NODE);
             case VILLAGER_LIST -> renderLocationList(ListKind.VILLAGER);
             case PARAMS -> renderParams();
@@ -194,7 +197,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
                 ? "manage.list.entry-enabled" : "manage.list.entry-disabled"));
         lore.add(lang.getFor(admin, deployStateKey(arena)));
         lore.add(lang.getFor(admin, "manage.list.entry-counts",
-                arena.spawnCount(), arena.villagerCount(), arena.nodeCount()));
+                arena.spawnCount(), arena.mobSpawnCount(), arena.villagerCount(), arena.nodeCount()));
         lore.add(lang.getFor(admin, "manage.list.entry-params",
                 arena.minPlayers(), arena.maxPlayers(), arena.victoryWaves(), arena.waveIntervalSeconds()));
         lore.add(lang.getFor(admin, arena.hasInstance()
@@ -249,13 +252,17 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         setClickableItemWithData(10, Material.SPAWNER, lang.getFor(admin, "manage.detail.spawns"),
                 List.of(lang.getFor(admin, "manage.detail.spawns-lore", arena.spawnCount())),
                 clickType -> openView(View.SPAWN_LIST));
+        // STORY-1.2: mob spawn entry takes slot 11; villagers move 14->13 to keep one row
+        setClickableItemWithData(11, Material.ZOMBIE_HEAD, lang.getFor(admin, "manage.detail.mobspawns"),
+                List.of(lang.getFor(admin, "manage.detail.mobspawns-lore", arena.mobSpawnCount())),
+                clickType -> openView(View.MOB_SPAWN_LIST));
         setClickableItemWithData(12, Material.END_ROD, lang.getFor(admin, "manage.detail.nodes"),
                 List.of(lang.getFor(admin, "manage.detail.nodes-lore", arena.nodeCount())),
                 clickType -> openView(View.NODE_LIST));
-        setClickableItemWithData(14, Material.VILLAGER_SPAWN_EGG, lang.getFor(admin, "manage.detail.villagers"),
+        setClickableItemWithData(13, Material.VILLAGER_SPAWN_EGG, lang.getFor(admin, "manage.detail.villagers"),
                 List.of(lang.getFor(admin, "manage.detail.villagers-lore", arena.villagerCount())),
                 clickType -> openView(View.VILLAGER_LIST));
-        setClickableItemWithData(16, Material.COMPARATOR, lang.getFor(admin, "manage.detail.params"),
+        setClickableItemWithData(14, Material.COMPARATOR, lang.getFor(admin, "manage.detail.params"),
                 List.of(lang.getFor(admin, "manage.detail.params-lore",
                         arena.minPlayers(), arena.maxPlayers(), arena.victoryWaves(), arena.waveIntervalSeconds())),
                 clickType -> openView(View.PARAMS));
@@ -393,6 +400,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
                                     Location location, String worldName) {
         Material material = switch (kind) {
             case SPAWN -> Material.SPAWNER;
+            case MOB_SPAWN -> Material.ZOMBIE_HEAD;
             case NODE -> Material.END_ROD;
             case VILLAGER -> Material.VILLAGER_SPAWN_EGG;
         };
@@ -446,6 +454,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
     private boolean deleteLocation(ListKind kind, String arenaId, int index) {
         return switch (kind) {
             case SPAWN -> adminService().deleteSpawnPoint(arenaId, index);
+            case MOB_SPAWN -> adminService().deleteMobSpawnPoint(arenaId, index);
             case NODE -> adminService().deleteNode(arenaId, index);
             case VILLAGER -> adminService().deleteVillager(arenaId, index);
         };
@@ -454,6 +463,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
     private List<Location> locationsOf(ListKind kind, String arenaId) {
         return switch (kind) {
             case SPAWN -> adminService().spawnPoints(arenaId);
+            case MOB_SPAWN -> adminService().mobSpawnPoints(arenaId);
             case NODE -> adminService().nodes(arenaId);
             case VILLAGER -> adminService().villagers(arenaId);
         };
@@ -462,6 +472,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
     private static String titleKey(ListKind kind) {
         return switch (kind) {
             case SPAWN -> "manage.title.spawns";
+            case MOB_SPAWN -> "manage.title.mobspawns";
             case NODE -> "manage.title.nodes";
             case VILLAGER -> "manage.title.villagers";
         };

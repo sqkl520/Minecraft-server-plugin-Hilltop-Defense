@@ -425,16 +425,18 @@ public class WaveManager {
     }
 
     private Location getRandomSpawnLocation() {
-        // 强制要求管理员设置生成点，不提供核心周围随机生成的fallback
-        if (!gameManager.hasSpawnPoints()) {
-            gameManager.getPlugin().getLogger().severe("No spawn points configured! Game cannot start without spawn points.");
+        // STORY-1.2：怪物刷怪走独立的 mob-spawn-points；旧存档（该键为空）回退到玩家出生点，
+        // 仅当两套点都为空时才返回 null（调用方刷怪任务会自我终止，见 isGameRunning 守卫）。
+        List<Location> fixedPoints = gameManager.getMobSpawnPointsView();
+        if (fixedPoints.isEmpty()) {
+            gameManager.getPlugin().getLogger().severe("No mob spawn points configured! "
+                    + "Deploy them with Step 3 of /hilltop setup or /hilltop deploy addmobspawn.");
             return null;
         }
 
-        // 只读视图而非 getSpawnPoints()：后者每次都 new ArrayList<>(...)，
+        // 只读视图而非 getMobSpawnPoints()：后者每次都 new ArrayList<>(...)，
         // 一波 80 只怪就要拷 80 次小数组。取出的元素下面立刻 clone() 再偏移，
         // 不会改到 GameManager 内部的 Location 本体（视图的元素安全约束见该方法 Javadoc）。
-        List<Location> fixedPoints = gameManager.getSpawnPointsView();
         Location basePoint = fixedPoints.get(random.nextInt(fixedPoints.size())).clone();
 
         // 应用扩散半径（默认3.0格）

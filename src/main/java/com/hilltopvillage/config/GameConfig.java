@@ -99,6 +99,14 @@ public class GameConfig {
     // 每次掉落的货币数量（固定值，不做随机）
     private int currencyDropAmount = 1;
 
+    // ---- 开局初始套装 (starter-kit, STORY-1.2) ----
+    // 开局时向每名在场玩家发放的物品；enabled=false 时不发放
+    private boolean starterKitEnabled = true;
+    private List<StarterKitItem> starterKitItems = new ArrayList<>(Arrays.asList(
+            new StarterKitItem(Material.STONE_SWORD, 1),
+            new StarterKitItem(Material.BREAD, 16),
+            new StarterKitItem(Material.TORCH, 8)));
+
     // ---- 烈焰蛋 (Fireball) 配置 ----
     private Material fireballMaterial = Material.FIRE_CHARGE;
     private double fireballSpeed = 1.5;
@@ -356,6 +364,30 @@ public class GameConfig {
         }
     }
 
+    /**
+     * 开局初始套装中的单个条目（STORY-1.2）。
+     * 对应 game-settings.yml 的 {@code starter-kit.items} 列表项（{@code material} + {@code amount}）。
+     */
+    public static class StarterKitItem {
+        private Material material;
+        private int amount;
+
+        public StarterKitItem(Material material, int amount) {
+            this.material = material;
+            this.amount = amount;
+        }
+
+        public Material getMaterial() { return material; }
+        public void setMaterial(Material v) { this.material = v; }
+        public int getAmount() { return amount; }
+        public void setAmount(int v) { this.amount = v; }
+
+        /** 返回当前实例的深拷贝（Material 不可变，直接赋值即满足深拷贝语义）。 */
+        public StarterKitItem copy() {
+            return new StarterKitItem(this.material, this.amount);
+        }
+    }
+
     public GameConfig snapshot() {
         GameConfig snap = new GameConfig();
         snap.worldName = this.worldName;
@@ -418,6 +450,12 @@ public class GameConfig {
         snap.fireballItemName = this.fireballItemName;
         snap.currencyDropChance = this.currencyDropChance;
         snap.currencyDropAmount = this.currencyDropAmount;
+        // starter-kit 深拷贝：每个条目独立拷贝（snapshot 与 activeConfig 完全隔离）
+        snap.starterKitEnabled = this.starterKitEnabled;
+        snap.starterKitItems = new ArrayList<>();
+        for (StarterKitItem item : this.starterKitItems) {
+            snap.starterKitItems.add(item.copy());
+        }
         return snap;
     }
 
@@ -562,6 +600,13 @@ public class GameConfig {
     public void setCurrencyDropChance(double v) { this.currencyDropChance = v; }
     public int getCurrencyDropAmount() { return currencyDropAmount; }
     public void setCurrencyDropAmount(int v) { this.currencyDropAmount = v; }
+
+    /** starter-kit 总开关（game-settings.yml 的 {@code starter-kit.enabled}） */
+    public boolean isStarterKitEnabled() { return starterKitEnabled; }
+    public void setStarterKitEnabled(boolean v) { this.starterKitEnabled = v; }
+    /** starter-kit 物品列表（{@code starter-kit.items}；返回内部列表本体，调用方不得持有跨配置变更） */
+    public List<StarterKitItem> getStarterKitItems() { return starterKitItems; }
+    public void setStarterKitItems(List<StarterKitItem> v) { this.starterKitItems = v; }
 
     public WaveConfig getWaveConfig(int waveNumber) {
         return waves.getOrDefault(waveNumber, defaultWave);

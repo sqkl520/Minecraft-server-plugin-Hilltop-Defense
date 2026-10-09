@@ -28,6 +28,8 @@ public final class ArenaDefinition {
     private final Location core;             // null = 尚未部署
     private final Location shopNpc;          // null = 本竞技场未配置商店 NPC
     private final List<Location> spawnPoints;
+    /** 怪物刷怪点（STORY-1.2：与玩家出生点 {@link #spawnPoints} 分离的第二套坐标） */
+    private final List<Location> mobSpawnPoints;
     private final int nodeSearchRadius;
     private final int spawnRadiusMin;
     private final int spawnRadiusMax;
@@ -69,6 +71,22 @@ public final class ArenaDefinition {
                            int nodeSearchRadius, int spawnRadiusMin, int spawnRadiusMax, int spawnYOffset,
                            int minPlayers, int maxPlayers, int victoryWaves,
                            int waveIntervalSeconds, Location shopNpc) {
+        this(id, displayName, enabled, worldName, waitingLocation, core, spawnPoints, List.of(),
+                nodeSearchRadius, spawnRadiusMin, spawnRadiusMax, spawnYOffset,
+                minPlayers, maxPlayers, victoryWaves, waveIntervalSeconds, shopNpc);
+    }
+
+    /**
+     * @param core            竞技场核心位置；<b>null 表示尚未部署</b>（读取方必须容忍 null）
+     * @param shopNpc         本竞技场的商店 NPC 位置；null 表示未配置
+     * @param mobSpawnPoints  怪物刷怪点；null/空 视为未部署（旧存档缺该键时自动兼容）
+     */
+    public ArenaDefinition(String id, String displayName, boolean enabled, String worldName,
+                           Location waitingLocation, Location core, List<Location> spawnPoints,
+                           List<Location> mobSpawnPoints,
+                           int nodeSearchRadius, int spawnRadiusMin, int spawnRadiusMax, int spawnYOffset,
+                           int minPlayers, int maxPlayers, int victoryWaves,
+                           int waveIntervalSeconds, Location shopNpc) {
         if (id == null || id.isBlank()) {
             throw new IllegalArgumentException("Arena ID must not be blank");
         }
@@ -90,6 +108,14 @@ public final class ArenaDefinition {
             }
         }
         this.spawnPoints = Collections.unmodifiableList(copies);
+        // 怪物刷怪点：与玩家出生点同口径的防御性拷贝（null → 空列表 = 未部署）
+        List<Location> mobCopies = new ArrayList<>();
+        if (mobSpawnPoints != null) {
+            for (Location mobSpawnPoint : mobSpawnPoints) {
+                mobCopies.add(copyLocation(Objects.requireNonNull(mobSpawnPoint, "mobSpawnPoint")));
+            }
+        }
+        this.mobSpawnPoints = Collections.unmodifiableList(mobCopies);
         this.nodeSearchRadius = nodeSearchRadius;
         this.spawnRadiusMin = spawnRadiusMin;
         this.spawnRadiusMax = spawnRadiusMax;
@@ -115,6 +141,19 @@ public final class ArenaDefinition {
     public List<Location> getSpawnPoints() {
         List<Location> copies = new ArrayList<>(spawnPoints.size());
         for (Location spawnPoint : spawnPoints) copies.add(copyLocation(spawnPoint));
+        return Collections.unmodifiableList(copies);
+    }
+
+    /**
+     * Returns an immutable list containing defensive copies of all mob spawn locations.
+     *
+     * <p>STORY-1.2：玩家出生点与怪物刷怪点分离。开局传送玩家走 {@link #getSpawnPoints()}，
+     * {@code WaveManager} 刷怪走本方法。旧存档缺 {@code mob-spawn-points} 键时返回空列表，
+     * 生效的兼容语义由 {@code GameManager#hasEffectiveMobSpawnPoints()} 决定（双用回退）。</p>
+     */
+    public List<Location> getMobSpawnPoints() {
+        List<Location> copies = new ArrayList<>(mobSpawnPoints.size());
+        for (Location mobSpawnPoint : mobSpawnPoints) copies.add(copyLocation(mobSpawnPoint));
         return Collections.unmodifiableList(copies);
     }
 
@@ -144,6 +183,7 @@ public final class ArenaDefinition {
     public ArenaDefinition withGameParams(int minPlayers, int maxPlayers,
                                           int victoryWaves, int waveIntervalSeconds) {
         return new ArenaDefinition(id, displayName, enabled, worldName, waitingLocation, core, spawnPoints,
+                mobSpawnPoints,
                 nodeSearchRadius, spawnRadiusMin, spawnRadiusMax, spawnYOffset,
                 minPlayers, maxPlayers, victoryWaves, waveIntervalSeconds, shopNpc);
     }
@@ -170,6 +210,7 @@ public final class ArenaDefinition {
         private String displayName;
         private boolean enabled = true;
         private List<Location> spawnPoints = List.of();
+        private List<Location> mobSpawnPoints = List.of();
         private int nodeSearchRadius;
         private int spawnRadiusMin;
         private int spawnRadiusMax;
@@ -196,6 +237,8 @@ public final class ArenaDefinition {
         public Builder displayName(String value) { displayName = value; return this; }
         public Builder enabled(boolean value) { enabled = value; return this; }
         public Builder spawnPoints(List<Location> value) { spawnPoints = value; return this; }
+        /** 怪物刷怪点（对应 arenas.yml 的 {@code arenas.<id>.mob-spawn-points}） */
+        public Builder mobSpawnPoints(List<Location> value) { mobSpawnPoints = value; return this; }
         /** 商店 NPC 位置（null = 本竞技场未配置，对应 arenas.yml 的 {@code arenas.<id>.shop-npc}） */
         public Builder shopNpc(Location value) { shopNpc = value; return this; }
         public Builder nodeSearchRadius(int value) { nodeSearchRadius = value; return this; }
@@ -209,6 +252,7 @@ public final class ArenaDefinition {
 
         public ArenaDefinition build() {
             return new ArenaDefinition(id, displayName, enabled, worldName, waitingLocation, core, spawnPoints,
+                    mobSpawnPoints,
                     nodeSearchRadius, spawnRadiusMin, spawnRadiusMax, spawnYOffset,
                     minPlayers, maxPlayers, victoryWaves, waveIntervalSeconds, shopNpc);
         }

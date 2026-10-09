@@ -44,7 +44,7 @@ public final class ArenaManager {
      * 竞技场仍要留在 registry 里（世界、启用状态、名称都不是「部署」的一部分）。</p>
      */
     private static final List<String> DEPLOYMENT_KEYS = List.of(
-            "core", "spawn-points", "villagers", "shop-npc",
+            "core", "spawn-points", "mob-spawn-points", "villagers", "shop-npc",
             "game.min-players", "game.max-players", "game.victory-waves", "game.wave-interval-seconds",
             "node-search-radius", "spawn-radius-min", "spawn-radius-max", "spawn-y-offset");
 
@@ -298,6 +298,10 @@ public final class ArenaManager {
         for (Location spawn : definition.getSpawnPoints()) {
             if (!validLocation(spawn, definition.getWorldName())) return false;
         }
+        // 怪物刷怪点：缺键/空列表 = 未部署（合法的旧存档状态）；有值时逐个校验坐标合法性
+        for (Location mobSpawn : definition.getMobSpawnPoints()) {
+            if (!validLocation(mobSpawn, definition.getWorldName())) return false;
+        }
         return validGameParams(definition.getMinPlayers(), definition.getMaxPlayers(),
                 definition.getVictoryWaves(), definition.getWaveIntervalSeconds());
     }
@@ -330,10 +334,25 @@ public final class ArenaManager {
                 spawns.add(readLocationFromMap(map, worldName, id + ".spawn-points." + index));
             }
         }
+        // 怪物刷怪点（STORY-1.2 新增 schema）：与 spawn-points 同级。
+        // 旧存档无此键 → 空列表（不抛异常）；开局时的兼容语义由 GameManager 决定（双用回退）
+        List<Location> mobSpawns = new ArrayList<>();
+        List<?> rawMobSpawns = section.getList("mob-spawn-points");
+        if (rawMobSpawns != null) {
+            for (int index = 0; index < rawMobSpawns.size(); index++) {
+                Object raw = rawMobSpawns.get(index);
+                if (!(raw instanceof Map<?, ?> map)) {
+                    plugin.getLogger().warning("跳过无效怪物刷怪点 " + id + ".mob-spawn-points." + index);
+                    continue;
+                }
+                mobSpawns.add(readLocationFromMap(map, worldName, id + ".mob-spawn-points." + index));
+            }
+        }
         ConfigurationSection game = section.getConfigurationSection("game");
         ArenaDefinition.Builder builder = ArenaDefinition.builder(id, worldName, waitingLocation, core)
                 .displayName(section.getString("display-name"))
                 .enabled(section.getBoolean("enabled", true)).spawnPoints(spawns)
+                .mobSpawnPoints(mobSpawns)
                 // 商店 NPC 位置按竞技场隔离存储（与 core / spawn-points 同级）
                 .shopNpc(readOptionalLocation(
                         section.getConfigurationSection("shop-npc"), worldName, id + ".shop-npc"))
@@ -442,6 +461,9 @@ public final class ArenaManager {
         yaml.set(path + ".spawn-points", null);
         List<Location> points = arena.getSpawnPoints();
         for (int i = 0; i < points.size(); i++) writeLocation(yaml, path + ".spawn-points." + i, points.get(i));
+        yaml.set(path + ".mob-spawn-points", null);
+        List<Location> mobPoints = arena.getMobSpawnPoints();
+        for (int i = 0; i < mobPoints.size(); i++) writeLocation(yaml, path + ".mob-spawn-points." + i, mobPoints.get(i));
         yaml.set(path + ".node-search-radius", arena.getNodeSearchRadius());
         yaml.set(path + ".spawn-radius-min", arena.getSpawnRadiusMin());
         yaml.set(path + ".spawn-radius-max", arena.getSpawnRadiusMax());

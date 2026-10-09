@@ -87,6 +87,12 @@ public class DeployMenuSender {
                 lang.getFor(player, "deploy.desc-clearspawns"));
         sendClickableLine(player, "deploy.cmd-confirmclear", "/hilltop deploy confirmclear", hover,
                 lang.getFor(player, "deploy.desc-confirmclear"));
+        sendClickableLine(player, "deploy.cmd-addmobspawn", "/hilltop deploy addmobspawn", hover,
+                lang.getFor(player, "deploy.desc-addmobspawn"));
+        sendClickableLine(player, "deploy.cmd-listmobspawns", "/hilltop deploy listmobspawns", hover,
+                lang.getFor(player, "deploy.desc-listmobspawns"));
+        sendClickableLine(player, "deploy.cmd-delmobspawn", "/hilltop deploy delmobspawn ", hover,
+                lang.getFor(player, "deploy.desc-delmobspawn"));
         sendClickableLine(player, "deploy.cmd-reloadnodes", "/hilltop deploy reloadnodes", hover,
                 lang.getFor(player, "deploy.desc-reloadnodes"));
         sendClickableLine(player, "deploy.cmd-addvillager", "/hilltop deploy addvillager", hover,

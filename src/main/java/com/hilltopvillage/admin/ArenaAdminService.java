@@ -69,6 +69,8 @@ public final class ArenaAdminService {
 
     /** arenas.yml 中按竞技场存储的生成点列表键（与 {@code AdminDeployManager} 的写法一致） */
     private static final String SPAWN_POINTS_KEY = "spawn-points";
+    /** arenas.yml 中按竞技场存储的怪物刷怪点列表键（STORY-1.2 新增 schema） */
+    private static final String MOB_SPAWN_POINTS_KEY = "mob-spawn-points";
     /** arenas.yml 中按竞技场存储的村民列表键 */
     private static final String VILLAGERS_KEY = "villagers";
     /** arenas.yml 中按竞技场存储的商店 NPC 位置键 */
@@ -92,7 +94,8 @@ public final class ArenaAdminService {
      * @param hasCore            定义中是否已配置核心（false = 尚未部署，无法启用）
      * @param deployed           是否已配好固定生成点（有实例时取 {@code gameManager.hasSpawnPoints()}，
      *                           否则取 arenas.yml 的 spawn-points 是否非空）。<b>不等同于 hasCore</b>
-     * @param spawnCount         已配置的怪物生成点数量
+     * @param spawnCount         已配置的玩家出生点数量
+     * @param mobSpawnCount      已配置的怪物刷怪点数量（STORY-1.2；旧存档为 0，刷怪双用回退）
      * @param villagerCount      已登记的村民数量
      * @param nodeCount          已注册的节点数量（按世界过滤）
      * @param shopNpcSet         是否已配置商店 NPC
@@ -113,7 +116,7 @@ public final class ArenaAdminService {
             boolean worldLoaded,           // Bukkit.getWorld(worldName) != null
             boolean hasCore,               // definition.getCore() != null
             boolean deployed,              // 有固定生成点（实例优先/YAML 兜底）
-            int spawnCount, int villagerCount, int nodeCount,
+            int spawnCount, int mobSpawnCount, int villagerCount, int nodeCount,
             boolean shopNpcSet,
             int minPlayers, int maxPlayers, int victoryWaves, int waveIntervalSeconds,
             boolean hasInstance,           // MultiArenaManager.getArena(id) != null
@@ -151,6 +154,25 @@ public final class ArenaAdminService {
         }
         return immutableCopy(readYamlLocations(loadArenas(),
                 arenaPath(definition.getId(), SPAWN_POINTS_KEY), Bukkit.getWorld(definition.getWorldName())));
+    }
+
+    /**
+     * 怪物刷怪点坐标（STORY-1.2）。竞技场不存在或未部署时返回空列表（不返回 null）。
+     *
+     * <p>旧存档返回空列表（不做双用回退）：管理 GUI 展示的是「独立刷怪点的部署状态」，
+     * 空 = 服主尚未补部署。刷怪生效坐标见 {@code GameManager#getMobSpawnPointsView()}。</p>
+     */
+    public List<Location> mobSpawnPoints(String arenaId) {
+        ArenaDefinition definition = resolve(arenaId);
+        if (definition == null) return List.of();
+
+        ArenaInstance live = liveInstance(definition.getId());
+        if (live != null) {
+            AdminDeployManager deploy = deployManager(live);
+            if (deploy != null) return immutableCopy(deploy.getMobSpawnPoints());
+        }
+        return immutableCopy(readYamlLocations(loadArenas(),
+                arenaPath(definition.getId(), MOB_SPAWN_POINTS_KEY), Bukkit.getWorld(definition.getWorldName())));
     }
 
     /** 村民坐标。竞技场不存在或未登记村民时返回空列表（不返回 null）。 */
@@ -209,6 +231,28 @@ public final class ArenaAdminService {
         }
         if (index >= deploy.getSpawnPoints().size()) return false;
         return deploy.removeSpawnPoint(index);
+    }
+
+    /**
+     * 按「过滤后序号」删除一个怪物刷怪点（STORY-1.2）。
+     *
+     * <p>有实例时走 {@link AdminDeployManager#removeMobSpawnPoint(int)}（内部会落盘并刷新 GameManager），
+     * 无实例（或实例拿不到部署管理器）时直接改 arenas.yml 的 {@code arenas.<id>.mob-spawn-points}。</p>
+     *
+     * @param index {@link #mobSpawnPoints(String)} 返回列表中的序号（不是 arenas.yml 的原始行号）
+     * @return true 表示已删除；竞技场不存在、序号越界或写盘失败返回 false
+     */
+    public boolean deleteMobSpawnPoint(String arenaId, int index) {
+        ArenaDefinition definition = resolve(arenaId);
+        if (definition == null || index < 0) return false;
+
+        ArenaInstance live = liveInstance(definition.getId());
+        AdminDeployManager deploy = live == null ? null : deployManager(live);
+        if (deploy == null) {
+            return deleteYamlEntry(definition.getId(), MOB_SPAWN_POINTS_KEY, index);
+        }
+        if (index >= deploy.getMobSpawnPoints().size()) return false;
+        return deploy.removeMobSpawnPoint(index);
     }
 
     /**
@@ -344,20 +388,22 @@ public final class ArenaAdminService {
         boolean deployed;
         boolean shopNpcSet;
         int spawnCount;
+        int mobSpawnCount;
         int villagerCount;
         int nodeCount;
 
         AdminDeployManager deploy = live == null ? null : deployManager(live);
         if (live != null && deploy != null) {
             GameManager gameManager = live.getGameManager();
-            // 生成点列表是「实例优先」的唯一来源：实例存在时 GameManager 与 AdminDeployManager 共用同一份数据
             spawnCount = deploy.getSpawnPoints().size();
+            mobSpawnCount = deploy.getMobSpawnPoints().size();
             villagerCount = deploy.getVillagers().size();
             shopNpcSet = deploy.getShopNpcLocation() != null;
             deployed = gameManager != null && gameManager.hasSpawnPoints();
         } else {
             YamlConfiguration yaml = loadArenas();
             spawnCount = readYamlLocations(yaml, arenaPath(arenaId, SPAWN_POINTS_KEY), world).size();
+            mobSpawnCount = readYamlLocations(yaml, arenaPath(arenaId, MOB_SPAWN_POINTS_KEY), world).size();
             villagerCount = readYamlLocations(yaml, arenaPath(arenaId, VILLAGERS_KEY), world).size();
             shopNpcSet = readCoordinates(yaml.getConfigurationSection(arenaPath(arenaId, SHOP_NPC_KEY)), world) != null;
             // 注意：deployed 只看生成点，与 hasCore 是两件事——重置后的竞技场两者都可能为 false
@@ -384,6 +430,7 @@ public final class ArenaAdminService {
                 definition.getCore() != null,
                 deployed,
                 spawnCount,
+                mobSpawnCount,
                 villagerCount,
                 nodeCount,
                 shopNpcSet,

@@ -39,6 +39,13 @@ public class GameManager {
     /** 休整期「排队下一波」的延迟任务句柄（取消见 {@link #cancelWaveScheduler()}） */
     private BukkitTask waveSchedulerTask;
     private List<Location> arenaSpawnPoints;
+    /**
+     * 怪物刷怪点（STORY-1.2：与玩家出生点分离的第二套坐标）。
+     *
+     * <p>向后兼容：旧存档的 {@code mob-spawn-points} 为空时，刷怪回退到玩家出生点
+     * （{@link #getMobSpawnPointsView()} 内部处理），因此本字段为空<b>不</b>代表刷不了怪。</p>
+     */
+    private List<Location> arenaMobSpawnPoints;
     /** 游戏自然结束（胜利/失败）时的回调，由 ArenaInstance 注入用于状态机同步与统计结算 */
     private java.util.function.Consumer<Boolean> onGameEndCallback;
 
@@ -59,9 +66,25 @@ public class GameManager {
      * @param spawnPoints 生成点列表
      */
     public GameManager(HilltopVillagePlugin plugin, String arenaId, World world, Location coreLocation, List<Location> spawnPoints) {
+        this(plugin, arenaId, world, coreLocation, spawnPoints, List.of());
+    }
+
+    /**
+     * 多竞技场构造函数（带怪物刷怪点）。
+     *
+     * @param plugin 插件实例
+     * @param arenaId 竞技场 ID
+     * @param world 竞技场世界
+     * @param coreLocation 核心位置
+     * @param spawnPoints 玩家出生点列表
+     * @param mobSpawnPoints 怪物刷怪点列表（null/空 = 未部署，刷怪回退到玩家出生点）
+     */
+    public GameManager(HilltopVillagePlugin plugin, String arenaId, World world, Location coreLocation,
+                       List<Location> spawnPoints, List<Location> mobSpawnPoints) {
         this.plugin = plugin;
         this.arenaId = arenaId;
         this.arenaSpawnPoints = new ArrayList<>(spawnPoints == null ? List.of() : spawnPoints);
+        this.arenaMobSpawnPoints = new ArrayList<>(mobSpawnPoints == null ? List.of() : mobSpawnPoints);
         this.state = GameState.WAITING;
         this.currentWave = 0;
         this.playerDataMap = new ConcurrentHashMap<>();
@@ -150,6 +173,22 @@ public class GameManager {
             // 走 i18n（每个玩家各自语言），与 ArenaSelectionGUI 的未部署提示保持同一套键
             broadcastI18n("arena-no-spawn-points");
             return;
+        }
+
+        // STORY-1.2 双保险：仅当两套点都为空时才拦截（旧存档双用回退的场不在此列，
+        // 它们在 hasSpawnPoints() 已通过、hasEffectiveMobSpawnPoints() 同样通过）
+        if (!hasEffectiveMobSpawnPoints()) {
+            plugin.getLogger().warning("Cannot start game: No mob spawn points configured for arena " + arenaId + "!");
+            broadcastI18n("arena-no-mob-spawns");
+            return;
+        }
+
+        // 旧存档双用告警（每局一次）：spawn-points 非空但 mob-spawn-points 为空时，
+        // 怪物与玩家将共用同一套坐标 —— 提醒服主补部署怪物刷怪点
+        if (isLegacyDualUseSpawns()) {
+            plugin.getLogger().warning("Arena " + arenaId + " uses legacy dual-use spawn points "
+                    + "(mob-spawn-points not deployed): mobs will spawn at player spawn locations. "
+                    + "Please deploy dedicated mob spawn points with /hilltop deploy addmobspawn.");
         }
 
         state = GameState.STARTING;
@@ -527,10 +566,67 @@ public class GameManager {
     }
 
     /**
-     * 部署向导更新生成点后刷新内存列表
+     * 是否配置了<b>独立的</b>怪物刷怪点（{@code mob-spawn-points} 非空）。
+     *
+     * <p>注意：本方法只反映新 schema 的部署状态，旧存档双用回退的场返回 false。
+     * 开局拦截判定请用 {@link #hasEffectiveMobSpawnPoints()}。</p>
+     */
+    public boolean hasMobSpawnPoints() {
+        return !arenaMobSpawnPoints.isEmpty();
+    }
+
+    /**
+     * 是否有<b>生效的</b>怪物刷怪坐标（新部署的独立刷怪点，或旧存档的双用回退）。
+     *
+     * <p>开局拦截的唯一依据：仅当两套点都为空时返回 false。</p>
+     */
+    public boolean hasEffectiveMobSpawnPoints() {
+        return !arenaMobSpawnPoints.isEmpty() || !arenaSpawnPoints.isEmpty();
+    }
+
+    /**
+     * 是否处于「旧存档双用」状态：玩家出生点非空、但独立怪物刷怪点为空。
+     *
+     * <p>此时怪物与玩家共用 spawn-points，开局不拦截，但记 warning 日志提醒服主补部署。</p>
+     */
+    public boolean isLegacyDualUseSpawns() {
+        return arenaMobSpawnPoints.isEmpty() && !arenaSpawnPoints.isEmpty();
+    }
+
+    /**
+     * 怪物刷怪点列表的防御性拷贝（不含双用回退：只返回独立部署的 {@code mob-spawn-points}）。
+     */
+    public List<Location> getMobSpawnPoints() {
+        return new ArrayList<>(arenaMobSpawnPoints);
+    }
+
+    /**
+     * 怪物刷怪坐标的<b>只读视图</b>（含双用回退：独立刷怪点为空时回退到玩家出生点）。
+     *
+     * <p>供 {@code WaveManager.getRandomSpawnLocation()} 热路径使用：与
+     * {@link #getSpawnPointsView()} 相同的只读视图约定（不可跨部署改动缓存，
+     * 取出元素后必须 {@code clone()} 再改）。</p>
+     *
+     * <p>视图可能绑定在 {@code arenaMobSpawnPoints} 或 {@code arenaSpawnPoints} 上，
+     * 两者在 {@code set*} 方法中都可能被整体替换，因此调用方每次需要时重新调用本方法。</p>
+     */
+    public List<Location> getMobSpawnPointsView() {
+        List<Location> effective = arenaMobSpawnPoints.isEmpty() ? arenaSpawnPoints : arenaMobSpawnPoints;
+        return Collections.unmodifiableList(effective);
+    }
+
+    /**
+     * 部署导更新生成点后刷新内存列表
      */
     public void setSpawnPoints(List<Location> spawnPoints) {
         this.arenaSpawnPoints = new ArrayList<>(spawnPoints == null ? List.of() : spawnPoints);
+    }
+
+    /**
+     * 部署命令/向导更新怪物刷怪点后刷新内存列表
+     */
+    public void setMobSpawnPoints(List<Location> mobSpawnPoints) {
+        this.arenaMobSpawnPoints = new ArrayList<>(mobSpawnPoints == null ? List.of() : mobSpawnPoints);
     }
 
     /**

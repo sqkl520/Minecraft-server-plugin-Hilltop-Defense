@@ -30,7 +30,7 @@ A cooperative PvE tower defense plugin for Minecraft servers. Players must work 
 - **Reconnect Window** — Disconnecting mid-match keeps a 60-second (configurable) rejoin window
 - **Map Restore** — Block changes made during a match are rolled back on reset, so maps don't degrade game after game
 - **Graphical Config Center** — Configure game rules, waves, monsters, items and nodes through an intuitive GUI
-- **8-Step Setup Wizard** — `/hilltop setup` walks you through core/spawns/nodes/villagers/shop, auto-saving each step
+- **8-Step Setup Wizard** — `/hilltop setup` walks you through core/player-spawns+mob-spawns/nodes/villagers/shop, auto-saving each step
 - **Multi-language Support** — Built-in Chinese and English; players can switch with `/hilltop lang <en|zh>`
 - **Spawn Point Particle Display** — After deploying spawn points, trigger a 30-second colorful particle animation to visualize all spawn locations
 
@@ -154,7 +154,8 @@ arenas:
       x: 100.0
       y: 64.0
       z: 100.0
-    spawn-points: []             # filled in by the setup wizard (phase 3)
+    spawn-points: []             # player spawn points (filled in by the setup wizard, phase 3)
+    mob-spawn-points: []         # mob spawn points (second, independent set; same wizard step / deploy commands)
     game:
       min-players: 2
       max-players: 6
@@ -176,11 +177,11 @@ Go to the **arena world** and run:
 |------|---------|--------|
 | 1/8 Confirm world | Shows your current world name | Click [Confirm] |
 | 2/8 Set core | Stand at the village core location (the player respawn point) | Click [Set as Core] |
-| 3/8 Spawn points | Monster birth positions (**at least 1 required**) | Walk to each spawn location, click [Add Current Location] in chat; click [Open Spawn Manager] to review/delete; click [Done] in the GUI |
+| 3/8 Spawn points | Player spawns + mob spawn points (two independent sets, **at least 1 each**) | Walk to each spot, click [Add Current Location] (player) / [Add Mob Spawn] (mobs) in chat; click [Open Spawn Manager]/[Open Mob Spawn Manager] to review/delete; click [Done] in either GUI (both sets must be deployed to leave this step) |
 | 4/8 Node registration | Register respawn anchors as energy nodes | **Place the respawn anchor blocks first**, stand next to one and click [Add Node]; click [Done] |
 | 5/8 Villagers | Positions of villagers to protect (**all dead = game lost**, **at least 1 required**) | Walk to a spot and click [Add Villager]; click [Villager Manager] to review/delete; click [Done] when finished |
 | 6/8 Shop location | Where the villager shop NPC stands (**required — deployment cannot finish without it**) | Stand where you want it and click [Set Shop Location] |
-| 7/8 Config preview | Overview of core/spawns/nodes/villagers/players/waves | Click [Confirm & Save] in the GUI |
+| 7/8 Config preview | Overview of core/player-spawns/mob-spawns/nodes/villagers/players/waves | Click [Confirm & Save] in the GUI |
 | 8/8 Done | Shows the start entry | Click /hilltop start in chat |
 
 **The three key concepts**
@@ -209,11 +210,11 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 |------|-----------------|
 | **List** | See all arenas; left-click to open the detail page |
 | **Detail** | Status / world / players / waves / deployment counts / shop location / parameter summary; enable, disable, teleport to core, open the sub-lists |
-| **Spawn / Node / Villager lists** | 45 entries per page; **left-click to teleport**, **right-click to delete** one entry, **Shift+Left-click** to preview its position with particles |
+| **Player-spawn / Mob-spawn / Node / Villager lists** | 45 entries per page; **left-click to teleport**, **right-click to delete** one entry, **Shift+Left-click** to preview its position with particles |
 | **Game parameters** | Edit that arena's `min-players` / `max-players` / `victory-waves` / `wave-interval-seconds`; left-click and type the new value in chat |
 | **Restore initial state** | Wipe all deployment data + game parameters of that arena and force-rollback the map blocks, so you can redeploy from scratch |
 
-> **What "Restore initial state" does**: deletes the arena's core coordinates, all spawn points, all villagers, all energy nodes, the shop NPC (both the stored location and the live entity), plus the per-arena game parameters and radius offsets, and force-rolls back the world's map blocks. It **keeps** the world, display name and `enabled` flag, so the arena stays in the list as "not deployed" afterwards. There is a confirmation page (listing exactly what will be cleared plus the real player count on site) and a second cancel button. **Refused while a match is in progress** — run `/hilltop stop <arena>` first. Because the core coordinates are removed, the arena is not re-enabled automatically; redeploy it and then `/hilltop enable`.
+> **What "Restore initial state" does**: deletes the arena's core coordinates, all player spawn points, all mob spawn points, all villagers, all energy nodes, the shop NPC (both the stored location and the live entity), plus the per-arena game parameters and radius offsets, and force-rolls back the world's map blocks. It **keeps** the world, display name and `enabled` flag, so the arena stays in the list as "not deployed" afterwards. There is a confirmation page (listing exactly what will be cleared plus the real player count on site) and a second cancel button. **Refused while a match is in progress** — run `/hilltop stop <arena>` first. Because the core coordinates are removed, the arena is not re-enabled automatically; redeploy it and then `/hilltop enable`.
 
 > **Parameter edits need no restart**: changes made through the management GUI are written to `arenas.yml` immediately and pushed to the running arena — player counts apply from the next match, wave interval and victory waves apply from the next intermission. **Editing `arenas.yml` by hand still requires a server restart** (same as the other arena settings). Edits are refused while a match is in progress (including the end-of-match countdown), so raising the player floor mid-match can't trigger an auto-defeat.
 
@@ -224,12 +225,13 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 | Check | Command | Expected |
 |-------|---------|----------|
 | Arena loaded | `/hilltop list` | Your arena is listed |
-| Spawn points set | `/hilltop deploy listspawns` | At least 1 spawn point |
+| Spawn points set | `/hilltop deploy listspawns` | At least 1 player spawn point |
+| Mob spawn points set | `/hilltop deploy listmobspawns` | At least 1 mob spawn point |
 | Nodes registered | `/hilltop deploy` menu | Known nodes > 0 |
 | Villagers registered | `/hilltop deploy listvillagers` | At least 1 villager |
 | Overall status | `/hilltop status` | Shows wave/players/mobs/nodes |
 
-> If there are no spawn points, `/hilltop start` refuses to start and tells you to finish deployment first.
+> If both spawn sets are empty, `/hilltop start` refuses to start and tells you to finish deployment first.
 
 ### Phase 6: Start a match
 
@@ -242,8 +244,10 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 
 ```
 /hilltop deploy setcore        # stand at the core location
-/hilltop deploy addspawn       # stand at each spawn location (repeatable)
-/hilltop deploy listspawns     # list all spawn points
+/hilltop deploy addspawn       # stand at each player spawn location (repeatable)
+/hilltop deploy listspawns     # list all player spawn points
+/hilltop deploy addmobspawn    # stand at each mob spawn location (repeatable)
+/hilltop deploy listmobspawns  # list all mob spawn points
 /hilltop deploy showparticles  # confirm positions via particle effects
 /hilltop deploy reloadnodes    # reload node configuration
 /hilltop deploy addvillager    # stand at each villager location (repeatable)
@@ -267,13 +271,13 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
      -> Once min-players is reached, the start countdown begins
 
 3. Match starts
-     Countdown hits zero -> players teleport to SPAWN POINTS, switched to Survival
+     Countdown hits zero -> players teleport to PLAYER SPAWN POINTS, switched to Survival, starter kit granted
      -> All energy nodes activate at their configured health and buff nearby players
      -> Villagers spawn at their configured positions
      -> Wave 1 attacks
 
 4. Wave loop
-     Monsters spawn  ->  attack players when nearby, otherwise advance on NODES
+     Monsters spawn from MOB SPAWN POINTS  ->  attack players when nearby, otherwise advance on NODES
      Wave cleared     ->  intermission (30s by default)
                           -> fallen players respawn at the CORE (requires an active node)
      Intermission ends -> next wave
@@ -395,7 +399,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop help` | Show command help (Admin) |
 | `/hilltop list` | List all arenas |
 | `/hilltop arenas` | Detailed arena status (Admin) |
-| `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/spawn point/villager, edit game parameters, restore initial state (Admin) |
+| `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/player-spawn/mob-spawn/villager, edit game parameters, restore initial state (Admin) |
 | `/hilltop deploy` | Open deploy menu (Admin) |
 | `/hilltop setup` | 8-step guided setup wizard (Admin) |
 | `/hilltop config` | Open config center GUI (Admin) |
@@ -410,10 +414,14 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 |------|------|
 | `confirmclear` | Confirm clearing all spawn points (the second confirmation for `clearspawns`) |
 | `setcore` | Set current location as game core |
-| `addspawn` | Add current location as monster spawn point |
-| `listspawns` | List all spawn points |
-| `delspawn <id>` | Delete a spawn point by ID |
-| `clearspawns` | Clear all spawn points (requires `confirmclear`) |
+| `addspawn` | Add current location as player spawn point |
+| `listspawns` | List all player spawn points |
+| `delspawn <id>` | Delete a player spawn point by ID |
+| `clearspawns` | Clear all player spawn points (requires `confirmclear`) |
+| `addmobspawn` | Add current location as mob spawn point |
+| `listmobspawns` | List all mob spawn points |
+| `delmobspawn <id>` | Delete a mob spawn point by ID |
+| `clearmobspawns` | Clear all mob spawn points (requires `confirmclearmob`) |
 | `reloadnodes` | Re-scan energy nodes |
 | `showparticles` | Show spawn point particle display (30s) |
 | `addvillager` | Register your position as a villager (all dead = defeat) |
@@ -429,9 +437,11 @@ Available while the wizard is in progress (normally triggered via clickable chat
 |------|------|
 | `confirm-world` | Confirm game world (Step 1) |
 | `confirm-core` | Set current location as village core (Step 2) |
-| `addspawn` | Add current location as monster spawn point (Step 3, feedback includes index) |
-| `spawngui` | Open spawn point manager GUI (Step 3, reopenable anytime) |
+| `addspawn` | Add current location as player spawn point (Step 3, feedback includes index) |
+| `spawngui` | Open player spawn point manager GUI (Step 3, reopenable anytime) |
 | `spawns-done` | Finish spawn point setup (Step 3, kept for backward compat; use [Done] in the GUI) |
+| `addmobspawn` | Add current location as mob spawn point (Step 3, feedback includes index) |
+| `mobspawngui` | Open mob spawn point manager GUI (Step 3, reopenable anytime) |
 | `confirm-nodes` | Confirm energy node scan result (Step 4) |
 | `rescan` | Rescan energy nodes and re-send the Step 4 message (Step 4) |
 | `villagers-done` | Finish villager placement and move to the shop step (Step 5, requires at least 1 villager) |
@@ -439,7 +449,7 @@ Available while the wizard is in progress (normally triggered via clickable chat
 | `preview` | Open the config preview GUI (Step 7; refused with a jump back if spawns/villagers/shop are missing) |
 | `goto <step>` | Jump to a specific step (1-8) |
 
-> Step 3 is chat-first: walk to a spawn location, then click the [Add Current Location] chat button to record it (feedback: "Spawn point #N added"). [Open Spawn Manager] opens a 54-slot GUI (45 entries per page) to review/delete spawn points at any time. The [Done] button lives in the manager GUI (slot 51) — no [Done] button in chat to avoid misclicks.
+> Step 3 deploys two independent sets: walk to a player-spawn location and click [Add Current Location] (feedback: "Spawn point #N added"), then walk to a mob-spawn location and click [Add Mob Spawn] (feedback: "Mob spawn point #N added"). [Open Spawn Manager] / [Open Mob Spawn Manager] open 54-slot GUIs (45 entries per page) to review/delete either set at any time. The [Done] button lives in either manager GUI (slot 51) — both sets must have at least 1 point to leave this step.
 > Step 4 explains that energy nodes are respawn anchors placed in the world (auto-detected); place more blocks and click [Rescan Nodes] to recount.
 > Step 5 villagers are a **defeat condition**: the game is lost if all of them die, so place at least 1. Walk around and click [Add Villager] to record, [Villager Manager] to review, [Done] to continue.
 > Step 6 shop location is **required**: a shop villager position must be set before deployment can finish. The shop villager position persists per arena in the `arenas.<id>.shop-npc` node of `arenas.yml` and auto-restores on server restart; leftover duplicate shop villager entities are cleaned up automatically on plugin startup.
@@ -489,7 +499,7 @@ Available while the wizard is in progress (normally triggered via clickable chat
 
 ### arenas.yml — arenas and lobby (core config)
 
-One node per arena, containing world, waiting area, core, spawn points, player counts and waves.
+One node per arena, containing world, waiting area, core, player spawn points, mob spawn points, player counts and waves.
 
 ```yaml
 default-arena: arena1          # arena joined by /hilltop join with no argument
@@ -505,7 +515,8 @@ arenas:
     world: hilltop_arena1      # arena world (must differ from the lobby)
     waiting-location: {x: 100.5, y: 80.0, z: 100.5}   # pre-match waiting spot
     core: {x: 100.0, y: 64.0, z: 100.0}               # player respawn point
-    spawn-points: []           # monster spawns (written by the setup wizard)
+    spawn-points: []           # player spawn points (written by the setup wizard)
+    mob-spawn-points: []       # mob spawn points (written by the setup wizard / deploy commands)
     villagers: []              # villager positions (written by the setup wizard)
     game:
       min-players: 2
@@ -557,6 +568,17 @@ spawning:
   mob-cap-per-player: 15
   global-mob-cap: 80
 ```
+
+# Starter kit (granted to every player on match start; overflow drops at their feet)
+starter-kit:
+  enabled: true                  # master switch: false = grant nothing
+  items:                         # material = vanilla Material name, amount = count
+    - material: STONE_SWORD
+      amount: 1
+    - material: BREAD
+      amount: 16
+    - material: TORCH
+      amount: 8
 
 ### config.yml
 

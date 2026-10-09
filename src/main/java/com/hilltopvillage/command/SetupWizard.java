@@ -144,6 +144,9 @@ public class SetupWizard implements Listener {
         // 不再自动打开 GUI：管理员需要先走到生成点位置，GUI 挡视角无法移动喵
         String msg = lang.getFor(player, "setup.step3", "3", "8");
         player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
+        // STORY-1.2：同一步内追加怪物刷怪点说明（两套点各需 ≥1，不新增向导步骤，总步数仍为 8）
+        String mobMsg = lang.getFor(player, "setup.step3-mobspawns", "3", "8");
+        player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(mobMsg));
         sendSpawnButtons(player);
     }
 
@@ -155,6 +158,9 @@ public class SetupWizard implements Listener {
         List<Button> buttons = new ArrayList<>();
         buttons.add(new Button(lang.getFor(player, "setup.btn-add"), "/hilltop setup addspawn"));
         buttons.add(new Button(lang.getFor(player, "setup.btn-open-gui"), "/hilltop setup spawngui"));
+        // STORY-1.2：怪物刷怪点入口（与玩家出生点同一行，避免聊天栏过长分两次发送）
+        buttons.add(new Button(lang.getFor(player, "setup.btn-add-mobspawn"), "/hilltop setup addmobspawn"));
+        buttons.add(new Button(lang.getFor(player, "setup.btn-open-mobspawn-gui"), "/hilltop setup mobspawngui"));
         buttons.add(new Button(lang.getFor(player, "setup.btn-save-exit"), "/hilltop setup saveexit"));
         sendButtonLine(player, buttons);
     }
@@ -166,6 +172,16 @@ public class SetupWizard implements Listener {
                 lang.getFor(player, "setup.gui-spawns-title"));
         refreshSpawnGui(inv, player, s.spawnPage);
         // 先 unregister 再 register，防止 step3 → reset → step3 导致二次注册喵
+        HandlerList.unregisterAll(this);
+        Bukkit.getPluginManager().registerEvents(this, plugin);
+        player.openInventory(inv);
+    }
+
+    /** 打开怪物刷怪点管理 GUI（STORY-1.2：与生成点 GUI 同布局，数据源为 mob-spawn-points） */
+    private void showStepMobSpawnsGui(Player player, SetupSession s) {
+        Inventory inv = Bukkit.createInventory(player, 54,
+                lang.getFor(player, "setup.gui-mobspawns-title"));
+        refreshMobSpawnGui(inv, player, s.mobSpawnPage);
         HandlerList.unregisterAll(this);
         Bukkit.getPluginManager().registerEvents(this, plugin);
         player.openInventory(inv);
@@ -205,6 +221,46 @@ public class SetupWizard implements Listener {
         int maxPage = points.isEmpty() ? 0 : (points.size() - 1) / SPAWNS_PER_PAGE;
         if (page < maxPage) {
             inv.setItem(53, makeItem(Material.ARROW, lang.getFor(player, "setup.btn-next-page"), "setup-next-page"));
+        } else {
+            inv.setItem(53, makeItem(Material.GRAY_STAINED_GLASS_PANE, " ", "setup-noop"));
+        }
+    }
+
+    /** 刷新怪物刷怪点管理 GUI（STORY-1.2：slot 布局与 refreshSpawnGui 完全一致，tags 加 mob- 前缀隔离） */
+    private void refreshMobSpawnGui(Inventory inv, Player player, int page) {
+        inv.clear();
+        List<org.bukkit.Location> points = deploy().getMobSpawnPoints();
+        // Show up to 45 entries per page in slots 0–44
+        int startIdx = page * SPAWNS_PER_PAGE;
+        int endIdx = Math.min(startIdx + SPAWNS_PER_PAGE, points.size());
+        for (int i = startIdx; i < endIdx; i++) {
+            org.bukkit.Location loc = points.get(i);
+            int slot = i - startIdx;
+            inv.setItem(slot, makeItem(Material.SPAWNER,
+                    lang.getFor(player, "setup.mobspawn-entry",
+                            String.valueOf(i), fmt(loc.getX()), fmt(loc.getY()), fmt(loc.getZ())),
+                    lang.getFor(player, "setup.spawn-entry-lore"),
+                    "setup-mobspawn-" + i));
+        }
+        // slot 45: prev page arrow (or placeholder)
+        if (page > 0) {
+            inv.setItem(45, makeItem(Material.ARROW, lang.getFor(player, "setup.btn-prev-page"), "setup-mob-prev-page"));
+        } else {
+            inv.setItem(45, makeItem(Material.GRAY_STAINED_GLASS_PANE, " ", "setup-noop"));
+        }
+        // slot 47: show particles
+        inv.setItem(47, makeItem(Material.FIREWORK_STAR, lang.getFor(player, "setup.btn-show-particles"),
+                lang.getFor(player, "setup.btn-show-particles-lore"), "setup-mob-show-particles"));
+        // slot 49: add current location
+        inv.setItem(49, makeItem(Material.EMERALD_BLOCK, lang.getFor(player, "setup.btn-add"),
+                lang.getFor(player, "setup.btn-add-lore"), "setup-add-mobspawn"));
+        // slot 51: done
+        inv.setItem(51, makeItem(Material.GREEN_WOOL, lang.getFor(player, "setup.btn-done"),
+                lang.getFor(player, "setup.btn-done-lore"), "setup-mobspawns-done"));
+        // slot 53: next page arrow (or placeholder)
+        int maxPage = points.isEmpty() ? 0 : (points.size() - 1) / SPAWNS_PER_PAGE;
+        if (page < maxPage) {
+            inv.setItem(53, makeItem(Material.ARROW, lang.getFor(player, "setup.btn-next-page"), "setup-mob-next-page"));
         } else {
             inv.setItem(53, makeItem(Material.GRAY_STAINED_GLASS_PANE, " ", "setup-noop"));
         }
@@ -511,14 +567,24 @@ public class SetupWizard implements Listener {
         }
         inv.setItem(2, infoItem(Material.SPAWNER, lang.getFor(player, "setup.preview-spawns",
                 String.valueOf(deploy().getSpawnPoints().size()))));
-        inv.setItem(3, infoItem(Material.CRYING_OBSIDIAN, lang.getFor(player, "setup.preview-nodes",
+        inv.setItem(3, infoItem(Material.ZOMBIE_HEAD, lang.getFor(player, "setup.preview-mobspawns",
+                String.valueOf(deploy().getMobSpawnPoints().size()))));
+        inv.setItem(4, infoItem(Material.CRYING_OBSIDIAN, lang.getFor(player, "setup.preview-nodes",
                 String.valueOf(gameManager().getNodeSystem().getTotalCount()))));
-        inv.setItem(4, infoItem(Material.PLAYER_HEAD, lang.getFor(player, "setup.preview-players",
+        inv.setItem(5, infoItem(Material.PLAYER_HEAD, lang.getFor(player, "setup.preview-players",
                 String.valueOf(cfg.getMinPlayers()), String.valueOf(cfg.getMaxPlayers()))));
-        inv.setItem(5, infoItem(Material.CLOCK, lang.getFor(player, "setup.preview-waves",
+        inv.setItem(6, infoItem(Material.CLOCK, lang.getFor(player, "setup.preview-waves",
                 String.valueOf(cfg.getVictoryWaves()))));
-        inv.setItem(6, infoItem(Material.EMERALD, lang.getFor(player, "setup.preview-villagers",
-                String.valueOf(deploy().getVillagers().size()))));
+        // 村民统计：预览 GUI 只有 9 格（slot 7/8 是重置/确认按钮），刷怪点占用 slot 3 后已无空位，
+        // 因此村民数拼进 slot 5（人数项）的 lore 第二行，只读展示，不影响 setup-confirm 的强制校验
+        ItemStack playersItem = inv.getItem(5);
+        if (playersItem != null && playersItem.hasItemMeta()) {
+            ItemMeta playersMeta = playersItem.getItemMeta();
+            playersMeta.setLore(List.of(ChatColor.translateAlternateColorCodes('&',
+                    lang.getFor(player, "setup.preview-villagers",
+                            String.valueOf(deploy().getVillagers().size())))));
+            playersItem.setItemMeta(playersMeta);
+        }
         inv.setItem(7, makeItem(Material.RED_WOOL, lang.getFor(player, "setup.btn-reset"),
                 lang.getFor(player, "setup.btn-reset-lore"), "setup-reset"));
         inv.setItem(8, makeItem(Material.GREEN_WOOL, lang.getFor(player, "setup.btn-confirm"),
@@ -685,11 +751,43 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
+                // STORY-1.2：两套点都必须非空才能离开第 3 步（旧存档升级走双用回退，不受此限）
+                if (deploy().getSpawnPoints().isEmpty()) {
+                    player.sendMessage(lang.getFor(player, "setup.spawns-required"));
+                    break;
+                }
+                if (deploy().getMobSpawnPoints().isEmpty()) {
+                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
+                    break;
+                }
                 HandlerList.unregisterAll(this);
                 player.closeInventory();
                 s.advance();
                 autoSave(player);
                 showStep(player, s);
+                break;
+            case "addmobspawn":
+                // 聊天按钮入口：添加玩家当前位置为怪物刷怪点（限步骤3使用）
+                if (s.step != 3) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                deploy().addMobSpawnPoint(player.getLocation());
+                player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.mobspawn-added",
+                                String.valueOf(deploy().getMobSpawnPoints().size()))));
+                sendSpawnButtons(player);
+                autoSaveSilent(player);
+                break;
+            case "mobspawngui":
+                // 聊天按钮入口：打开怪物刷怪点管理 GUI（限步骤3使用）
+                if (s.step != 3) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                showStepMobSpawnsGui(player, s);
                 break;
             case "villagers-done":
                 // 聊天按钮入口：完成村民设置，进入商店步骤（强制至少 1 个村民）
@@ -732,6 +830,10 @@ public class SetupWizard implements Listener {
                 // 强制项校验（与预览 GUI 内的 [确认保存] 一致）
                 if (deploy().getSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.spawns-required"));
+                    break;
+                }
+                if (deploy().getMobSpawnPoints().isEmpty()) {
+                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
                     break;
                 }
                 if (deploy().getVillagers().isEmpty()) {
@@ -829,12 +931,13 @@ public class SetupWizard implements Listener {
 
         String title = event.getView().getTitle();
         String spawnsTitle = lang.getFor(player, "setup.gui-spawns-title");
+        String mobSpawnsTitle = lang.getFor(player, "setup.gui-mobspawns-title");
         String nodesTitle = lang.getFor(player, "setup.gui-nodes-title");
         String villagersTitle = lang.getFor(player, "setup.gui-villagers-title");
         String previewTitle = lang.getFor(player, "setup.gui-preview-title");
 
         // 只处理 setup 向导的 GUI
-        if (!title.equals(spawnsTitle) && !title.equals(nodesTitle)
+        if (!title.equals(spawnsTitle) && !title.equals(mobSpawnsTitle) && !title.equals(nodesTitle)
                 && !title.equals(villagersTitle) && !title.equals(previewTitle)) return;
 
         // 防御：向导 GUI 内一律禁止移动物品（即使 session 意外丢失）
@@ -845,6 +948,8 @@ public class SetupWizard implements Listener {
 
         if (title.equals(spawnsTitle)) {
             handleSpawnGuiClick(player, s, event);
+        } else if (title.equals(mobSpawnsTitle)) {
+            handleMobSpawnGuiClick(player, s, event);
         } else if (title.equals(nodesTitle)) {
             handleNodesGuiClick(player, s, event);
         } else if (title.equals(villagersTitle)) {
@@ -958,6 +1063,15 @@ public class SetupWizard implements Listener {
                 sendSpawnButtons(player);
                 break;
             case "setup-spawns-done":
+                // STORY-1.2: two sets must both be non-empty before leaving step 3
+                if (deploy().getSpawnPoints().isEmpty()) {
+                    player.sendMessage(lang.getFor(player, "setup.spawns-required"));
+                    break;
+                }
+                if (deploy().getMobSpawnPoints().isEmpty()) {
+                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
+                    break;
+                }
                 HandlerList.unregisterAll(this);
                 player.closeInventory();
                 s.advance();
@@ -976,7 +1090,78 @@ public class SetupWizard implements Listener {
                             .deserialize(lang.getFor(player, "setup.spawn-removed", String.valueOf(idx))));
                     refreshSpawnGui(event.getInventory(), player, s.spawnPage);
                     autoSave(player);
-                    // 重新发送按钮行，方便用户修改位置后继续添加
+                    sendSpawnButtons(player);
+                }
+        }
+    }
+
+    /**
+     * Mob spawn GUI click handler (STORY-1.2: mirrors handleSpawnGuiClick, tags use mob- prefix).
+     */
+    private void handleMobSpawnGuiClick(Player player, SetupSession s, InventoryClickEvent event) {
+        ItemStack item = event.getCurrentItem();
+        if (item == null) return;
+        String tag = getTag(item);
+        if (tag == null) return;
+
+        switch (tag) {
+            case "setup-noop":
+                break;
+            case "setup-mob-prev-page":
+                if (s.mobSpawnPage > 0) {
+                    s.mobSpawnPage--;
+                    refreshMobSpawnGui(event.getInventory(), player, s.mobSpawnPage);
+                }
+                break;
+            case "setup-mob-next-page":
+                int maxPage = deploy().getMobSpawnPoints().isEmpty() ? 0
+                        : (deploy().getMobSpawnPoints().size() - 1) / SPAWNS_PER_PAGE;
+                if (s.mobSpawnPage < maxPage) {
+                    s.mobSpawnPage++;
+                    refreshMobSpawnGui(event.getInventory(), player, s.mobSpawnPage);
+                }
+                break;
+            case "setup-add-mobspawn":
+                deploy().addMobSpawnPoint(player.getLocation());
+                player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
+                refreshMobSpawnGui(event.getInventory(), player, s.mobSpawnPage);
+                autoSaveSilent(player);
+                sendSpawnButtons(player);
+                break;
+            case "setup-mob-show-particles":
+                player.closeInventory();
+                deploy().showSpawnPointParticles(player, lang);
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.particles-started")));
+                sendSpawnButtons(player);
+                break;
+            case "setup-mobspawns-done":
+                if (deploy().getSpawnPoints().isEmpty()) {
+                    player.sendMessage(lang.getFor(player, "setup.spawns-required"));
+                    break;
+                }
+                if (deploy().getMobSpawnPoints().isEmpty()) {
+                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
+                    break;
+                }
+                HandlerList.unregisterAll(this);
+                player.closeInventory();
+                s.advance();
+                autoSave(player);
+                showStep(player, s);
+                break;
+            default:
+                if (tag.startsWith("setup-mobspawn-")) {
+                    int idx = Integer.parseInt(tag.substring("setup-mobspawn-".length()));
+                    deploy().removeMobSpawnPoint(idx);
+                    int totalAfter = deploy().getMobSpawnPoints().size();
+                    int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
+                    if (s.mobSpawnPage > maxPageAfter) s.mobSpawnPage = maxPageAfter;
+                    player.sendMessage(LegacyComponentSerializer.legacySection()
+                            .deserialize(lang.getFor(player, "setup.mobspawn-removed", String.valueOf(idx))));
+                    refreshMobSpawnGui(event.getInventory(), player, s.mobSpawnPage);
+                    autoSave(player);
                     sendSpawnButtons(player);
                 }
         }
@@ -1091,6 +1276,14 @@ public class SetupWizard implements Listener {
                     showStep(player, s);
                     break;
                 }
+                // STORY-1.2：怪物刷怪点同样强制（新部署的场必须两套都配）
+                if (deploy().getMobSpawnPoints().isEmpty()) {
+                    player.closeInventory();
+                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
+                    s.step = 3;
+                    showStep(player, s);
+                    break;
+                }
                 if (deploy().getVillagers().isEmpty()) {
                     player.closeInventory();
                     player.sendMessage(lang.getFor(player, "setup.villagers-required"));
@@ -1136,7 +1329,8 @@ public class SetupWizard implements Listener {
         if (s == null) return;
         String title = event.getView().getTitle();
         String spawnsTitle = lang.getFor(player, "setup.gui-spawns-title");
-        if (title.equals(spawnsTitle)) {
+        String mobSpawnsTitle = lang.getFor(player, "setup.gui-mobspawns-title");
+        if (title.equals(spawnsTitle) || title.equals(mobSpawnsTitle)) {
             HandlerList.unregisterAll(this);
         }
     }
@@ -1211,6 +1405,7 @@ public class SetupWizard implements Listener {
     public static class SetupSession {
         int step = 1;
         int spawnPage = 0;     // Fix 3: current page in spawn point GUI
+        int mobSpawnPage = 0;  // STORY-1.2: current page in mob spawn GUI
         int nodePage = 0;      // 节点管理 GUI 当前页码
         int villagerPage = 0;  // 村民管理 GUI 当前页码
         void advance() { step++; }

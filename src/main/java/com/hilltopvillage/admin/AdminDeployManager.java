@@ -26,6 +26,11 @@ public class AdminDeployManager {
     private File arenasFile;
     private YamlConfiguration arenasConfig;
     private final List<Location> savedSpawnPoints;
+    /**
+     * 已部署的怪物刷怪点（STORY-1.2：与玩家出生点 {@link #savedSpawnPoints} 分离的第二套坐标，
+     * 对应 arenas.yml 的 {@code arenas.<id>.mob-spawn-points}）。
+     */
+    private final List<Location> savedMobSpawnPoints;
     /** 待保护的村民位置（全部阵亡 = 游戏失败） */
     private final List<Location> savedVillagerPositions;
     private Location savedCoreLocation;
@@ -37,6 +42,7 @@ public class AdminDeployManager {
         this.plugin = plugin;
         this.gameManager = gameManager;
         this.savedSpawnPoints = new ArrayList<>();
+        this.savedMobSpawnPoints = new ArrayList<>();
         this.savedVillagerPositions = new ArrayList<>();
         loadSpawnPoints();
     }
@@ -251,6 +257,7 @@ public class AdminDeployManager {
         }
 
         savedSpawnPoints.clear();
+        savedMobSpawnPoints.clear();
         // 本方法的语义是「从磁盘重新读取」，内存里的 core / 商店位置必须一起清空：
         // 重置竞技场会删掉 arenas.yml 的 core 与 shop-npc，若内存还留着旧值，
         // 下一次 saveSpawnPoints() 就会用旧值把它们写回去（重置等于没做）
@@ -275,6 +282,17 @@ public class AdminDeployManager {
             double cy = arenasConfig.getDouble(corePath + ".y");
             double cz = arenasConfig.getDouble(corePath + ".z");
             savedCoreLocation = new Location(world, cx, cy, cz);
+        }
+
+        // 读取该竞技场的怪物刷怪点（STORY-1.2 新 schema；旧存档缺键 → 空列表，刷怪双用回退）
+        List<Map<?, ?>> mobList = arenasConfig.getMapList("arenas." + arenaId + ".mob-spawn-points");
+        for (Map<?, ?> map : mobList) {
+            Object xo = map.get("x"), yo = map.get("y"), zo = map.get("z");
+            if (!(xo instanceof Number) || !(yo instanceof Number) || !(zo instanceof Number)) continue;
+            double x = ((Number) xo).doubleValue();
+            double y = ((Number) yo).doubleValue();
+            double z = ((Number) zo).doubleValue();
+            savedMobSpawnPoints.add(new Location(world, x, y, z));
         }
 
         // 读取该竞技场的村民位置
@@ -423,6 +441,17 @@ public class AdminDeployManager {
         }
         arenasConfig.set("arenas." + arenaId + ".spawn-points", list);
 
+        // 怪物刷怪点（STORY-1.2：与 spawn-points 同级的新 schema 键）
+        List<Map<String, Object>> mobList = new ArrayList<>();
+        for (Location loc : savedMobSpawnPoints) {
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("x", loc.getX());
+            map.put("y", loc.getY());
+            map.put("z", loc.getZ());
+            mobList.add(map);
+        }
+        arenasConfig.set("arenas." + arenaId + ".mob-spawn-points", mobList);
+
         // 村民位置（全部阵亡 = 游戏失败）
         List<Map<String, Object>> villagerList = new ArrayList<>();
         for (Location loc : savedVillagerPositions) {
@@ -448,6 +477,7 @@ public class AdminDeployManager {
 
         // 刷新内存中的 GameManager（生成点与核心位置）
         gameManager.setSpawnPoints(savedSpawnPoints);
+        gameManager.setMobSpawnPoints(savedMobSpawnPoints);
         if (savedCoreLocation != null) {
             gameManager.setCoreLocation(savedCoreLocation);
         }
@@ -533,6 +563,41 @@ public class AdminDeployManager {
         saveSpawnPoints();
     }
 
+    /* ========== 怪物刷怪点操作（STORY-1.2：与玩家出生点分离的第二套坐标） ========== */
+
+    /** 已部署的怪物刷怪点（只读视图；旧存档返回空列表，刷怪双用回退到玩家出生点） */
+    public List<Location> getMobSpawnPoints() {
+        return Collections.unmodifiableList(savedMobSpawnPoints);
+    }
+
+    public boolean hasMobSpawnPoints() {
+        return !savedMobSpawnPoints.isEmpty();
+    }
+
+    public void addMobSpawnPoint(Location location) {
+        // 保存方块坐标（整数），与 addSpawnPoint 同口径
+        Location blockCenter = new Location(
+            location.getWorld(),
+            location.getBlockX(),
+            location.getBlockY(),
+            location.getBlockZ()
+        );
+        savedMobSpawnPoints.add(blockCenter);
+        saveSpawnPoints();
+    }
+
+    public boolean removeMobSpawnPoint(int index) {
+        if (index < 0 || index >= savedMobSpawnPoints.size()) return false;
+        savedMobSpawnPoints.remove(index);
+        saveSpawnPoints();
+        return true;
+    }
+
+    public void clearMobSpawnPoints() {
+        savedMobSpawnPoints.clear();
+        saveSpawnPoints();
+    }
+
     /* ========== 村民操作（全部阵亡 = 游戏失败） ========== */
 
     /** 已登记的村民位置（防御性拷贝） */
@@ -601,6 +666,7 @@ public class AdminDeployManager {
         admin.sendMessage(lang.getFor(admin, "deploy.menu-spawn-count",
                 savedSpawnPoints.size(),
                 savedSpawnPoints.isEmpty() ? lang.getFor(admin, "deploy.menu-random-yes") : lang.getFor(admin, "deploy.menu-random-no")));
+        admin.sendMessage(lang.getFor(admin, "deploy.menu-mobspawn-count", savedMobSpawnPoints.size()));
         admin.sendMessage(lang.getFor(admin, "deploy.menu-nodes", gameManager.getNodeSystem().getTotalCount()));
         admin.sendMessage(lang.getFor(admin, "deploy.menu-villagers", savedVillagerPositions.size()));
         admin.sendMessage("");
@@ -612,6 +678,10 @@ public class AdminDeployManager {
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy delspawn <id>" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-delspawn"));
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy showparticles" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-showparticles"));
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy clearspawns" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-clearspawns"));
+        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy addmobspawn" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-addmobspawn"));
+        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy listmobspawns" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-listmobspawns"));
+        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy delmobspawn <id>" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-delmobspawn"));
+        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy clearmobspawns" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-clearmobspawns"));
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy reloadnodes" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-reloadnodes"));
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy confirmclear" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-confirmclear"));
         admin.sendMessage("");

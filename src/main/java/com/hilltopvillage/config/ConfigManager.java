@@ -152,6 +152,18 @@ public class ConfigManager {
         settingsYaml.set("shop.currency-drop-chance", activeConfig.getCurrencyDropChance());
         settingsYaml.set("shop.currency-drop-amount", activeConfig.getCurrencyDropAmount());
 
+        // ---- 开局初始套装 (starter-kit, STORY-1.2) ----
+        settingsYaml.set("starter-kit.enabled", activeConfig.isStarterKitEnabled());
+        List<Map<String, Object>> starterKitList = new ArrayList<>();
+        for (GameConfig.StarterKitItem item : activeConfig.getStarterKitItems()) {
+            if (item == null || item.getMaterial() == null) continue;
+            Map<String, Object> map = new LinkedHashMap<>();
+            map.put("material", item.getMaterial().name());
+            map.put("amount", Math.max(1, item.getAmount()));
+            starterKitList.add(map);
+        }
+        settingsYaml.set("starter-kit.items", starterKitList);
+
         // 不整段清空 sections，以保留管理员手写的键与注释；代价是已删除的怪物/波次可能残留旧键
         for (Map.Entry<String, GameConfig.MonsterConfig> entry : activeConfig.getMonsters().entrySet()) {
             String key = entry.getKey();
@@ -393,6 +405,33 @@ public class ConfigManager {
         // ---- 村民商店货币掉落 ----
         if (settingsYaml.contains("shop.currency-drop-chance")) activeConfig.setCurrencyDropChance(settingsYaml.getDouble("shop.currency-drop-chance"));
         if (settingsYaml.contains("shop.currency-drop-amount")) activeConfig.setCurrencyDropAmount(settingsYaml.getInt("shop.currency-drop-amount"));
+
+        // ---- 开局初始套装 (starter-kit, STORY-1.2) ----
+        // 缺键 = 旧配置文件：保持 GameConfig 字段默认值（enabled=true + 石剑/面包/火把），不覆盖
+        if (settingsYaml.contains("starter-kit.enabled")) {
+            activeConfig.setStarterKitEnabled(settingsYaml.getBoolean("starter-kit.enabled"));
+        }
+        // getMapList 不存在时返回空列表；仅当键存在时才整体替换默认列表，
+        // 否则旧配置文件（无 starter-kit 节）会被清空成空套装
+        if (settingsYaml.isSet("starter-kit.items")) {
+            List<GameConfig.StarterKitItem> parsedKit = new ArrayList<>();
+            for (Map<?, ?> map : settingsYaml.getMapList("starter-kit.items")) {
+                Object materialRaw = map.get("material");
+                if (!(materialRaw instanceof String materialName) || materialName.isBlank()) {
+                    plugin.getLogger().warning("Invalid starter-kit item (missing material), skipping");
+                    continue;
+                }
+                Material material = Material.getMaterial(materialName.trim().toUpperCase());
+                if (material == null || !material.isItem()) {
+                    plugin.getLogger().warning("Unknown starter-kit material: " + materialName + ", skipping");
+                    continue;
+                }
+                Object amountRaw = map.get("amount");
+                int amount = (amountRaw instanceof Number number) ? number.intValue() : 1;
+                parsedKit.add(new GameConfig.StarterKitItem(material, Math.max(1, amount)));
+            }
+            activeConfig.setStarterKitItems(parsedKit);
+        }
 
         ConfigurationSection monsterSection = settingsYaml.getConfigurationSection("monsters");
         if (monsterSection != null) {

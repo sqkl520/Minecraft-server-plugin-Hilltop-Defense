@@ -41,6 +41,8 @@ public class HilltopCommandHandler {
     private final DeployMenuSender deployMenuSender;
     private final TpsDiagnostic tpsDiagnostic;
     private final Set<UUID> pendingClearConfirm = new HashSet<>();
+    /** clearmobspawns 的二次确认集合（与玩家出生点的 pendingClearConfirm 独立，避免互相串确认） */
+    private final Set<UUID> pendingClearMobConfirm = new HashSet<>();
 
     public HilltopCommandHandler(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
@@ -89,6 +91,11 @@ public class HilltopCommandHandler {
                     // 走 i18n（按玩家语言）；两键均为仓库既有键，hint 保留「如何部署」的指引
                     sender.sendMessage(lang.getFor(player, "arena-not-deployed"));
                     sender.sendMessage(lang.getFor(player, "arena-not-deployed-hint"));
+                    break;
+                }
+                // STORY-1.2：怪物刷怪坐标同样不能为空（旧存档双用回退的场不受影响）
+                if (!startGm.hasEffectiveMobSpawnPoints()) {
+                    sender.sendMessage(lang.getFor(player, "arena-no-mob-spawns"));
                     break;
                 }
                 // Check game state
@@ -540,6 +547,78 @@ public class HilltopCommandHandler {
                     admin.sendMessage(lang.getFor(admin, "deploy.confirmclear-done", count));
                 } else {
                     admin.sendMessage(lang.getFor(admin, "deploy.confirmclear-no-pending"));
+                }
+                break;
+
+            case "addmobspawn":
+                deploy.addMobSpawnPoint(admin.getLocation());
+                admin.sendMessage(lang.getFor(admin, "deploy.mobspawn-added"));
+                admin.sendMessage(lang.getFor(admin, "deploy.mobspawn-coords",
+                        deploy.getMobSpawnPoints().size() - 1,
+                        String.format("%.1f", admin.getLocation().getX()),
+                        String.format("%.1f", admin.getLocation().getY()),
+                        String.format("%.1f", admin.getLocation().getZ())));
+                admin.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,
+                        admin.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
+                admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
+                break;
+
+            case "listmobspawns":
+                List<Location> mobPoints = deploy.getMobSpawnPoints();
+                if (mobPoints.isEmpty()) {
+                    admin.sendMessage(lang.getFor(admin, "deploy.listmobspawns-empty"));
+                } else {
+                    admin.sendMessage(lang.getFor(admin, "deploy.listmobspawns-header", mobPoints.size()));
+                    for (int i = 0; i < mobPoints.size(); i++) {
+                        Location loc = mobPoints.get(i);
+                        admin.sendMessage(lang.getFor(admin, "deploy.listmobspawns-entry", i,
+                                String.format("%.1f", loc.getX()),
+                                String.format("%.1f", loc.getY()),
+                                String.format("%.1f", loc.getZ())));
+                    }
+                    admin.sendMessage(lang.getFor(admin, "deploy.listmobspawns-hint"));
+                }
+                break;
+
+            case "delmobspawn":
+                if (args.length < 3) {
+                    admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-usage"));
+                    return;
+                }
+                try {
+                    int index = Integer.parseInt(args[2]);
+                    if (deploy.removeMobSpawnPoint(index)) {
+                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-deleted", index));
+                    } else {
+                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-not-found", index));
+                    }
+                } catch (NumberFormatException e) {
+                    admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
+                }
+                break;
+
+            case "clearmobspawns":
+                if (!pendingClearMobConfirm.contains(admin.getUniqueId())) {
+                    pendingClearMobConfirm.add(admin.getUniqueId());
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearmobspawns-warning", deploy.getMobSpawnPoints().size()));
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearmobspawns-confirm"));
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (pendingClearMobConfirm.remove(admin.getUniqueId())) {
+                            admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-expired"));
+                        }
+                    }, 20L * 15);
+                } else {
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-already"));
+                }
+                break;
+
+            case "confirmclearmob":
+                if (pendingClearMobConfirm.remove(admin.getUniqueId())) {
+                    int count = deploy.getMobSpawnPoints().size();
+                    deploy.clearMobSpawnPoints();
+                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclearmob-done", count));
+                } else {
+                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclearmob-no-pending"));
                 }
                 break;
 
