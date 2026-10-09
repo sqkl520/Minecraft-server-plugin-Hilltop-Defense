@@ -8,6 +8,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
+import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
 
 import java.util.UUID;
@@ -132,6 +133,23 @@ public class NumericInputHandler implements Listener {
             event.getPlayer().sendMessage(pending.lang.getFor(event.getPlayer(), "config.menu.input.invalid-number", msg));
             pendingInputs.put(id, pending);
         }
+    }
+
+    /**
+     * 玩家退服时清除其待处理的聊天输入（静默丢弃，不回调 onCancel）。
+     *
+     * <p>为什么不回调：{@code onCancel} 的调用方约定是给<b>在线</b>玩家重开 GUI
+     * （{@code reopen}）；已退服的玩家调它只会打出发包到失效连接，
+     * 还会顺带把菜单监听器重新注册一次。</p>
+     *
+     * <p>与 30 秒超时任务是幂等关系：两者都是 {@code remove(uuid)}，
+     * 无论谁先执行，另一个都只会拿到 null。</p>
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onQuit(PlayerQuitEvent event) {
+        UUID id = event.getPlayer().getUniqueId();
+        pendingInputs.remove(id);
+        pendingStringInputs.remove(id);
     }
 
     private static class PendingInput {

@@ -12,9 +12,9 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * 多语言管理器 - 从 messages.yml 加载消息，支持 en/zh 切换。
@@ -28,11 +28,18 @@ public class LanguageManager {
     /** 全局默认语言 */
     private String defaultLocale = "zh";
 
-    /** 玩家个人语言偏好 (uuid -> locale) */
-    private final Map<UUID, String> playerLocales = new HashMap<>();
+    /** 玩家个人语言偏好 (uuid -> locale)。并发容器：NumericInputHandler 的 AsyncPlayerChatEvent 在 Netty 线程读它 */
+    private final Map<UUID, String> playerLocales = new ConcurrentHashMap<>();
 
-    /** 消息缓存: locale -> (key -> message) */
-    private final Map<String, Map<String, String>> messageCache = new HashMap<>();
+    /**
+     * 消息缓存: locale -> (key -> message)。
+     *
+     * <p>三层并发设计：外层 {@code ConcurrentHashMap} 保证 {@code get()} 任意时刻都有可读的完整引用；
+     * 内层用<b>不可变 Map</b>（{@code Map.copyOf}）保证异步聊天线程读到的永远是某个版本的完整快照，
+     * 不会看到 {@code reload()} 中途「清掉一半」的状态；reload 时外层逐 locale 原子替换引用即可。
+     * （{@code clear() + 逐条 put} 的写法在并发下会让异步线程读到空 map，是振荡器的源头。）</p>
+     */
+    private final Map<String, Map<String, String>> messageCache = new ConcurrentHashMap<>();
 
     public LanguageManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
@@ -65,9 +72,12 @@ public class LanguageManager {
         // 3. 构建缓存：JAR 为基础，磁盘值覆盖
         //    这里顺手把颜色码预编译掉：消息内容是静态的（只在 reload 时变），
         //    与其在每次 get() 时反复扫描 '&'，不如在构建缓存时只做一次。
-        messageCache.clear();
+        //
+        //    并发语义：每个 locale 在<b>局部 Map</b> 里拼好后再整体 put 到外层 ConcurrentHashMap；
+        //    put 之前异步读线程看到的仍是旧版本的完整快照，不会看到半成品。
+        //    （HashMap 是局部方法变量，只在当前线程使用，无需并发容器。）
         for (String locale : new String[]{"en", "zh"}) {
-            Map<String, String> map = new HashMap<>();
+            Map<String, String> map = new java.util.HashMap<>();
 
             // 先从 JAR 加载（保证所有 key 都有值）
             ConfigurationSection jarSection = jarConfig.getConfigurationSection(locale);
@@ -91,7 +101,9 @@ public class LanguageManager {
                 }
             }
 
-            messageCache.put(locale, map);
+            // 包成不可变快照再发布：读线程拿到的引用永远指向某个版本的完整 map，
+            // 不会看到「清掉一半」的中间态。compile() 已保证 value 非 null，可直接 copyOf。
+            messageCache.put(locale, Map.copyOf(map));
         }
 
         // 4. 把 JAR 里缺失的 key 补写到磁盘文件（方便管理员查看/编辑全量 key）
@@ -161,6 +173,18 @@ public class LanguageManager {
         if (locale.equals("en") || locale.equals("zh")) {
             playerLocales.put(player.getUniqueId(), locale);
         }
+    }
+
+    /**
+     * 玩家退服时清除其语言偏好（由 PlayerQuit 清理链调用）。
+     *
+     * <p>偏好是纯内存的会话态，不持久化：退出即失效是预期行为。若该玩家在线时又调用
+     * {@link #setPlayerLocale}，会重新写入；{@link #getPlayerLocale} 对缺失的偏好
+     * 回退到 {@code defaultLocale}，不会 NPE。玩家重进后取默认语言，与旧行为一致
+     * （旧行为同样不持久，偏好只在本次会话有效）。</p>
+     */
+    public void clearPlayerLocale(UUID uuid) {
+        if (uuid != null) playerLocales.remove(uuid);
     }
 
     // ---- 消息获取 ----

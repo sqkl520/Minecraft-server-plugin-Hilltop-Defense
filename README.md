@@ -426,33 +426,36 @@ arenas:
 
 ## 命令
 
-| 命令 | 说明 |
-|------|------|
-| `/hilltop join [竞技场]` | 加入竞技场（不填则自动匹配可用竞技场） |
-| `/hilltop leave` | 退出当前竞技场 |
-| `/hilltop lobby` | 返回大厅 |
-| `/hilltop gui` | 打开竞技场选择菜单（带状态与人数） |
-| `/hilltop status [竞技场]` | 查看游戏状态（波次/玩家/怪物/节点/等待复活） |
-| `/hilltop stats [玩家名]` | 查看自己或他人的统计 |
-| `/hilltop top <类型>` | 查看排行榜（kills/wins/games/best-wave/nodes/deaths） |
-| `/hilltop hammer` | 获取神圣重锤（管理员；玩家请去商店购买） |
-| `/hilltop fireball` | 获取烈焰蛋（管理员；玩家请去商店购买） |
-| `/hilltop lang <en\|zh>` | 切换语言 |
-| `/hilltop start [竞技场]` | 启动游戏（管理员） |
-| `/hilltop stop [竞技场]` | 强制停止游戏（管理员） |
-| `/hilltop help` | 查看命令帮助（管理员） |
-| `/hilltop list` | 列出所有竞技场 |
-| `/hilltop arenas` | 查看详细竞技场状态与故障原因（管理员） |
-| `/hilltop manage` | 打开竞技场管理 GUI：查看任意竞技场、删除单个节点/出生点/刷怪点/村民、编辑游戏参数、恢复初始状态（管理员） |
-| `/hilltop enable [竞技场]` | 将竞技场加入启用队列（管理员） |
-| `/hilltop disable [竞技场]` | 禁用竞技场用于维护（管理员） |
-| `/hilltop deploy` | 打开部署菜单（管理员） |
-| `/hilltop setup` | 8 步引导式部署向导（管理员） |
-| `/hilltop config` | 打开配置中心 GUI（管理员） |
-| `/hilltop reloadconfig` | 重载游戏配置（game-settings.yml + monsters-config.yml + messages.yml）（管理员；arenas.yml 仍需重启） |
-| `/hilltop shop reload` | 重载村民商店配置（管理员） |
-| `/hilltop build` | 切换大厅建造模式（管理员，用于整修大厅） |
-| `/hilltop tps` | TPS/MSPT 诊断（管理员） |
+> 「控制台」列：✅ = 可在服务器控制台执行（管理命令仍需 OP / `hilltopvillage.admin` 权限，即控制台默认拥有）；
+> ❌ = 必须由玩家在游戏内执行。
+
+| 命令 | 说明 | 控制台 |
+|------|------|--------|
+| `/hilltop join [竞技场]` | 加入竞技场（不填则自动匹配可用竞技场） | ❌ |
+| `/hilltop leave` | 退出当前竞技场 | ❌ |
+| `/hilltop lobby` | 返回大厅 | ❌ |
+| `/hilltop gui` | 打开竞技场选择菜单（带状态与人数） | ❌ |
+| `/hilltop status [竞技场]` | 查看游戏状态（波次/玩家/怪物/节点/等待复活） | ✅ |
+| `/hilltop stats [玩家名]` | 查看自己或他人的统计 | ✅（带玩家名时） |
+| `/hilltop top <类型>` | 查看排行榜（kills/wins/games/best-wave/nodes/deaths） | ✅ |
+| `/hilltop hammer` | 获取神圣重锤（管理员；玩家请去商店购买） | ❌ |
+| `/hilltop fireball` | 获取烈焰蛋（管理员；玩家请去商店购买） | ❌ |
+| `/hilltop lang <en\|zh>` | 切换语言 | ✅ |
+| `/hilltop start [竞技场]` | 启动游戏（管理员） | ✅ |
+| `/hilltop stop [竞技场]` | 强制停止游戏（管理员） | ✅ |
+| `/hilltop help` | 查看命令帮助（管理员） | ✅ |
+| `/hilltop list` | 列出所有竞技场 | ✅ |
+| `/hilltop arenas` | 查看详细竞技场状态与故障原因（管理员） | ✅ |
+| `/hilltop manage` | 打开竞技场管理 GUI：查看任意竞技场、删除单个节点/出生点/刷怪点/村民、编辑游戏参数、恢复初始状态（管理员） | ❌ |
+| `/hilltop enable [竞技场]` | 将竞技场加入启用队列（管理员） | ✅ |
+| `/hilltop disable [竞技场]` | 禁用竞技场用于维护（管理员） | ✅ |
+| `/hilltop deploy` | 打开部署菜单（管理员） | ❌ |
+| `/hilltop setup` | 8 步引导式部署向导（管理员） | ❌ |
+| `/hilltop config` | 打开配置中心 GUI（管理员） | ❌ |
+| `/hilltop reloadconfig` | 重载游戏配置（game-settings.yml + monsters-config.yml + messages.yml）（管理员；arenas.yml 仍需重启） | ✅ |
+| `/hilltop shop reload` | 重载村民商店配置（管理员） | ✅ |
+| `/hilltop build` | 切换大厅建造模式（管理员，用于整修大厅） | ❌ |
+| `/hilltop tps` | TPS/MSPT 诊断（管理员） | ✅ |
 
 ### 部署子命令 (`/hilltop deploy`)
 

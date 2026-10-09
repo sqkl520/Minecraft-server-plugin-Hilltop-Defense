@@ -68,6 +68,17 @@ public class LobbyProtectionListener implements Listener {
         return buildMode.contains(player.getUniqueId());
     }
 
+    /**
+     * 退出清理入口：摘掉离玩家的建造模式标记。
+     *
+     * <p>buildMode 是纯内存的会话态，退出即失效 —— 管理员重进后需重新 /hilltop build。
+     * 与 hammerListener / fireballListener 的 cleanupPlayer 同一种写法，
+     * 由主类的 onPlayerQuit 统一调用。</p>
+     */
+    public void cleanupPlayer(Player player) {
+        buildMode.remove(player.getUniqueId());
+    }
+
     /** 玩家是否处于大厅世界 */
     private boolean inLobby(Entity entity) {
         if (entity == null || entity.getWorld() == null) return false;

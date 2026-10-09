@@ -435,6 +435,13 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         // Cleanup player data
         hammerListener.cleanupPlayer(player);
         fireballListener.cleanupPlayer(player);
+        lobbyProtectionListener.cleanupPlayer(player);
+        for (ArenaInstance arena : multiArenaManager.getActiveArenas()) {
+            arena.getScoreboard().cleanupPlayer(player);
+        }
+        // NumericInputHandler 的待处理聊天输入由其自带的 @EventHandler onQuit 清理
+        // （静态 pendingInputs / pendingStringInputs，全局唯一监听实例即可覆盖）。
+        languageManager.clearPlayerLocale(player.getUniqueId());
     }
 
     @Override

@@ -721,7 +721,7 @@ public class SetupWizard implements Listener {
                 break;
             case "rescan":
                 // 已废弃：旧的扫描命令，现在引导用户使用新的手动注册方式
-                player.sendMessage("§c该命令已废弃。节点现在需要手动注册，请使用 §e/hilltop setup nodesgui§c 打开节点管理GUI。");
+                player.sendMessage(lang.getFor(player, "setup.rescan-deprecated"));
                 break;
             case "spawngui":
                 // 聊天按钮入口：打开生成点管理 GUI（可随时重开，入口不再丢失）
@@ -1199,7 +1199,7 @@ public class SetupWizard implements Listener {
                 // 显示节点粒子
                 List<Location> nodeLocations = gameManager().getNodeSystem().getAllNodeLocations();
                 if (nodeLocations.isEmpty()) {
-                    player.sendMessage("§c没有已注册的节点");
+                    player.sendMessage(lang.getFor(player, "particles.no-nodes"));
                 } else {
                     deploy().showNodeParticles(player, nodeLocations, lang);
                     player.sendMessage(LegacyComponentSerializer.legacySection()

@@ -111,6 +111,17 @@ public class ArenaScoreboard {
         if (boards.isEmpty()) stopTask();
     }
 
+    /**
+     * 退出清理入口：移除离玩家的残留条目并按需停掉刷新任务。
+     *
+     * <p>scoreboard.hide() 对离线玩家不做 setScoreboard（玩家对象已失效，调用无意义），
+     * 只把该玩家的 BoardState 从 boards 里摘掉；boards 为空时停掉每秒刷新任务，
+     * 避免任务在无人持有记分板时继续空转。</p>
+     */
+    public void cleanupPlayer(Player player) {
+        hide(player);
+    }
+
     /** 竞技场重置时清理所有侧边栏 */
     public void clear() {
         for (UUID uuid : new ArrayList<>(boards.keySet())) {

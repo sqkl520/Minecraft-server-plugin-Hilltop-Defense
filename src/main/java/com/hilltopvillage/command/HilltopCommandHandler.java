@@ -44,6 +44,19 @@ public class HilltopCommandHandler {
     /** clearmobspawns 的二次确认集合（与玩家出生点的 pendingClearConfirm 独立，避免互相串确认） */
     private final Set<UUID> pendingClearMobConfirm = new HashSet<>();
 
+    /**
+     * 控制台禁止执行的子命令（需要玩家在场）。
+     *
+     * <p>取「黑名单」而非「白名单」的原因：未知子命令走 default 分支只发帮助文本，
+     * 对控制台是无害的，不应被拦；而白名单写法每次新增命令都要记得补名单，
+     * 漏补就会把新命令对控制台误拦 —— 这正是本次要修的 bug 的成因。</p>
+     *
+     * <p>help 不在名单里：它只发文本，控制台可用（走 deployMenuSender.sendUsage 的非玩家分支）。</p>
+     */
+    private static final Set<String> CONSOLE_BLOCKED_COMMANDS = Set.of(
+            "join", "leave", "lobby", "gui", "hammer", "fireball",
+            "setup", "deploy", "config", "manage", "build");
+
     public HilltopCommandHandler(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
         this.lang = plugin.getLanguageManager();
@@ -67,8 +80,26 @@ public class HilltopCommandHandler {
 
         String sub = args[0].toLowerCase();
 
-        // Permission check helper
-        if (!isPlayer && !sub.equals("status") && !sub.equals("reloadconfig") && !sub.equals("lang")) {
+        // 控制台准入：先放行「控制台本来就能用」的管理命令，再拦真正需要玩家的命令。
+        //
+        // 旧写法在顶层按「非玩家 + 非白名单 → players-only」一刀切，把控制台执行
+        // start/stop/enable/disable/arenas/tps 等管理命令也拦掉了（它们只读竞技场状态、
+        // 不碰玩家对象，控制台本应可用）。新写法把拦截倒过来：只对明确需要玩家在场的
+        // 命令拦截控制台，其余一律走各自 case 内的权限 / 参数检查。
+        //
+        // 各 case 内部仍保留自己的 players-only 守卫（join/leave/gui/build/manage/…），
+        // 因此这里删掉顶层拦截不会让控制台绕过任何「玩家在场」要求 —— 只是把拦截点
+        // 下移到各 case，让错误信息更贴近真实原因（无权限报 no-permission，
+        // 缺玩家报 players-only，而不是一律 players-only）。
+        //
+        // 需要玩家在场的命令（控制台执行时报 players-only，行为��旧版一致）：
+        // join / leave / lobby / gui / hammer / fireball / setup / deploy / config /
+        // manage / build / stats（不带玩家名时）/ top（走各自 case 的守卫，此处不列）。
+        //
+        // 控制台可用（需 hilltopvillage.admin，行为变化见 README 命令表）：
+        // start / stop / arenas / list / enable / disable / tps / shop reload /
+        // status / reloadconfig / lang / stats <玩家名> / top <类型>。
+        if (!isPlayer && CONSOLE_BLOCKED_COMMANDS.contains(sub)) {
             sender.sendMessage(lang.get("players-only"));
             return true;
         }
@@ -135,10 +166,7 @@ public class HilltopCommandHandler {
             }
 
             case "join":
-                if (!isPlayer) {
-                    sender.sendMessage(lang.get("players-only"));
-                    return true;
-                }
+                // 入口 CONSOLE_BLOCKED_COMMANDS 已拦截控制台，到这里的一定是玩家
                 // 已在竞技场中时的处理：
                 //  · 对局进行中且人在场内 → 明确拒绝（不能半路换场）
                 //  · 其余情况（等待中的成员、死亡后重生到别处、被外部插件传送等）

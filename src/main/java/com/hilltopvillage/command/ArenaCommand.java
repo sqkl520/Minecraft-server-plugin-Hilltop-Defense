@@ -112,26 +112,23 @@ public class ArenaCommand implements CommandExecutor {
      * List all available arenas with status.
      */
     private void handleList(CommandSender sender) {
-        sender.sendMessage(languageManager.get("arena-list-header"));
+        sender.sendMessage(forSender(sender, "arena-list-header"));
 
         var arenas = arenaManager.getActiveArenas();
         if (arenas.isEmpty()) {
-            sender.sendMessage(languageManager.get("no-active-arenas"));
+            sender.sendMessage(forSender(sender, "no-active-arenas"));
             return;
         }
 
         for (ArenaInstance arena : arenas) {
-            String status = getArenaStatus(arena);
-            String players = arena.getPlayerCount() + "/" + arena.getMaxPlayers();
-
-            sender.sendMessage(String.format("§7[%s] §e%s §7- %s §7- §a%s",
+            sender.sendMessage(forSender(sender, "arena-list-entry",
                     arena.getArenaId(),
                     arena.getDisplayName(),
-                    status,
-                    players));
+                    getArenaStatus(sender, arena),
+                    arena.getPlayerCount() + "/" + arena.getMaxPlayers()));
         }
 
-        sender.sendMessage(languageManager.get("arena-list-footer"));
+        sender.sendMessage(forSender(sender, "arena-list-footer"));
     }
 
     /**
@@ -140,12 +137,17 @@ public class ArenaCommand implements CommandExecutor {
      */
     private void handleArenas(CommandSender sender) {
         if (!sender.hasPermission("hilltopvillage.admin")) {
-            sender.sendMessage(languageManager.get("no-permission"));
+            sender.sendMessage(forSender(sender, "no-permission"));
             return;
         }
 
-        sender.sendMessage(languageManager.get("arena-status-header"));
-        sender.sendMessage(arenaManager.getStatistics());
+        sender.sendMessage(forSender(sender, "arena-status-header"));
+        // countByState 返回 int[]：必须逐个拆包再传。直接把 int[] 丢给 Object... 变参，
+        // Java 会把它当成「单个参数」（int[] 不是 Object[]），{0} 会打成 [I@xxx。
+        int[] counts = arenaManager.countByState(GameState.WAITING, GameState.STARTING,
+                GameState.RUNNING, GameState.ENDING);
+        sender.sendMessage(forSender(sender, "arena-status-statistics",
+                counts[0], counts[1], counts[2], counts[3], counts[4]));
         sender.sendMessage("");
 
         // 遍历所有「已配置」的竞技场（含已禁用/排队中的，它们没有运行时实例）
@@ -155,78 +157,98 @@ public class ArenaCommand implements CommandExecutor {
             ArenaInstance arena = arenaManager.getActiveArenas().stream()
                     .filter(a -> a.getArenaId().equals(id)).findFirst().orElse(null);
 
-            sender.sendMessage(String.format("§e%s §7(%s)", id, definition.getDisplayName() == null ? id
-                    : org.bukkit.ChatColor.translateAlternateColorCodes('&', definition.getDisplayName())));
+            sender.sendMessage(forSender(sender, "arena-detail-title", id,
+                    definition.getDisplayName() == null ? id
+                            : org.bukkit.ChatColor.translateAlternateColorCodes('&', definition.getDisplayName())));
 
             String statusLine = switch (status) {
-                case DISABLED -> "§8已禁用";
-                case QUEUED -> "§e排队启用中";
-                case LOADING -> "§6加载中...";
-                case READY -> arena == null ? "§7未知" : getArenaStatus(arena);
+                case DISABLED -> forSender(sender, "arena-status-disabled");
+                case QUEUED -> forSender(sender, "arena-status-queued");
+                case LOADING -> forSender(sender, "arena-status-loading");
+                case READY -> arena == null
+                        ? forSender(sender, "arena-detail-status-unknown")
+                        : getArenaStatus(sender, arena);
             };
-            sender.sendMessage(String.format("  §7状态: %s%s", statusLine, describeIssue(definition, arena, status)));
+            sender.sendMessage(forSender(sender, "arena-detail-status",
+                    statusLine, describeIssue(sender, definition, arena, status)));
 
             if (arena != null) {
-                sender.sendMessage(String.format("  §7玩家: §a%d§7/§e%d §7(最少: §c%d§7)",
+                sender.sendMessage(forSender(sender, "arena-detail-players",
                         arena.getPlayerCount(), arena.getMaxPlayers(), arena.getMinPlayers()));
-                sender.sendMessage(String.format("  §7波次: §6%d§7/§e%d",
+                sender.sendMessage(forSender(sender, "arena-detail-wave",
                         arena.getCurrentWave(), arena.getTotalWaves()));
             }
-            sender.sendMessage(String.format("  §7世界: §b%s%s",
-                    definition.getWorldName(),
-                    org.bukkit.Bukkit.getWorld(definition.getWorldName()) == null ? " §c(未加载)" : ""));
+            String worldSuffix = org.bukkit.Bukkit.getWorld(definition.getWorldName()) == null
+                    ? forSender(sender, "arena-detail-world-unloaded") : "";
+            sender.sendMessage(forSender(sender, "arena-detail-world",
+                    definition.getWorldName(), worldSuffix));
             sender.sendMessage("");
         }
     }
 
     /** 按具体原因给出可操作的排查提示 */
-    private String describeIssue(com.hilltopvillage.arena.ArenaDefinition definition,
+    private String describeIssue(CommandSender sender,
+                                 com.hilltopvillage.arena.ArenaDefinition definition,
                                  ArenaInstance arena, ArenaStatus status) {
         if (status == ArenaStatus.DISABLED && !definition.isEnabled()) {
-            return " §7(arenas.yml 中 enabled: false → 改为 true 后 /hilltop enable " + definition.getId() + ")";
+            return forSender(sender, "arena-issue-flag-disabled", definition.getId());
         }
         if (status == ArenaStatus.DISABLED) {
-            return " §7(被 /hilltop disable 关闭 → 用 /hilltop enable " + definition.getId() + " 恢复)";
+            return forSender(sender, "arena-issue-disabled", definition.getId());
         }
         if (org.bukkit.Bukkit.getWorld(definition.getWorldName()) == null) {
-            return " §c(世界未加载 → 检查世界文件夹是否存在)";
+            return forSender(sender, "arena-issue-world");
         }
         if (arena != null && !arena.isDeployed()) {
-            return " §7(尚未配置生成点 → 运行 /hilltop setup)";
+            return forSender(sender, "arena-issue-undeployed");
         }
         return "";
     }
 
     /**
      * Get arena status display string.
+     *
+     * <p>与 {@code ArenaSelectionGUI#getStatusText} 保持同一套判定口径：
+     * 禁用 → 地图缺失 → 未部署 → 状态机，便于玩家把两个界面看到的状态对上号。
+     * （ArenaCommand 之前漏了地图缺失分支，已补齐。）</p>
      */
-    private String getArenaStatus(ArenaInstance arena) {
-        if (!arena.isEnabled()) return "§8已禁用";
-        if (!arena.isDeployed()) return "§7未部署";
+    private String getArenaStatus(CommandSender sender, ArenaInstance arena) {
+        if (!arena.isEnabled()) return forSender(sender, "arena-disabled");
+        if (!arena.isWorldAvailable()) return forSender(sender, "arena-status-map-missing");
+        if (!arena.isDeployed()) return forSender(sender, "arena-status-undeployed");
         GameState state = arena.getState();
         return switch (state) {
-            case WAITING -> "§a等待中";
-            case STARTING -> "§6准备中";
-            case RUNNING -> "§c进行中";
-            case ENDING -> "§8结束中";
-            default -> "§7未知";
+            case WAITING -> forSender(sender, "arena-status-waiting");
+            case STARTING -> forSender(sender, "arena-status-starting");
+            case RUNNING, WAVE_INTERMISSION -> forSender(sender, "arena-status-running");
+            case ENDING -> forSender(sender, "arena-status-ending");
+            case VICTORY -> forSender(sender, "state.victory");
+            case DEFEAT -> forSender(sender, "state.defeat");
         };
+    }
+
+    /** 取发送者语言的文本：玩家用个人语言，控制台用全局默认语言 */
+    private String forSender(CommandSender sender, String key, Object... args) {
+        if (sender instanceof Player player) {
+            return languageManager.getFor(player, key, args);
+        }
+        return languageManager.get(key, languageManager.getLocale(), args);
     }
 
     /**
      * Send command help.
      */
     private void sendHelp(CommandSender sender) {
-        sender.sendMessage("§6§l=== Hilltop Village 命令 ===");
-        sender.sendMessage("§e/hilltop join [arena] §7- 加入竞技场");
-        sender.sendMessage("§e/hilltop leave §7- 离开当前竞技场");
-        sender.sendMessage("§e/hilltop list §7- 列出所有竞技场");
+        sender.sendMessage(forSender(sender, "arena-list-help-title"));
+        sender.sendMessage(forSender(sender, "usage-join"));
+        sender.sendMessage(forSender(sender, "usage-leave"));
+        sender.sendMessage(forSender(sender, "usage-list"));
 
         if (sender.hasPermission("hilltopvillage.admin")) {
-            sender.sendMessage("§c管理员命令:");
-            sender.sendMessage("§e/hilltop arenas §7- 查看详细状态");
-            sender.sendMessage("§e/hilltop start <arena> §7- 启动竞技场");
-            sender.sendMessage("§e/hilltop stop <arena> §7- 停止竞技场");
+            sender.sendMessage(forSender(sender, "arena-list-help-admin"));
+            sender.sendMessage(forSender(sender, "usage-arenas"));
+            sender.sendMessage(forSender(sender, "usage-start"));
+            sender.sendMessage(forSender(sender, "usage-stop"));
         }
     }
 }

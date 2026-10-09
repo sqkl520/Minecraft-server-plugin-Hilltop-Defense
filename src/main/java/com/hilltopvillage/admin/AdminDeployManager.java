@@ -144,7 +144,7 @@ public class AdminDeployManager {
     /** 显示节点粒子（复用生成点粒子逻辑） */
     public void showNodeParticles(Player viewer, List<Location> nodeLocations, LanguageManager lang) {
         if (nodeLocations.isEmpty()) {
-            viewer.sendMessage("§c没有已注册的节点");
+            viewer.sendMessage(lang.getFor(viewer, "particles.no-nodes"));
             return;
         }
 
@@ -153,7 +153,8 @@ public class AdminDeployManager {
         }
 
         long durationTicks = 600L; // 30秒
-        viewer.sendMessage("§a正在显示 " + nodeLocations.size() + " 个节点的位置，持续 " + (durationTicks / 20) + " 秒");
+        viewer.sendMessage(lang.getFor(viewer, "particles.showing-nodes",
+                nodeLocations.size(), durationTicks / 20));
 
         showParticlesTaskId = new BukkitRunnable() {
             int ticksElapsed = 0;

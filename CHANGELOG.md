@@ -2,6 +2,18 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-09 — 三维测试 FAIL 修正：code 维度 12 项全修）
+
+> 来源：三维测试 code 维度 FAIL（build/arch 同轮已 PASS）。本轮只动 code 维度指出的问题，
+> 不改任何游戏规则、配置格式与权限节点。
+
+- **i18n 硬编码清零（8 处）**：`ArenaCommand` 的 sendHelp/handleArenas/describeIssue/getArenaStatus 改走 LanguageManager（复用 `arena-list-entry` / `arena-status-*` / `state.*` / `usage-*` 既有键，新增 `arena-list-help-*` / `arena-detail-*` / `arena-issue-*` / `arena-status-statistics` 共 15 键，en/zh 双语对称）；`AdminDeployManager.showNodeParticles` 与 `SetupWizard` 两处"没有已注册的节点"/"该命令已废弃"硬编码改走新键 `particles.no-nodes` / `particles.showing-nodes` / `setup.rescan-deprecated`（en/zh）；list/arenas/help 输出现在按发送者语言解析（控制台用全局默认语言）
+- **`/hilltop arenas` 口径补齐**：`getArenaStatus` 与 `ArenaSelectionGUI.getStatusText` 判定对齐（补地图缺失分支、补休整期/胜负分支、禁用行改走 `arena-disabled` 键）；`MultiArenaManager.getStatistics()`（硬编码中文整串）改为返回裸计数的 `countByState(...)`，拼串移到 ArenaCommand 的 i18n 键里
+- **退出清理补齐（5 处）**：主类 `onPlayerQuit` 追加 `lobbyProtectionListener.cleanupPlayer`（建造模式标记退出即失效）、全竞技场 `scoreboard.cleanupPlayer`（离线玩家摘记分板条目并按需停刷新任务）、`languageManager.clearPlayerLocale`（偏好退出即失效，下次取默认语言）；`ArenaInstance.removeOfflinePlayer` 补 `scoreboard.hide`（重连超时路径的残留条目）；`NumericInputHandler` 新增 `@EventHandler onQuit`（待处理聊天输入静默丢弃，不回调 onCancel，避免对失效连接重开 GUI）
+- **LanguageManager 并发安全**：`playerLocales` / `messageCache` 由 `HashMap` 换 `ConcurrentHashMap`；`reload()` 改为"局部拼好 → `Map.copyOf` 不可变快照 → 原子替换"，异步聊天线程读到的永远是某个版本的完整快照，不再有"清掉一半"的中间态
+- **控制台可执行管理命令**：`HilltopCommandHandler` 顶层"非玩家一刀切拦截"改为黑名单（仅 join/leave/lobby/gui/hammer/fireball/setup/deploy/config/manage/build 拦控制台）；`start/stop/arenas/list/enable/disable/tps/shop reload`（需 admin 权限）与 `stats <玩家名>` / `top <类型>` / `help` 对控制台放行，玩家行为不变；README 双语命令表新增"控制台"列
+- **键对称校验**：en/zh 各新增 18 键（15 竞技场 + 2 粒子 + 1 向导），总数 834/834 对齐
+
 ### Fixed（2026-10-09 — 第二波 STORY-1.6 C组部分：烈焰蛋/甲虫 AOE 豁免村民 + 甲虫自爆可配置化）
 
 - **烈焰蛋爆炸豁免村民**：`FireballListener.triggerExplosion` 跳过 `VillagerSystem.isVillageVillager` 标记实体（伤害/点燃/击退全豁免）；`isValidTarget` 探针过滤同步剔除村民，蛋飞过村民头顶不再空爆

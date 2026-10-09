@@ -1067,25 +1067,24 @@ public class MultiArenaManager {
     }
 
     /**
-     * Get arena count statistics.
+     * 按给定状态顺序统计活动竞技场数量。
+     *
+     * <p>返回数组与 {@code states} 一一对应（调用方按返回顺序拼到 i18n 文本里）。
+     * 不在此枚举到的状态（含 {@code WAVE_INTERMISSION} / {@code VICTORY} / {@code DEFEAT}）
+     * 不计入任何桶 —— 它们是瞬时的对局内状态，统计口径保持旧行为不变。</p>
      */
-    public String getStatistics() {
-        int total = activeArenas.size();
-        int waiting = 0;
-        int starting = 0;
-        int running = 0;
-        int ending = 0;
-
+    public int[] countByState(GameState... states) {
+        int[] counts = new int[states.length + 1];
         for (ArenaInstance arena : activeArenas.values()) {
-            switch (arena.getState()) {
-                case WAITING -> waiting++;
-                case STARTING -> starting++;
-                case RUNNING -> running++;
-                case ENDING -> ending++;
+            GameState state = arena.getState();
+            for (int i = 0; i < states.length; i++) {
+                if (state == states[i]) {
+                    counts[i + 1]++;
+                    break;
+                }
             }
         }
-
-        return String.format("§7总计: §e%d §7| §a等待: %d §7| §6准备: %d §7| §c运行: %d §7| §8结束: %d",
-                total, waiting, starting, running, ending);
+        counts[0] = activeArenas.size();
+        return counts;
     }
 }

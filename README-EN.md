@@ -387,30 +387,33 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 
 ## Commands
 
-| Command | Description |
-|------|------|
-| `/hilltop join [arena]` | Join an arena (auto-matches an available one if omitted) |
-| `/hilltop leave` | Leave the current arena |
-| `/hilltop gui` | Open the arena selection menu (with status and player counts) |
-| `/hilltop status [arena]` | View game status (wave/players/mobs/nodes/awaiting respawn) |
-| `/hilltop stats [player]` | View your own or someone else's stats |
-| `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths) |
-| `/hilltop hammer` | Get the Sacred Hammer (Admin; players buy from the shop) |
-| `/hilltop fireball` | Get a Fireball (Admin; players buy from the shop) |
-| `/hilltop lang <en\|zh>` | Switch language |
-| `/hilltop start [arena]` | Start the game (Admin) |
-| `/hilltop stop [arena]` | Force stop the game (Admin) |
-| `/hilltop help` | Show command help (Admin) |
-| `/hilltop list` | List all arenas |
-| `/hilltop arenas` | Detailed arena status (Admin) |
-| `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/player-spawn/mob-spawn/villager, edit game parameters, restore initial state (Admin) |
-| `/hilltop deploy` | Open deploy menu (Admin) |
-| `/hilltop setup` | 8-step guided setup wizard (Admin) |
-| `/hilltop config` | Open config center GUI (Admin) |
-| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) |
-| `/hilltop shop reload` | Reload villager shop config (Admin) |
-| `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) |
-| `/hilltop tps` | TPS/MSPT diagnostics (Admin) |
+> "Console" column: ✅ = runnable from the server console (admin commands still require OP / the `hilltopvillage.admin` permission, which the console has by default);
+> ❌ = must be run by a player in game.
+
+| Command | Description | Console |
+|------|------|--------|
+| `/hilltop join [arena]` | Join an arena (auto-matches an available one if omitted) | ❌ |
+| `/hilltop leave` | Leave the current arena | ❌ |
+| `/hilltop gui` | Open the arena selection menu (with status and player counts) | ❌ |
+| `/hilltop status [arena]` | View game status (wave/players/mobs/nodes/awaiting respawn) | ✅ |
+| `/hilltop stats [player]` | View your own or someone else's stats | ✅ (with a player name) |
+| `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths) | ✅ |
+| `/hilltop hammer` | Get the Sacred Hammer (Admin; players buy from the shop) | ❌ |
+| `/hilltop fireball` | Get a Fireball (Admin; players buy from the shop) | ❌ |
+| `/hilltop lang <en\|zh>` | Switch language | ✅ |
+| `/hilltop start [arena]` | Start the game (Admin) | ✅ |
+| `/hilltop stop [arena]` | Force stop the game (Admin) | ✅ |
+| `/hilltop help` | Show command help (Admin) | ✅ |
+| `/hilltop list` | List all arenas | ✅ |
+| `/hilltop arenas` | Detailed arena status (Admin) | ✅ |
+| `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/player-spawn/mob-spawn/villager, edit game parameters, restore initial state (Admin) | ❌ |
+| `/hilltop deploy` | Open deploy menu (Admin) | ❌ |
+| `/hilltop setup` | 8-step guided setup wizard (Admin) | ❌ |
+| `/hilltop config` | Open config center GUI (Admin) | ❌ |
+| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) | ✅ |
+| `/hilltop shop reload` | Reload villager shop config (Admin) | ✅ |
+| `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) | ❌ |
+| `/hilltop tps` | TPS/MSPT diagnostics (Admin) | ✅ |
 
 ### Deploy Sub-commands (`/hilltop deploy`)
 

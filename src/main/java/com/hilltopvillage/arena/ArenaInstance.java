@@ -433,7 +433,9 @@ public class ArenaInstance implements IArena {
     /**
      * 移除离线玩家（重连超时）。
      *
-     * <p>不做传送/背包操作（玩家不在线），物品快照保留在磁盘上，下次登录时自动归还。</p>
+     * <p>不做传送/背包操作（玩家不在线），物品快照保留在磁盘上，下次登录时自动归还。
+     * 侧边栏记分板由 {@link ArenaScoreboard#hide} 清理：hide 内部对离线玩家只做内存条目摘除，
+     * 不调 setScoreboard，因此这里传可能已离线的 Player 引用是安全的。</p>
      */
     public void removeOfflinePlayer(UUID uuid, String playerName) {
         if (!players.remove(uuid)) {
@@ -455,6 +457,13 @@ public class ArenaInstance implements IArena {
         }
 
         gameManager.removeOfflinePlayer(uuid);
+
+        // 清掉该玩家在本竞技场记分板上的残留条目：重连超时时玩家不在线，
+        // hide 内部 isOnline 守卫会跳过 setScoreboard，只做内存摘除（安全）。
+        Player offline = Bukkit.getPlayer(uuid);
+        if (offline != null) {
+            scoreboard.hide(offline);
+        }
 
         if (state != GameState.ENDING && playerName != null) {
             broadcastI18n("player-left", playerName, getPlayerCount(), getMaxPlayers());
