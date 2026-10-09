@@ -278,13 +278,17 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 
 4. Wave loop
      Monsters spawn from MOB SPAWN POINTS  ->  attack players when nearby, otherwise advance on NODES
+     Per-type spawn count = configured `count` (per player) x players present
+     (e.g. wave 1 with beetle 6 / hunter 2 spawns 12 beetles + 4 hunters in a 2-player match),
+     capped by the `total-mobs` exact-total cap and the global/per-player caps
      Wave cleared     ->  intermission (30s by default)
                           -> fallen players respawn at the CORE (requires an active node)
-     Intermission ends -> next wave
+     Intermission ends -> next wave (insufficient players ends the match in defeat instead of opening an empty wave)
 
 5. End
    Victory: survive all waves (20 by default)
-   Defeat:  all villagers slain  OR  all nodes destroyed + all players down
+   Defeat:  all villagers slain  OR  all nodes destroyed + all players down  OR  insufficient players during intermission
+            (no alive players + no active nodes is re-checked every 3s; defeat lands within 3s)
         |
    Players stay in the arena to read the BATTLE REPORT -> countdown (20s by default)
    -> teleported back to the lobby

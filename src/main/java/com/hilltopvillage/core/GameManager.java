@@ -285,6 +285,9 @@ public class GameManager {
 
     /**
      * 当前是否有存活玩家（供全灭判定使用）。
+     *
+     * <p>全灭判定的唯一存活依据：死亡事件（PlayerLifecycleListener.checkTeamWipe）
+     * 与波次 tick 复检（checkWaveCompletion）都调本方法，不各自拼循环。</p>
      */
     public boolean hasAlivePlayer() {
         for (UUID uuid : players) {
@@ -297,6 +300,24 @@ public class GameManager {
     public void checkWaveCompletion() {
         if (state != GameState.RUNNING && state != GameState.WAVE_INTERMISSION) {
             // Game ended by other means — stop the repeating task
+            if (waveCheckTask != null) {
+                waveCheckTask.cancel();
+                waveCheckTask = null;
+            }
+            return;
+        }
+
+        // STORY-1.5 tick 复检：全灭（无存活玩家 + 无活跃节点）不只靠死亡事件判一次，
+        // 每 3 秒复检一次。覆盖休整期（tick 在休整期仍在跑，直到下一波 startNextWave 重建）
+        // 与"只剩猎手/抛投者不清波"的原软锁组合（怪不清波则 waveCleared 恒 false，
+        // 但人死光+节点全毁后本应判负而非无限卡住）。
+        if (!hasAlivePlayer() && nodeSystem.getActiveCount() == 0) {
+            ArenaInstance arena = liveArena();
+            if (arena != null) {
+                arena.triggerDefeat("defeat-all-down");
+            }
+            // 触发失败后取消自身：triggerDefeat → haltGame 会停波次调度，
+            // 但本 tick 任务的句柄仍在，必须显式取消避免 ENDING 后继续 tick
             if (waveCheckTask != null) {
                 waveCheckTask.cancel();
                 waveCheckTask = null;
@@ -332,6 +353,17 @@ public class GameManager {
                 waveSchedulerTask = null;
                 // 保留既有语义：只有仍处于休整期才推进下一波
                 if (state == GameState.WAVE_INTERMISSION) {
+                    // STORY-1.5 休整期空波拦截：休整期掉光人/人数不足时不再开新一波，
+                    // 而是走失败结算（triggerDefeat 幂等；零玩家时广播无受众但结算流程正常）。
+                    // 注意：不能省掉本守卫只靠 tick 复检 —— tick 复检只认"无人存活+无活跃节点"，
+                    // 而"1 人存活 + 有活跃节点 + min=2"的缺员不断线局仍需在此判负。
+                    if (players.size() < getArenaMinPlayers()) {
+                        ArenaInstance arena = liveArena();
+                        if (arena != null) {
+                            arena.triggerDefeat("defeat-not-enough-players");
+                        }
+                        return;
+                    }
                     startNextWave();
                 }
             }
@@ -445,7 +477,10 @@ public class GameManager {
             data.deactivateSmash();
         }
 
-        if (players.size() < getArenaMinPlayers() && state == GameState.RUNNING) {
+        // STORY-1.5：人数不足判负覆盖休整期（原先只认 RUNNING，休整期掉人不判负）。
+        // 状态覆盖面统一为 isGameRunning()（RUNNING + WAVE_INTERMISSION）；
+        // 阈值仍是 min-players（与 ArenaInstance "0 人才停"阈值不同是设计使然，P1-5 范畴，本 Story 不动）。
+        if (players.size() < getArenaMinPlayers() && isGameRunning()) {
             endGame(false);
         }
     }

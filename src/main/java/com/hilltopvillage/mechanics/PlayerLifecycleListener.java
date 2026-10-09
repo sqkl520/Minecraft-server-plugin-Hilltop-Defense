@@ -82,16 +82,8 @@ public class PlayerLifecycleListener implements Listener {
         // 二次守卫：结算只可能发生在对局进行中
         if (!gameManager.isGameRunning()) return;
 
-        boolean anyAlive = false;
-        for (java.util.UUID uuid : gameManager.getPlayers()) {
-            PlayerData data = gameManager.getPlayerData(uuid);
-            if (data != null && data.isAlive()) {
-                anyAlive = true;
-                break;
-            }
-        }
-
-        if (!anyAlive && gameManager.getNodeSystem().getActiveCount() == 0) {
+        // STORY-1.5：存活判定收敛到 GameManager.hasAlivePlayer()（与 tick 复检同一依据），消灭双份逻辑
+        if (!gameManager.hasAlivePlayer() && gameManager.getNodeSystem().getActiveCount() == 0) {
             arena.triggerDefeat("defeat-all-down");
         }
     }

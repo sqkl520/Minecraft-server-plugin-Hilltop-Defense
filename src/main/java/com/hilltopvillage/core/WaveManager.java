@@ -61,10 +61,19 @@ public class WaveManager {
             return;
         }
 
-        int remaining = waveConfig.getTotalMobs() * gameManager.getPlayers().size();
+        int playerCount = gameManager.getPlayers().size();
+        int remaining = waveConfig.getTotalMobs() * playerCount;
         int mobsPerPlayerCap = cfg.getMobCapPerPlayer();
-        remaining = Math.min(remaining, mobsPerPlayerCap * gameManager.getPlayers().size());
+        remaining = Math.min(remaining, mobsPerPlayerCap * playerCount);
         remaining = Math.min(remaining, globalCap - activeMobs.size());
+
+        // STORY-1.4 精确配比：每种怪刷 count × 人数 只，上限为 remaining
+        // （三层裁剪：total-mobs 上限 → 人均上限 → 全局剩余容量）。
+        // 全 0 回退：某波次所有 count 全 0/缺失时回退旧权重路径，避免已部署服主升级后刷怪归零。
+        if (waveConfig.getTotalCount() > 0) {
+            spawnExactMixWave(waveConfig, playerCount, remaining, onComplete);
+            return;
+        }
 
         int totalWeight = waveConfig.getTotalWeight();
         if (totalWeight <= 0) {
@@ -123,6 +132,113 @@ public class WaveManager {
             }
         }
         return waveConfig.getCompositions().keySet().iterator().next();
+    }
+
+    /**
+     * 精确配比刷怪（STORY-1.4）：每种怪刷 {@code count × 人数} 只。
+     *
+     * <p>执行步骤：① 按 count×人数展开待刷队列；② 若超出 {@code maxTotal} 上限则按比例裁剪
+     * （total-mobs 即"精确总数上限"语义）；③ 打散顺序避免同类扎堆；
+     * ④ 按正常路径相同节奏（3 tick / 2 只）分批刷出。</p>
+     *
+     * <p>任务句柄同样写入 {@link #spawnTask}，{@link #cancelSpawnTask()}、
+     * {@link #clearAllMobs()} 与 {@code isGameRunning()} 守卫全覆盖。</p>
+     *
+     * @param waveConfig 本波配置
+     * @param playerCount 开波时的在场人数（快照，刷怪期间不再重读）
+     * @param maxTotal 上限（total-mobs → 人均 → 全局剩余三层裁剪后的结果）
+     * @param onComplete 全部生成完毕后回调（可为 null）
+     */
+    private void spawnExactMixWave(GameConfig.WaveConfig waveConfig, int playerCount,
+                                   int maxTotal, Runnable onComplete) {
+        // ① 展开：每种怪 count × 人数
+        Map<String, Integer> exactCounts = new LinkedHashMap<>();
+        int exactTotal = 0;
+        for (Map.Entry<String, GameConfig.MobComposition> entry : waveConfig.getCompositions().entrySet()) {
+            int n = Math.max(0, entry.getValue().getCount()) * playerCount;
+            if (n <= 0) continue;
+            exactCounts.put(entry.getKey(), n);
+            exactTotal += n;
+        }
+
+        // ② 配比溢出上限时按比例裁剪（total-mobs 即"精确总数上限"语义）。
+        // 最大余数法：先按 floor 配额分配，再把剩余名额按小数部分从大到小补齐，
+        // 保证裁剪后的总数恰好等于上限（而非接近），且各类型份额误差 < 1。
+        if (exactTotal > maxTotal && maxTotal > 0) {
+            exactCounts = trimProportionally(exactCounts, exactTotal, maxTotal);
+            exactTotal = maxTotal;
+        } else if (maxTotal <= 0) {
+            // 全局容量已满（remaining 层已裁到 0）：直接回调，不开刷怪任务
+            if (onComplete != null) onComplete.run();
+            return;
+        }
+
+        // ③ 打散：类型序列 shuffle，避免同类扎堆连续刷出
+        List<String> spawnQueue = new ArrayList<>(exactTotal);
+        for (Map.Entry<String, Integer> entry : exactCounts.entrySet()) {
+            for (int i = 0; i < entry.getValue(); i++) {
+                spawnQueue.add(entry.getKey());
+            }
+        }
+        Collections.shuffle(spawnQueue, random);
+
+        // ④ 分批：与正常路径相同的 3 tick / 2 只节奏
+        final int total = spawnQueue.size();
+        final int[] spawned = {0};
+        spawnTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                // 与正常路径同一守卫：游戏已结束/已停止时立刻自我终止
+                if (!gameManager.isGameRunning()) {
+                    cancelSpawnTask();
+                    return;
+                }
+
+                int batchCount = 0;
+                while (batchCount < SPAWN_BATCH_SIZE && spawned[0] < total) {
+                    String selectedType = spawnQueue.get(spawned[0]);
+                    Location spawnLoc = getRandomSpawnLocation();
+                    if (spawnLoc != null) {
+                        spawnCustomMob(selectedType, spawnLoc);
+                    }
+                    spawned[0]++;
+                    batchCount++;
+                }
+
+                if (spawned[0] >= total) {
+                    // 先置空句柄，再回调（回调内若再次 spawnWave 会写入新句柄），最后取消自身
+                    spawnTask = null;
+                    if (onComplete != null) onComplete.run();
+                    cancel();
+                }
+            }
+        }.runTaskTimer(gameManager.getPlugin(), 0L, 3L);
+    }
+
+    /**
+     * 最大余数法按比例裁剪：各类型配额 = {@code count × limit / total} 向下取整，
+     * 剩余名额按小数部分从大到小补齐，保证结果总数恰好等于 {@code limit}。
+     */
+    private Map<String, Integer> trimProportionally(Map<String, Integer> counts, int total, int limit) {
+        Map<String, Integer> trimmed = new LinkedHashMap<>();
+        Map<String, Double> remainders = new HashMap<>();
+        int assigned = 0;
+        for (Map.Entry<String, Integer> entry : counts.entrySet()) {
+            double exact = (double) entry.getValue() * limit / total;
+            int floor = (int) Math.floor(exact);
+            trimmed.put(entry.getKey(), floor);
+            remainders.put(entry.getKey(), exact - floor);
+            assigned += floor;
+        }
+        // 剩余名额按小数部分从大到小补（并列时按 LinkedHashMap 插入顺序，行为确定）
+        List<String> byRemainder = new ArrayList<>(counts.keySet());
+        byRemainder.sort((a, b) -> Double.compare(remainders.get(b), remainders.get(a)));
+        int rest = limit - assigned;
+        for (int i = 0; i < rest && i < byRemainder.size(); i++) {
+            String key = byRemainder.get(i);
+            trimmed.put(key, trimmed.get(key) + 1);
+        }
+        return trimmed;
     }
 
     /**

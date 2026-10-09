@@ -2,6 +2,20 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-09 — 第二波 D 组：STORY-1.4 波次 count 精确配比）
+
+- **刷怪配比按 `count` 精确**：每种怪刷 `count × 玩家数` 只（不再纯权重随机），待刷队列打散顺序后按既有节奏（3 tick / 2 只）分批；`total-mobs` 语义修正为"精确总数上限"（`sum(count)×人数` 超过它时按比例裁剪，向后兼容保留字段）
+- **兼容回退**：某波次所有 count 全 0/缺失时回退旧权重路径（`weightSelect` 保留）；权重合计 0 时仍走僵尸兜底路径，行为不变
+- **GUI/文档同步**：波次列表与详情菜单标注新语义（count="每人只数"、total-mobs="上限"）；game-settings.yml waves 节注释重写（含 2 人局配比示例）；README 双语新增配比说明
+- **新增 messages.yml 键**：`config.menu.waves.*` 语义标注行（en/zh 双语）
+
+### Fixed（2026-10-09 — 第二波 D 组：STORY-1.5 全灭软锁修复）
+
+- **tick 复检判负**：`checkWaveCompletion` 每 3 秒复检"无存活玩家 + 无活跃节点 → 失败"，覆盖休整期与只剩猎手/抛投者不清波的原软锁组合；触发后取消自身任务
+- **休整期空波拦截**：休整期排队回调加人数守卫，人数不足时走失败结算（新键 `defeat-not-enough-players`，en/zh）而不再开空波
+- **判负守卫扩展**：`removeOfflinePlayer` 的人数不足判负从 `state == RUNNING` 扩展为 `isGameRunning()`（覆盖休整期）
+- **消灭双份逻辑**：复用 `GameManager.hasAlivePlayer()`，`PlayerLifecycleListener.checkTeamWipe` 改调它
+
 ### Added（2026-10-09 — 第一波 STORY-1.2 出生点分离 + starter-kit）
 
 - **出生点分离**：玩家出生点（`spawn-points`）与怪物刷怪点（`mob-spawn-points`）分离为两套独立坐标；旧存档仅有 `spawn-points` 时视为双用点（记 warning 提示补部署），仍可开局；两套点都为空时开局被拦截并提示

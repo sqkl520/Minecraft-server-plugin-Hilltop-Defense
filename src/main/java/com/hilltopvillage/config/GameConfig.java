@@ -316,6 +316,7 @@ public class GameConfig {
     }
 
     public static class WaveConfig {
+        /** 精确总数上限（STORY-1.4：原语义"每人总只数"已废弃；保留字段名与存档键，向后兼容） */
         private int totalMobs;
         private Map<String, MobComposition> compositions;
 
@@ -324,11 +325,19 @@ public class GameConfig {
             this.compositions = compositions;
         }
 
+        /**
+         * 精确总数上限（{@code total-mobs}）。
+         * 当 {@code sum(count) × 人数} 超过 {@code total-mobs × 人数} 时按比例裁剪；反之不补齐。
+         */
         public int getTotalMobs() { return totalMobs; }
         public void setTotalMobs(int v) { this.totalMobs = v; }
         public Map<String, MobComposition> getCompositions() { return compositions; }
         public int getTotalWeight() {
             return compositions.values().stream().mapToInt(MobComposition::getWeight).sum();
+        }
+        /** 各类型 {@code count} 之和（精确配比的基础；全 0 时刷怪回退旧权重路径） */
+        public int getTotalCount() {
+            return compositions.values().stream().mapToInt(MobComposition::getCount).sum();
         }
 
         /**
@@ -345,7 +354,9 @@ public class GameConfig {
     }
 
     public static class MobComposition {
+        /** 每人只数：该类型实际刷出 count × 在场人数 只（STORY-1.4 起精确生效，不再是纯展示字段） */
         private int count;
+        /** 权重：仅当本波所有 count 全 0 时的兼容回退路径使用；正常路径忽略 */
         private int weight;
 
         public MobComposition(int count, int weight) {

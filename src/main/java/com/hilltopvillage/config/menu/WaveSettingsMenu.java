@@ -58,6 +58,7 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
             int slot = 9 + (i - startIdx);
             List<String> lore = new ArrayList<>();
             lore.add(lang.getFor(admin, "config.menu.waves.total-mobs") + ChatColor.AQUA + wc.getTotalMobs());
+            lore.add(ChatColor.DARK_GRAY + lang.getFor(admin, "config.menu.waves.total-cap-hint"));
             lore.add("");
             for (Map.Entry<String, GameConfig.MobComposition> comp : wc.getCompositions().entrySet()) {
                 lore.add(ChatColor.GRAY + "  " + getMobDisplayName(comp.getKey()) + ": "
@@ -200,10 +201,11 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
             setItem(4, Material.ZOMBIE_HEAD,
                     lang.getFor(admin, "config.menu.waves.detail-header", waveNum));
 
-            // ---- Total mobs ----
+            // ---- Total mobs (exact total cap per player, STORY-1.4) ----
             addAdjustableItem(19, Material.SPAWNER, lang.getFor(admin, "config.menu.waves.detail-total"),
                     wc.getTotalMobs(), 1, 100, 2,
-                    () -> wc.getTotalMobs(), v -> wc.setTotalMobs(Math.max(1, v)));
+                    () -> wc.getTotalMobs(), v -> wc.setTotalMobs(Math.max(1, v)),
+                    lang.getFor(admin, "config.menu.waves.total-cap-hint"));
 
             // ---- Added monster list (Row 4-6: 27-44) ----
             int slot = 27;
@@ -214,6 +216,7 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
 
                 List<String> lore = new ArrayList<>();
                 lore.add(lang.getFor(admin, "config.menu.waves.mob-count-weight", comp.getCount(), comp.getWeight()));
+                lore.add(lang.getFor(admin, "config.menu.waves.count-per-player-hint"));
                 if (mc != null) {
                     lore.add(lang.getFor(admin, "config.menu.waves.mob-stats",
                             String.format("%.0f", mc.getHealth()), String.format("%.1f", mc.getBaseDamage())));
@@ -271,6 +274,7 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
             setItem(47, Material.KNOWLEDGE_BOOK,
                     lang.getFor(admin, "config.menu.waves.detail-instructions"),
                     lang.getFor(admin, "config.menu.waves.detail-click-mob"),
+                    lang.getFor(admin, "config.menu.waves.detail-count-semantics"),
                     lang.getFor(admin, "config.menu.waves.detail-shift-weight"),
                     lang.getFor(admin, "config.menu.waves.detail-shift-props"),
                     lang.getFor(admin, "config.menu.waves.detail-add-monster-btn"));
@@ -288,9 +292,11 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
         private void addAdjustableItem(int slot, Material icon, String name, int current,
                                         int min, int max, int step,
                                         java.util.function.IntSupplier getter,
-                                        java.util.function.IntConsumer setter) {
+                                        java.util.function.IntConsumer setter,
+                                        String... extraLore) {
             List<String> loreLines = new ArrayList<>();
             loreLines.add(formatValue(lang.getFor(admin, "config.menu.common.current-value"), current));
+            for (String l : extraLore) loreLines.add(l);
             loreLines.add("");
             loreLines.add(lang.getFor(admin, "config.menu.common.left-click") + step + " | " + lang.getFor(admin, "config.menu.common.right-click") + step);
             loreLines.add(lang.getFor(admin, "config.menu.common.shift-custom"));

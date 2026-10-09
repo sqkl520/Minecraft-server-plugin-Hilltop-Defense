@@ -93,6 +93,7 @@ en:
   # === 失败结算 ===
   defeat-all-down: "&4&lDEFEAT! &cAll players have fallen and no energy node remains."
   defeat-villagers-dead: "&4&lDEFEAT! &cAll villagers have been slain."
+  defeat-not-enough-players: "&4&lDEFEAT! &cToo few players remain to continue."
   defeat-stats-header: "&6&l===== Battle Report ====="
   defeat-stats-line: "&e{0} &7- Kills: &f{1} &7| Deaths: &f{2} &7| Nodes repaired: &f{3}"
   defeat-countdown: "&eReturning to lobby in &6{0} &eseconds..."
@@ -690,6 +691,7 @@ en:
   config.menu.waves.detail-add-monster-desc2: "&8Choose from defined monster types"
   config.menu.waves.detail-instructions: "&7Instructions"
   config.menu.waves.detail-click-mob: "&7Click monster: adjust count"
+  config.menu.waves.detail-count-semantics: "&8Count = per player (count x players)"
   config.menu.waves.detail-shift-weight: "&6Shift+Left: edit weight"
   config.menu.waves.detail-shift-props: "&2Shift+Right: edit properties"
   config.menu.waves.detail-add-monster-btn: "&aAdd monster via button below"
@@ -726,6 +728,8 @@ en:
   config.menu.waves.mob-shift-props: "&6Shift+Right edit properties"
   config.menu.waves.prompt-weight: "{0} weight (current: {1})"
   config.menu.waves.mob-weight-label: " (Weight:"
+  config.menu.waves.count-per-player-hint: "&8Count = per player; total = count x players"
+  config.menu.waves.total-cap-hint: "&8Total Mobs = exact total cap per player"
   config.menu.common.leave-blank-clear: " | leave blank to clear"
   config.menu.main.perm-separator: " — "
 
@@ -1033,6 +1037,7 @@ zh:
   # === 失败结算 ===
   defeat-all-down: "&4&l失败！&c全员阵亡且已无活跃能量节点。"
   defeat-villagers-dead: "&4&l失败！&c所有村民已被杀害。"
+  defeat-not-enough-players: "&4&l失败！&c剩余人数不足，无法继续战斗。"
   defeat-stats-header: "&6&l===== 本局战报 ====="
   defeat-stats-line: "&e{0} &7- 击杀: &f{1} &7| 阵亡: &f{2} &7| 修复节点: &f{3}"
   defeat-countdown: "&e将在 &6{0} &e秒后传送回大厅..."
@@ -1643,6 +1648,7 @@ zh:
   config.menu.waves.detail-add-monster-desc2: "&8可从已定义的怪物类型中选择"
   config.menu.waves.detail-instructions: "&7操作说明"
   config.menu.waves.detail-click-mob: "&7点击怪物: 调整数量"
+  config.menu.waves.detail-count-semantics: "&8数量 = 每人只数（数量 × 人数）"
   config.menu.waves.detail-shift-weight: "&6Shift+左键: 编辑权重"
   config.menu.waves.detail-shift-props: "&2Shift+右键: 编辑属性"
   config.menu.waves.detail-add-monster-btn: "&a下方按钮: 添加新怪物"
@@ -1679,6 +1685,8 @@ zh:
   config.menu.waves.mob-shift-props: "&6Shift+右键 编辑怪物属性"
   config.menu.waves.prompt-weight: "{0}权重 (当前: {1})"
   config.menu.waves.mob-weight-label: "（权重："
+  config.menu.waves.count-per-player-hint: "&8数量 = 每人只数；实际 = 数量 × 人数"
+  config.menu.waves.total-cap-hint: "&8总怪物数 = 每人精确总数上限"
   config.menu.common.leave-blank-clear: "（留空则清除）"
   config.menu.main.perm-separator: " — "
 
