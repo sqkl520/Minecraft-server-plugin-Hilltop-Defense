@@ -57,6 +57,7 @@ public class DeployMenuSender {
             sendClickableLine(sender, "usage-enable", "/hilltop enable ", hover);
             sendClickableLine(sender, "usage-disable", "/hilltop disable ", hover);
             sendClickableLine(sender, "usage-shop-reload", "/hilltop shop reload", hover);
+            sendClickableLine(sender, "usage-shop-give", "/hilltop shop give ", hover);
             sendClickableLine(sender, "usage-build", "/hilltop build", hover);
             sendClickableLine(sender, "usage-tps", "/hilltop tps", hover);
         }

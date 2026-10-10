@@ -73,8 +73,21 @@ public class HilltopTabCompleter implements TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("shop") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
             String input = args[1].toLowerCase();
-            for (String sub : Arrays.asList("reload")) {
+            for (String sub : Arrays.asList("reload", "give")) {
                 if (sub.startsWith(input)) completions.add(sub);
+            }
+            return completions;
+        }
+
+        // /hilltop shop give <玩家>：补全在线玩家名
+        if (args.length == 3 && args[0].equalsIgnoreCase("shop") && args[1].equalsIgnoreCase("give")
+                && sender.hasPermission("hilltopvillage.admin")) {
+            List<String> completions = new ArrayList<>();
+            String input = args[2].toLowerCase();
+            for (org.bukkit.entity.Player online : org.bukkit.Bukkit.getOnlinePlayers()) {
+                if (online.getName().toLowerCase().startsWith(input)) {
+                    completions.add(online.getName());
+                }
             }
             return completions;
         }

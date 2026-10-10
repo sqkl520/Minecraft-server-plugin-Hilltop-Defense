@@ -2,6 +2,17 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Security（2026-10-10 — P0 修复：商店假币付款漏洞 P0-A）
+
+> 来源：安全审计 P0-A。玩家可用铁砧把普通绿宝石改名成货币显示名，被商店当真币无限购买。
+
+- **假币付款漏洞修复**：`ShopManager.isCurrency` 删除「材质 + 显示名回退」分支，货币识别**只认 PDC 标记** `hilltopvillage:shop-currency`（材质检查仅作快速短路）。真币一律由 `createCurrencyItem` 发放并带该标记，玩家用铁砧 / 命名牌伪造的同材质改名道具一律被拒
+- **全链路复核**：发币路径（`WaveManager.dropCurrency` 掉落、`ShopListener` 购买找零 / 退款）均走 `createCurrencyItem`，删除回退后真币仍被正确识别，不误伤
+- **清理**：移除随回退一同失效的 `cachedCurrencyName` 字段与 `refreshCurrencyName()` 方法（原为显示名比对的热路径缓存，已无用）
+- **新增管理员命令** `/hilltop shop give <玩家> [数量]`：服主手工发放真币的唯一正道（原版 `/give` 发的绿宝石无 PDC 标记、不被商店认），默认 1 个、上限 6400，背包放不下掉落脚下，控制台可用
+- **新增 messages.yml 键**：`usage-shop-give`、`shop.give-usage` / `shop.give-player-not-found` / `shop.give-invalid-amount` / `shop.give-too-many` / `shop.give-unavailable` / `shop.give-success` / `shop.give-received`（en/zh 双语对称，共 8 键）
+- **文档同步**：README / README-EN 命令表与 `CommandsDocumentGenerator` 补充 `shop give` 条目及货币识别说明
+
 ### Fixed（2026-10-10 — P0 修复：波次卡死软锁簇 + 空投失控）
 
 #### P0-C 波次卡死软锁簇

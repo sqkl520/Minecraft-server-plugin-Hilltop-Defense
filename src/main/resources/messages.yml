@@ -214,6 +214,7 @@ en:
   usage-enable: "&e/hilltop enable [arena] &7- Queue an arena for enabling"
   usage-disable: "&e/hilltop disable [arena] &7- Disable an arena for maintenance"
   usage-shop-reload: "&e/hilltop shop reload &7- Reload the shop config"
+  usage-shop-give: "&e/hilltop shop give <player> [amount] &7- Give shop currency"
   usage-build: "&e/hilltop build &7- Toggle lobby build mode"
   usage-tps: "&e/hilltop tps &7- TPS / MSPT diagnostic"
   usage-click-to-copy: "&7Click to copy to chat bar"
@@ -618,6 +619,13 @@ en:
   shop.currency-balance: "&7Crystals: &a{0}"
   shop.reloaded: "&aShop config reloaded ({0} items)"
   shop.usage: "&e/hilltop shop reload &7- Reload shop config"
+  shop.give-usage: "&cUsage: /hilltop shop give <player> [amount]"
+  shop.give-player-not-found: "&cPlayer not found or offline: &f{0}"
+  shop.give-invalid-amount: "&cInvalid amount: &f{0}"
+  shop.give-too-many: "&cAmount too large (max &f{0}&c)."
+  shop.give-unavailable: "&cShop is not ready yet, try again after it loads."
+  shop.give-success: "&aGave &f{1} &acrystals to &f{0}&a."
+  shop.give-received: "&aYou received &f{0} &aEnergy Crystals."
 
   # === 怪物自定义名称 ===
   mob.explode-beetle: "&cExplode Beetle"
@@ -1197,6 +1205,7 @@ zh:
   usage-enable: "&e/hilltop enable [竞技场] &7- 将竞技场加入启用队列"
   usage-disable: "&e/hilltop disable [竞技场] &7- 禁用竞技场（维护）"
   usage-shop-reload: "&e/hilltop shop reload &7- 重载商店配置"
+  usage-shop-give: "&e/hilltop shop give <玩家> [数量] &7- 发放商店货币"
   usage-build: "&e/hilltop build &7- 切换大厅建造模式"
   usage-tps: "&e/hilltop tps &7- TPS / MSPT 诊断"
   usage-click-to-copy: "&7点击复制到聊天栏"
@@ -1599,6 +1608,13 @@ zh:
   shop.currency-balance: "&7当前能量水晶: &a{0}"
   shop.reloaded: "&a商店配置已重载（{0} 个商品）"
   shop.usage: "&e/hilltop shop reload &7- 重载商店配置"
+  shop.give-usage: "&c用法: /hilltop shop give <玩家> [数量]"
+  shop.give-player-not-found: "&c玩家不存在或不在线: &f{0}"
+  shop.give-invalid-amount: "&c无效的数量: &f{0}"
+  shop.give-too-many: "&c数量过大（上限 &f{0}&c）。"
+  shop.give-unavailable: "&c商店尚未就绪，等加载完成后再试。"
+  shop.give-success: "&a已向 &f{0} &a发放 &f{1} &a个能量水晶。"
+  shop.give-received: "&a你收到了 &f{0} &a个能量水晶。"
 
   # === 怪物自定义名称 ===
   mob.explode-beetle: "&c自爆甲虫"

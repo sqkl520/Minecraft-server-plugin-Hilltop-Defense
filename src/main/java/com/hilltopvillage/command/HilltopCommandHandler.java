@@ -16,6 +16,7 @@ import org.bukkit.Sound;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
+import org.bukkit.inventory.ItemStack;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.admin.AdminDeployManager;
@@ -28,6 +29,7 @@ import com.hilltopvillage.config.menu.MainConfigMenu;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.diagnostic.TpsDiagnostic;
+import com.hilltopvillage.shop.ShopManager;
 import com.hilltopvillage.stats.StatsManager;
 import com.hilltopvillage.util.LanguageManager;
 
@@ -43,6 +45,9 @@ public class HilltopCommandHandler {
     private final Set<UUID> pendingClearConfirm = new HashSet<>();
     /** clearmobspawns 的二次确认集合（与玩家出生点的 pendingClearConfirm 独立，避免互相串确认） */
     private final Set<UUID> pendingClearMobConfirm = new HashSet<>();
+
+    /** /hilltop shop give 单次发放上限（防手滑输入天文数字刷爆背包 / 卡服） */
+    private static final int MAX_SHOP_GIVE = 6400;
 
     /**
      * 控制台禁止执行的子命令（需要玩家在场）。
@@ -396,7 +401,12 @@ public class HilltopCommandHandler {
                     sender.sendMessage(lang.getFor(player, "shop-reloaded", String.valueOf(itemCount)));
                     break;
                 }
+                if (args.length >= 2 && args[1].equalsIgnoreCase("give")) {
+                    handleShopGive(sender, args, player);
+                    break;
+                }
                 sender.sendMessage(lang.getFor(player, "usage-shop-reload"));
+                sender.sendMessage(lang.getFor(player, "usage-shop-give"));
                 break;
 
             default:
@@ -912,6 +922,60 @@ public class HilltopCommandHandler {
             case NODES -> stats.getNodesRepaired();
             case DEATHS -> stats.getDeaths();
         };
+    }
+
+    /**
+     * /hilltop shop give &lt;玩家&gt; [数量]
+     * 给在线玩家发放<b>真·货币</b>（经 {@link ShopManager#createCurrencyItem} 产出，必带 PDC 标记）。
+     *
+     * <p>这是 P0-A 修复后服主手工发币的<b>唯一正道</b>：原版 {@code /give} 发出的绿宝石
+     * 没有 PDC 标记，{@link ShopManager#isCurrency} 不认，无法当货币消费。
+     * 控制台可用（给在线玩家发币）。</p>
+     */
+    private void handleShopGive(CommandSender sender, String[] args, Player player) {
+        if (args.length < 3) {
+            sender.sendMessage(lang.getFor(player, "shop.give-usage"));
+            return;
+        }
+
+        ShopManager shop = plugin.getShopManager();
+        if (shop == null || shop.getShopConfig() == null) {
+            sender.sendMessage(lang.getFor(player, "shop.give-unavailable"));
+            return;
+        }
+
+        Player target = Bukkit.getPlayerExact(args[2]);
+        if (target == null) {
+            sender.sendMessage(lang.getFor(player, "shop.give-player-not-found", args[2]));
+            return;
+        }
+
+        int amount = 1;
+        if (args.length >= 4) {
+            try {
+                amount = Integer.parseInt(args[3]);
+            } catch (NumberFormatException e) {
+                sender.sendMessage(lang.getFor(player, "shop.give-invalid-amount", args[3]));
+                return;
+            }
+            if (amount <= 0) {
+                sender.sendMessage(lang.getFor(player, "shop.give-invalid-amount", args[3]));
+                return;
+            }
+            if (amount > MAX_SHOP_GIVE) {
+                sender.sendMessage(lang.getFor(player, "shop.give-too-many", String.valueOf(MAX_SHOP_GIVE)));
+                return;
+            }
+        }
+
+        // 背包放不下的部分掉在目标脚下，避免静默吞币
+        Map<Integer, ItemStack> overflow = target.getInventory().addItem(shop.createCurrencyItem(amount));
+        for (ItemStack leftover : overflow.values()) {
+            target.getWorld().dropItemNaturally(target.getLocation(), leftover);
+        }
+
+        sender.sendMessage(lang.getFor(player, "shop.give-success", target.getName(), String.valueOf(amount)));
+        target.sendMessage(lang.getFor(target, "shop.give-received", String.valueOf(amount)));
     }
 
     public void handleLangCommand(CommandSender sender, String[] args) {

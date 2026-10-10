@@ -163,6 +163,20 @@ public class CommandsDocumentGenerator {
         md.append("- **使用示例**: `/hilltop reloadconfig`\n");
         md.append("- **注意事项**: 同时从 `game-settings.yml`（波次配置、怪物基础属性、锤子参数、节点设置等）与 `monsters-config.yml`（怪物实体类型、攻击伤害、装备与模型）重新加载配置，无需重启服务器即可使修改生效。竞技场参数来自 `arenas.yml`，需重启服务器才能生效。\n\n");
 
+        md.append("### `/hilltop shop reload`\n\n");
+        md.append("- **功能**: 重载商店配置文件 `shop.yml`。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop shop reload`\n");
+        md.append("- **注意事项**: 无需重启即可刷新商店商品、价格与货币设置。\n\n");
+
+        md.append("### `/hilltop shop give <玩家> [数量]`\n\n");
+        md.append("- **功能**: 给在线玩家发放商店货币（能量水晶）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: `<玩家>` — 在线玩家名；`[数量]` — 发放数量（默认 1，上限 6400）。\n");
+        md.append("- **使用示例**: `/hilltop shop give Steve 64`\n");
+        md.append("- **注意事项**: 这是服主手工发放货币的**唯一正确方式**。货币靠物品内的 PDC 标记识别，用原版 `/give` 发放或用铁砧改名得到的绿宝石**不会**被商店当作货币，无法用于购买。背包放不下的部分会掉落在目标玩家脚下。\n\n");
+
         md.append("---\n\n");
         md.append("## 配置中心命令\n\n");
         md.append("> 以下命令需要 `hilltopvillage.config.admin` 权限。\n\n");

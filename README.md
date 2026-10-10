@@ -91,6 +91,7 @@ shop:
 - `type` 四种取值：`HAMMER`（神圣重锤，无视 amount 固定 1 个）/ `FIREBALL`（烈焰蛋）/ `REPAIR_ITEM`（世界树汁液）/ `MATERIAL`（任意原版物品，按 `icon.material` 给 amount 个）
 - 修改后执行 `/hilltop shop reload`（管理员）无需重启即可生效
 - 防刷保护：商店 GUI 内所有点击/拖拽一律取消（拿不走商品图标），购买有 250ms 冷却防连点重复扣费
+- 货币防伪：能量水晶靠物品内的 PDC 标记识别，**用铁砧 / 命名牌把普通绿宝石改成货币名不会被当成钱**。服主手工发币请用 `/hilltop shop give <玩家> [数量]`（原版 `/give` 发的绿宝石没有标记，商店不认）
 
 
 ## 部署指南（服主必读）
@@ -454,6 +455,7 @@ arenas:
 | `/hilltop config` | 打开配置中心 GUI（管理员） | ❌ |
 | `/hilltop reloadconfig` | 重载游戏配置（game-settings.yml + monsters-config.yml + messages.yml）（管理员；arenas.yml 仍需重启） | ✅ |
 | `/hilltop shop reload` | 重载村民商店配置（管理员） | ✅ |
+| `/hilltop shop give <玩家> [数量]` | 给在线玩家发放商店货币（能量水晶，默认 1、上限 6400）（管理员） | ✅ |
 | `/hilltop build` | 切换大厅建造模式（管理员，用于整修大厅） | ❌ |
 | `/hilltop tps` | TPS/MSPT 诊断（管理员） | ✅ |
 

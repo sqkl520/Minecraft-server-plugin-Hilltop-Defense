@@ -91,6 +91,7 @@ shop:
 - `type` values: `HAMMER` (Sacred Hammer, always 1 regardless of amount) / `FIREBALL` / `REPAIR_ITEM` (World Tree Sap) / `MATERIAL` (any vanilla item, gives `amount` of `icon.material`)
 - Run `/hilltop shop reload` (admin) after editing — no restart needed
 - Anti-exploit: all clicks and drags inside the shop GUI are cancelled (icons can't be taken), and purchases have a 250ms cooldown against double-click double-charging
+- Currency anti-spoofing: Energy Crystals are identified by an item PDC tag, so **renaming a plain emerald to the currency name with an anvil/name tag will NOT count as money**. To hand out currency manually, use `/hilltop shop give <player> [amount]` (emeralds from vanilla `/give` lack the tag and are not accepted)
 
 
 ## Deployment Guide (Server Owner Guide)
@@ -412,6 +413,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop config` | Open config center GUI (Admin) | ❌ |
 | `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) | ✅ |
 | `/hilltop shop reload` | Reload villager shop config (Admin) | ✅ |
+| `/hilltop shop give <player> [amount]` | Give shop currency (Energy Crystals; default 1, max 6400) to an online player (Admin) | ✅ |
 | `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) | ❌ |
 | `/hilltop tps` | TPS/MSPT diagnostics (Admin) | ✅ |
 

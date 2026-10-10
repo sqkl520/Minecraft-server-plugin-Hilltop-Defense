@@ -14,7 +14,8 @@ import org.bukkit.persistence.PersistentDataType;
 
 /**
  * 村民商店管理器：配置生命周期 + 货币物品工厂 + 发货路由 + 背包货币统计/扣除。
- * 货币识别 = Material + 显示名（双保险再加 PDC 标记 hilltopvillage:shop-currency）。
+ * 货币识别<b>只认 PDC 标记</b>（hilltopvillage:shop-currency），材质仅作快速短路；
+ * 真币一律由 {@link #createCurrencyItem} 发放。详见 {@link #isCurrency}。
  */
 public class ShopManager {
 
@@ -29,24 +30,12 @@ public class ShopManager {
     private final LanguageManager lang;
     private ShopConfig config;
 
-    /**
-     * 预编译的货币显示名（供 {@link #isCurrency} 比对）。
-     *
-     * <p>{@link #isCurrency} 会在扫背包时被逐格调用，而它原来每次都跑一遍
-     * {@link ChatColor#translateAlternateColorCodes} + {@code lang.get} —— 这两个值只在
-     * shop.yml 重载时才变，属于典型的「热路径上做静态计算」。</p>
-     */
-    private String cachedCurrencyName;
-
     public ShopManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
         this.loader = new ShopConfigLoader(plugin);
         this.lang = plugin.getLanguageManager();
         this.currencyKey = new NamespacedKey(plugin, "shop-currency");
         this.npcManager = new NpcManager(plugin);
-        // 构造函数内 config 尚未加载（reload 不是自动调的），此处只为让缓存非 null：
-        // 走 config == null 分支取 i18n 缺省名，与旧实现逐次调用的返回值一致。
-        refreshCurrencyName();
     }
 
     /** 构造函数重载（支持外部传入 LanguageManager） */
@@ -56,26 +45,12 @@ public class ShopManager {
         this.lang = languageManager;
         this.currencyKey = new NamespacedKey(plugin, "shop-currency");
         this.npcManager = new NpcManager(plugin);
-        refreshCurrencyName();
     }
 
     /** 重载 shop.yml 并刷新内存快照 */
     public void reload() {
         this.config = loader.load();
-        // config 换新后必须重算货币显示名，否则 isCurrency 会拿旧名字比对。
-        refreshCurrencyName();
         plugin.getLogger().info("Shop loaded " + config.getItems().size() + " items");
-    }
-
-    /**
-     * 重新计算 {@link #cachedCurrencyName}。
-     * 必须在 {@code config} 赋值之后调用（构造与 {@link #reload()} 两处）。
-     */
-    private void refreshCurrencyName() {
-        String configured = config == null ? null : config.getCurrencyName();
-        this.cachedCurrencyName = (configured != null && !configured.isEmpty())
-                ? ChatColor.translateAlternateColorCodes('&', configured)
-                : lang.get("shop.currency.name");
     }
 
     public ShopConfig getShopConfig() {
@@ -177,20 +152,23 @@ public class ShopManager {
         return remaining <= 0;
     }
 
-    /** 判断一个 ItemStack 是否为货币（材质 + 显示名 / PDC 标记） */
+    /**
+     * 判断一个 ItemStack 是否为货币。
+     *
+     * <p><b>只认 PDC 标记</b>（{@link #currencyKey}）：真币一律由
+     * {@link #createCurrencyItem} 发放，必带此标记。材质检查仅作快速短路。</p>
+     *
+     * <p>曾经的「材质 + 显示名回退」已删除 —— 它会把玩家用铁砧 / 命名牌改名成货币名的
+     * 普通方块误判为真币，造成假币无限付款（P0-A）。服主手工发币请改用
+     * {@code /hilltop shop give <玩家> [数量]}（见 {@code HilltopCommandHandler}）。</p>
+     */
     private boolean isCurrency(ItemStack item) {
         if (item == null || item.getType() != config.getCurrencyMaterial()) return false;
         if (!item.hasItemMeta()) return false;
 
-        // hasItemMeta() + getItemMeta() 是两次独立的 meta 构建，只取一次即可
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
-        // PDC 标记最稳（本插件产出的货币必有）
-        if (meta.getPersistentDataContainer().has(currencyKey, PersistentDataType.STRING)) {
-            return true;
-        }
-        // 兼容服主手工发放的货币：显示名匹配
-        if (!meta.hasDisplayName()) return false;
-        return meta.getDisplayName().equals(cachedCurrencyName);
+        // 只认 PDC 标记：玩家无法用铁砧 / 命名牌伪造，材质相同的改名道具一律被拒。
+        return meta.getPersistentDataContainer().has(currencyKey, PersistentDataType.STRING);
     }
 }
