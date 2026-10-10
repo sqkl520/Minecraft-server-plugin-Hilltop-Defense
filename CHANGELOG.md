@@ -2,6 +2,14 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-10 — P0 修复：波次配置 GUI 翻页按钮被返回按钮覆盖）
+
+> 来源：P0-F 实地问题。波次配置菜单（`/hilltop config` → 波次配置）翻到第 2 页后无法翻回上一页。
+
+- **翻页/返回槽位冲突修复**：`WaveSettingsMenu` 主菜单中 `page>0` 时"上一页"按钮占 slot 45，而共享基类 `setBackButton()` 硬编码 slot 45（`size-9`），构建顺序上返回按钮在后，覆盖掉了"上一页"按钮及其点击动作 —— 导致多页波次配置翻到第 2 页后点 slot 45 只会返回上级菜单，无法回到上一页。改为主菜单不再调用 `setBackButton()`，而用 `setClickableItem` 把返回按钮放到空闲的 slot 48（复用 `config.menu.common.back` / `back-lore` 既有键与红色玻璃板外观，无新增 i18n 键）
+- **最终底栏布局**：slot 45 =上一页（`page>0` 时）、47 =新增波次、48 =返回、49 =默认模板信息、53 =下一页（有后续页时）；五者互不冲突，点击动作各自对应正确
+- **影响面隔离**：仅改主 `WaveSettingsMenu`。基类 `setBackButton()` 不动（其余无分页的菜单 `GameRulesMenu`/`NodeSettingsMenu`/`ItemSettingsMenu`/`MonsterSettingsMenu` 及波次详情/新增怪物/怪物属性三个子菜单的 slot 45 返回按钮均无冲突，保持原样）
+
 ### Security（2026-10-10 — P0 修复：商店假币付款漏洞 P0-A）
 
 > 来源：安全审计 P0-A。玩家可用铁砧把普通绿宝石改名成货币显示名，被商店当真币无限购买。

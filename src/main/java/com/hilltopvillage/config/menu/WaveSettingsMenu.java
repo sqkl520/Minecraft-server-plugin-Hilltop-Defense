@@ -129,7 +129,14 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
                     ct -> { page++; reopen(); });
         }
 
-        setBackButton(ct -> navigateBack());
+        // Pager menu: slot 45 (size-9) is used by the "previous page" button when page>0,
+        // so the shared setBackButton() would overwrite it (back clobbers prev-page). Place
+        // the back button in a free bottom-row slot (48) so pagination and back never collide.
+        // Reuses the same material + i18n keys as setBackButton() for visual consistency.
+        setClickableItem(48, Material.RED_STAINED_GLASS_PANE,
+                lang.getFor(admin, "config.menu.common.back"),
+                ct -> navigateBack(),
+                lang.getFor(admin, "config.menu.common.back-lore"));
         fillEmpty();
     }
 
