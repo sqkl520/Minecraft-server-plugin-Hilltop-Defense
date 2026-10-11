@@ -166,9 +166,21 @@ arenas:
 
 > To apply: restart the server, or run `/hilltop reloadconfig` and restart the arena.
 
+### Phase 2.5: Enter the arena world
+
+This plugin has **no** command to teleport you into an arena world (`setup`, `deploy` and other deploy commands all require you to already be standing in the target world), so for your first deployment, get there yourself with any of:
+
+| Method | Command | Notes |
+|------|---------|-------|
+| Vanilla teleport (OP required) | `/execute in hilltop_arena1 run tp @s 100 64 100` | Replace `hilltop_arena1` with your arena world name and the coordinates with your map center. Fly first (`/gamemode creative`) so you don't fall into unloaded chunks |
+| Multiverse (if installed) | `/mvtp hilltop_arena1` | Teleports to that world's spawn |
+| Warp plugin (e.g. MyWarp, if installed) | Per that plugin's usage | Set a landmark in the arena world — handy when deploying multiple arenas later |
+
+> Once you're there, fly around and check two things: ① this really is the map you prepared (don't deploy in the wrong world); ② you're in creative mode (`/gamemode creative`) — you'll need it for placing respawn anchors, villagers and terrain tweaks. Step 1 of the wizard shows your current world name; cancel and re-teleport if it doesn't match.
+
 ### Phase 3: Run the setup wizard
 
-Go to the **arena world** and run:
+Go to the **arena world** (see Phase 2.5) and run:
 
 ```
 /hilltop setup
