@@ -396,6 +396,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop join [arena]` | Join an arena (auto-matches an available one if omitted) | ❌ |
 | `/hilltop leave` | Leave the current arena | ❌ |
 | `/hilltop gui` | Open the arena selection menu (with status and player counts) | ❌ |
+| `/hilltop lobby` | Return to the lobby | ❌ |
 | `/hilltop status [arena]` | View game status (wave/players/mobs/nodes/awaiting respawn) | ✅ |
 | `/hilltop stats [player]` | View your own or someone else's stats | ✅ (with a player name) |
 | `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths) | ✅ |
@@ -408,6 +409,8 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop list` | List all arenas | ✅ |
 | `/hilltop arenas` | Detailed arena status (Admin) | ✅ |
 | `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/player-spawn/mob-spawn/villager, edit game parameters, restore initial state (Admin) | ❌ |
+| `/hilltop enable [arena]` | Add an arena to the enable queue (Admin) | ✅ |
+| `/hilltop disable [arena]` | Disable an arena for maintenance (Admin) | ✅ |
 | `/hilltop deploy` | Open deploy menu (Admin) | ❌ |
 | `/hilltop setup` | 8-step guided setup wizard (Admin) | ❌ |
 | `/hilltop config` | Open config center GUI (Admin) | ❌ |
