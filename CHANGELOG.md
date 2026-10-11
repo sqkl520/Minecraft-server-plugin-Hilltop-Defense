@@ -3,6 +3,34 @@
 
 ## [1.0.9] - 2026-06-19——2026-09-13
 
+### Fixed（2026-10-11 — 用户实测反馈修复：部署死锁，setup 不再依赖活动实例）
+
+> 来源：服主实地测试。站在未部署的竞技场世界里执行 `/hilltop setup`，被提示“当前没有活动的竞技场！”，
+> 部署流程完全卡死（blocking）。根因是一个闭环死锁：没部署 → `definition.getCore()==null` →
+> 启用队列拒绝创建 `ArenaInstance` → 向导的 `gameManager()` 只从 `activeArenas` 取实例 → 取不到就报
+> `no-active-arenas` 退出 → 永远无法部署。
+
+- **向导改为“按玩家所在世界解析竞技场”**（方案 A）：`SetupWizard.start()` 先用玩家当前世界名反查
+  `ArenaDefinition`（`getDefinitionManager().getArenaByWorld(...)`），找不到才报新键 `setup.no-arena-here`
+  （“你不在任何已配置的竞技场世界里”，含如何传送进去的指引）。不再写死默认竞技场 —— 这顺带修复了
+  “向导只能部署默认场”的已知问题（站在哪个竞技场世界就部署哪个场）
+- **部署期 GameManager（打破死锁的关键）**：新增 `deploymentGameManager(arenaId)` —— 已启用竞技场用其
+  正式实例的 GameManager；**未部署竞技场**惰性创建一个“只依赖 `ArenaDefinition` + 已加载世界”的部署期
+  GameManager 并按 arenaId 缓存。该 GameManager 的 `core` 允许为 null（构造函数不解引用 core；向导读 core
+  走对 null 安全的 `AdminDeployManager.getCoreLocation()`），且不启动任何 Bukkit 任务，部署完成后丢弃
+- **会话绑定目标竞技场**：`SetupSession` 新增 `arenaId` 字段（`start()` 按世界解析后写入）；`deploy()` /
+  `gameManager()` 全部改为 `deploy(Player)` / `gameManager(Player)`，按会话里的 arenaId（缺失时按所在世界）
+  解析，不再取默认/第一个活动竞技场。旧会话 resume（内存 session 与 `config.yml` 的 `wizard.step`）兼容：
+  重连重建时按当前世界重新解析 arenaId
+- **部署完成即可启用**：第 8 步“完成”收尾时调用 `finishDeployment(arenaId)` —— 若该场还没有正式实例，先
+  `reloadDefinitions()` 让 registry 读到刚写入 arenas.yml 的 core，再 `enableArena(arenaId)` 把它放进启用队列
+  获得正式实例，使其能被 `/hilltop start`、`/hilltop join` 正常使用（`enabled: false` 的场会被如实拒绝）
+- **多竞技场隔离**：部署期上下文按 arenaId 缓存，两个服主同时部署不同场互不干扰；始终优先复用正式实例的
+  GameManager（部署改动须由它写入，运行中的对局才能立即生效，并避免两份 AdminDeployManager 竞态写 arenas.yml）
+- **新增 i18n 键** `setup.no-arena-here`（en/zh 双语对称）；**不复用** `no-active-arenas`（语义已变）。
+  `setup.must-be-in-arena-world` 保留（仍由 `/hilltop deploy` 的世界校验使用）
+
+
 ### Docs（2026-10-11 — README 补"阶段 2.5：进入竞技场世界"）
 
 - **补部署指南断层**：作者指出 README 只写"进入竞技场世界"却没教怎么进。新增阶段 2.5，讲清本插件无传送命令、第一次部署需用原版 `/execute in <世界> run tp` / Multiverse `/mvtp` / 地标插件自己传过去，并提醒传过去后确认世界名 + 切创造模式（中英双语同步）

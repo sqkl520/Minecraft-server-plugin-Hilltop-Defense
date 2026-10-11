@@ -186,6 +186,12 @@ Go to the **arena world** (see Phase 2.5) and run:
 /hilltop setup
 ```
 
+> The wizard targets the arena **based on the world you are standing in** (any arena, not just the default),
+> so you can deploy even when that arena has no core yet and no running instance. If you are not standing in a
+> configured arena world (see `arenas.yml`), the wizard tells you so (`You are not standing in any configured
+> arena world`) and how to teleport in. After you finish Step 8 the arena is added to the enable queue
+> automatically (except arenas with `enabled: false`), so `/hilltop start` works right away.
+
 | Step | Content | Action |
 |------|---------|--------|
 | 1/8 Confirm world | Shows your current world name | Click [Confirm] |

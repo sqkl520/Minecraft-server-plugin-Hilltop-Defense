@@ -384,6 +384,7 @@ en:
 
   deploy.must-be-in-arena-world: "&cYou must be inside the arena world &f{1} &cto deploy &f{0}&c. Use /execute in &f{1} &7or teleport there first."
   setup.must-be-in-arena-world: "&cThe setup wizard must be run inside the arena world &f{1} &c(arena: &f{0}&c)."
+  setup.no-arena-here: "&cYou are not standing in any configured arena world. Go to the arena world first (teleport with &f/execute in <world> run tp @s ~ ~ ~&c or a warp plugin), then run &e/hilltop setup &cthere. Arena worlds are listed in arenas.yml."
   deploy.menu-no-permission: "&cYou do not have permission to use the deploy menu."
   deploy.menu-title-line1: "&6&l== Hilltop Village Admin Deploy Menu =="
   deploy.menu-status-label: "&e--- Server Status ---"
@@ -1375,6 +1376,7 @@ zh:
 
   deploy.must-be-in-arena-world: "&c你必须在竞技场世界 &f{1} &c内才能部署 &f{0}&c。可先用 /execute in &f{1} &7或传送过去。"
   setup.must-be-in-arena-world: "&c部署向导必须在竞技场世界 &f{1} &c内运行（竞技场: &f{0}&c）。"
+  setup.no-arena-here: "&c你当前不在任何已配置的竞技场世界里。请先进入竞技场世界（可用 &f/execute in <世界> run tp @s ~ ~ ~&c 或传送插件），再在那里执行 &e/hilltop setup&c。竞技场世界见 arenas.yml。"
   deploy.menu-no-permission: "&c你没有权限使用部署菜单。"
   deploy.menu-title-line1: "&6&l== 村民守卫战PLUS 管理员部署菜单 =="
   deploy.menu-status-label: "&e--- 当前服务器状态 ---"

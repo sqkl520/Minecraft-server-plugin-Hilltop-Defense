@@ -2,6 +2,8 @@ package com.hilltopvillage.command;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.admin.AdminDeployManager;
+import com.hilltopvillage.arena.ArenaDefinition;
+import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.util.LanguageManager;
 import net.kyori.adventure.text.Component;
@@ -30,6 +32,16 @@ public class SetupWizard implements Listener {
     private final HilltopVillagePlugin plugin;
     private final LanguageManager lang;
     private final ConcurrentHashMap<UUID, SetupSession> sessions = new ConcurrentHashMap<>();
+    /**
+     * 未部署竞技场的「部署期 GameManager」缓存（arenaId → GameManager）。
+     *
+     * <p>未部署竞技场没有正式 ArenaInstance（{@code MultiArenaManager.getArena()} 返回 null），
+     * 因此拿不到挂在实例上的 GameManager / AdminDeployManager / NodeSystem。这里按需创建一个
+     * 只依赖 ArenaDefinition + 已加载世界的部署期 GameManager，让向导能把坐标写进 arenas.yml，
+     * 从而打破「没部署→没实例→setup 报无活动竞技场」的死锁。部署完成后随
+     * {@link #finishDeployment(String)} 丢弃。</p>
+     */
+    private final ConcurrentHashMap<String, GameManager> deploymentContexts = new ConcurrentHashMap<>();
     /** PDC key：内部 tag 用持久化数据容器存储，不显示给玩家 */
     private final NamespacedKey TAG_KEY;
 
@@ -39,37 +51,113 @@ public class SetupWizard implements Listener {
         this.TAG_KEY = new NamespacedKey(plugin, "setup-tag");
     }
 
-    /** 解析部署目标竞技场的 GameManager（默认竞技场 → 第一个活动竞技场） */
-    private GameManager gameManager() {
-        var arena = plugin.getMultiArenaManager().getDefaultArena();
-        if (arena == null) arena = plugin.getMultiArenaManager().getFirstActiveArena();
-        return arena == null ? null : arena.getGameManager();
+    /**
+     * 解析本次部署目标竞技场的 GameManager。
+     *
+     * <p>按<b>玩家当前所在竞技场</b>解析（会话里存的 arenaId，缺失时按所在世界反查定义），
+     * 不再写死默认竞技场 —— 这顺带修复了「向导只能部署默认场」的问题。解析交给
+     * {@link #deploymentGameManager(String)}：已启用竞技场用其正式实例的 GameManager，
+     * 未部署竞技场用部署期 GameManager。</p>
+     *
+     * @return 目标竞技场的 GameManager；玩家不在任何竞技场世界 / 世界未加载时返回 null
+     */
+    private GameManager gameManager(Player player) {
+        String arenaId = resolveArenaId(player);
+        return arenaId == null ? null : deploymentGameManager(arenaId);
     }
 
-    /** 解析部署工具（延迟解析，向导启动时竞技场必须已存在） */
-    private AdminDeployManager deploy() {
-        GameManager gm = gameManager();
+    /** 解析部署工具（走 {@link #gameManager(Player)} 的同一套按会话/世界解析逻辑） */
+    private AdminDeployManager deploy(Player player) {
+        GameManager gm = gameManager(player);
         return gm == null ? null : gm.getAdminDeployManager();
     }
 
+    /**
+     * 解析该玩家本次部署的目标竞技场 ID：优先会话里存的 arenaId，缺失时按玩家所在世界反查。
+     *
+     * @return 竞技场 ID；玩家不在任何已配置竞技场世界时返回 null
+     */
+    private String resolveArenaId(Player player) {
+        SetupSession session = sessions.get(player.getUniqueId());
+        if (session != null && session.arenaId != null) return session.arenaId;
+        ArenaDefinition def = plugin.getMultiArenaManager().getDefinitionManager()
+                .getArenaByWorld(player.getWorld().getName());
+        return def == null ? null : def.getId();
+    }
+
+    /**
+     * 取某竞技场的部署期 GameManager。
+     *
+     * <p>优先返回已启用竞技场<b>正式实例</b>的 GameManager（部署改动须由它写入，才能让运行中的对局
+     * 立即生效，并避免两份 AdminDeployManager 各写一份 arenas.yml 竞态）；没有正式实例（竞技场尚未部署、
+     * 未进启用队列）时，惰性创建一个<b>只依赖 ArenaDefinition + 已加载世界</b>的部署期 GameManager 并缓存。</p>
+     *
+     * <p>这正是打破「没部署→没 core→没实例→setup 报无活动竞技场→永远无法部署」死锁的关键：
+     * 部署期 GameManager 的 core 允许为 null（{@link GameManager} 构造函数不解引用 core；向导读 core
+     * 走 {@code AdminDeployManager.getCoreLocation()}，对 null 安全），且不启动任何 Bukkit 任务，
+     * 部署完成后随 {@link #finishDeployment(String)} 丢弃，GC 安全。</p>
+     *
+     * @return GameManager；竞技场定义不存在或世界未加载时返回 null
+     */
+    private GameManager deploymentGameManager(String arenaId) {
+        ArenaInstance live = plugin.getMultiArenaManager().getArena(arenaId);
+        if (live != null) {
+            // 已有正式实例：改用它，顺手丢弃可能残留的部署期上下文（避免两份并存写盘）
+            deploymentContexts.remove(arenaId);
+            return live.getGameManager();
+        }
+        return deploymentContexts.computeIfAbsent(arenaId, this::createDeploymentContext);
+    }
+
+    /** 为未部署竞技场创建部署期 GameManager（core 可为 null；世界未加载返回 null，computeIfAbsent 不缓存） */
+    private GameManager createDeploymentContext(String arenaId) {
+        ArenaDefinition def = plugin.getMultiArenaManager().getDefinitionManager().getArena(arenaId);
+        if (def == null) return null;
+        World world = Bukkit.getWorld(def.getWorldName());
+        if (world == null) return null;  // 玩家正站在该世界里，正常必然已加载
+        return new GameManager(plugin, def.getId(), world,
+                def.getCore(), def.getSpawnPoints(), def.getMobSpawnPoints());
+    }
+
+    /**
+     * 部署完成收尾：让 registry 读到刚写入磁盘的 core，并把竞技场放进启用队列获得正式实例，
+     * 使其可被 /hilltop start / join 正常使用；随后丢弃部署期上下文。
+     *
+     * <p>仅当该竞技场当前还没有正式实例时才 reload+enable（re-setup 已部署竞技场时实例已在跑、无需重启；
+     * {@code enabled: false} 的竞技场会被 {@code enableArena} 如实拒绝，符合预期）。</p>
+     */
+    private void finishDeployment(String arenaId) {
+        if (arenaId == null) return;
+        if (plugin.getMultiArenaManager().getArena(arenaId) == null) {
+            // 部署数据已由 AdminDeployManager 写入 arenas.yml，但 registry 里的定义仍是旧快照（core 为空），
+            // 必须先 reload 让 enableArena 读到非空 core，否则会被「尚未部署核心」拒绝。
+            plugin.getMultiArenaManager().reloadDefinitions();
+            plugin.getMultiArenaManager().enableArena(arenaId);
+        }
+        deploymentContexts.remove(arenaId);
+    }
+
     public void start(Player player) {
-        // 多竞技场模式：向导针对默认竞技场进行部署
-        GameManager gm = gameManager();
-        if (gm == null) {
-            player.sendMessage(lang.getFor(player, "no-active-arenas"));
+        // 按玩家当前所在世界解析竞技场定义（不再写死默认竞技场）——这同时修复了
+        // 「服主站在未部署竞技场世界里执行 setup 被提示无活动竞技场」的部署死锁。
+        ArenaDefinition def = plugin.getMultiArenaManager().getDefinitionManager()
+                .getArenaByWorld(player.getWorld().getName());
+        if (def == null) {
+            player.sendMessage(lang.getFor(player, "setup.no-arena-here"));
+            return;
+        }
+        String arenaId = def.getId();
+
+        // 部署期上下文须可用（世界已加载——玩家就站在里面，正常必然成立）
+        if (deploymentGameManager(arenaId) == null) {
+            player.sendMessage(lang.getFor(player, "setup.no-arena-here"));
             return;
         }
 
-        // 向导必须在目标竞技场世界内运行，否则会把大厅坐标误写成竞技场坐标
-        var arena = plugin.getMultiArenaManager().getArena(gm.getArenaId());
-        if (arena != null && !player.getWorld().getName().equals(arena.getWorldName())) {
-            player.sendMessage(lang.getFor(player, "setup.must-be-in-arena-world",
-                    arena.getDisplayName(), arena.getWorldName()));
-            return;
-        }
         // Fix 5: resume in-memory session instead of resetting
         SetupSession existing = sessions.get(player.getUniqueId());
         if (existing != null) {
+            existing.arenaId = arenaId;  // 跨重连重建 / 换场时刷新目标竞技场
             player.sendMessage(LegacyComponentSerializer.legacySection()
                     .deserialize(lang.getFor(player, "setup.resuming", String.valueOf(existing.step))));
             HandlerList.unregisterAll(this);
@@ -80,6 +168,7 @@ public class SetupWizard implements Listener {
         // Fix 4: restore step from persistent config after disconnect
         int savedStep = plugin.getConfig().getInt("wizard.step." + player.getUniqueId(), 0);
         SetupSession session = new SetupSession();
+        session.arenaId = arenaId;
         if (savedStep > 1 && savedStep < TOTAL_STEPS) {
             session.step = savedStep;
             player.sendMessage(LegacyComponentSerializer.legacySection()
@@ -189,7 +278,7 @@ public class SetupWizard implements Listener {
 
     private void refreshSpawnGui(Inventory inv, Player player, int page) {
         inv.clear();
-        List<org.bukkit.Location> points = deploy().getSpawnPoints();
+        List<org.bukkit.Location> points = deploy(player).getSpawnPoints();
         // Show up to 45 entries per page in slots 0–44
         int startIdx = page * SPAWNS_PER_PAGE;
         int endIdx = Math.min(startIdx + SPAWNS_PER_PAGE, points.size());
@@ -229,7 +318,7 @@ public class SetupWizard implements Listener {
     /** 刷新怪物刷怪点管理 GUI（STORY-1.2：slot 布局与 refreshSpawnGui 完全一致，tags 加 mob- 前缀隔离） */
     private void refreshMobSpawnGui(Inventory inv, Player player, int page) {
         inv.clear();
-        List<org.bukkit.Location> points = deploy().getMobSpawnPoints();
+        List<org.bukkit.Location> points = deploy(player).getMobSpawnPoints();
         // Show up to 45 entries per page in slots 0–44
         int startIdx = page * SPAWNS_PER_PAGE;
         int endIdx = Math.min(startIdx + SPAWNS_PER_PAGE, points.size());
@@ -303,7 +392,7 @@ public class SetupWizard implements Listener {
     private void refreshVillagersGui(Inventory inv, Player player, int page) {
         inv.clear();
 
-        List<Location> villagers = deploy().getVillagers();
+        List<Location> villagers = deploy(player).getVillagers();
 
         // 条目区域：slots 0-44
         int startIndex = page * SPAWNS_PER_PAGE;
@@ -410,7 +499,7 @@ public class SetupWizard implements Listener {
     private void refreshNodesGui(Inventory inv, Player player, int page) {
         inv.clear();
 
-        List<Location> nodeList = gameManager().getNodeSystem().getAllNodeLocations();
+        List<Location> nodeList = gameManager(player).getNodeSystem().getAllNodeLocations();
 
         // 条目区域：slots 0-44（45个）
         int totalPages = nodeList.isEmpty() ? 0 : (nodeList.size() - 1) / 45;
@@ -507,7 +596,7 @@ public class SetupWizard implements Listener {
     // === Step 5: 待保护村民（聊天栏模式，可跳过） ===
     private void showStepVillagers(Player player, SetupSession s) {
         String msg = lang.getFor(player, "setup.step5-villagers",
-                "5", String.valueOf(TOTAL_STEPS), String.valueOf(deploy().getVillagers().size()));
+                "5", String.valueOf(TOTAL_STEPS), String.valueOf(deploy(player).getVillagers().size()));
         player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
         sendVillagerButtons(player);
     }
@@ -554,11 +643,11 @@ public class SetupWizard implements Listener {
     private void showStepPreview(Player player, SetupSession s) {
         Inventory inv = Bukkit.createInventory(player, 9,
                 lang.getFor(player, "setup.gui-preview-title"));
-        var cfg = gameManager().getConfigManager().getActiveConfig();
+        var cfg = gameManager(player).getConfigManager().getActiveConfig();
         inv.setItem(0, infoItem(Material.GRASS_BLOCK, lang.getFor(player, "setup.preview-world",
-                gameManager().getGameWorld().getName())));
-        // Fix 6: use deploy().getCoreLocation() instead of gameManager to avoid stale/null NPE
-        org.bukkit.Location core = deploy().getCoreLocation();
+                gameManager(player).getGameWorld().getName())));
+        // Fix 6: use deploy(player).getCoreLocation() instead of gameManager to avoid stale/null NPE
+        org.bukkit.Location core = deploy(player).getCoreLocation();
         if (core != null) {
             inv.setItem(1, infoItem(Material.BEACON, lang.getFor(player, "setup.preview-core",
                     fmt(core.getX()), fmt(core.getY()), fmt(core.getZ()))));
@@ -566,11 +655,11 @@ public class SetupWizard implements Listener {
             inv.setItem(1, infoItem(Material.BARRIER, lang.getFor(player, "setup.preview-core-not-set")));
         }
         inv.setItem(2, infoItem(Material.SPAWNER, lang.getFor(player, "setup.preview-spawns",
-                String.valueOf(deploy().getSpawnPoints().size()))));
+                String.valueOf(deploy(player).getSpawnPoints().size()))));
         inv.setItem(3, infoItem(Material.ZOMBIE_HEAD, lang.getFor(player, "setup.preview-mobspawns",
-                String.valueOf(deploy().getMobSpawnPoints().size()))));
+                String.valueOf(deploy(player).getMobSpawnPoints().size()))));
         inv.setItem(4, infoItem(Material.CRYING_OBSIDIAN, lang.getFor(player, "setup.preview-nodes",
-                String.valueOf(gameManager().getNodeSystem().getTotalCount()))));
+                String.valueOf(gameManager(player).getNodeSystem().getTotalCount()))));
         inv.setItem(5, infoItem(Material.PLAYER_HEAD, lang.getFor(player, "setup.preview-players",
                 String.valueOf(cfg.getMinPlayers()), String.valueOf(cfg.getMaxPlayers()))));
         inv.setItem(6, infoItem(Material.CLOCK, lang.getFor(player, "setup.preview-waves",
@@ -582,7 +671,7 @@ public class SetupWizard implements Listener {
             ItemMeta playersMeta = playersItem.getItemMeta();
             playersMeta.setLore(List.of(ChatColor.translateAlternateColorCodes('&',
                     lang.getFor(player, "setup.preview-villagers",
-                            String.valueOf(deploy().getVillagers().size())))));
+                            String.valueOf(deploy(player).getVillagers().size())))));
             playersItem.setItemMeta(playersMeta);
         }
         inv.setItem(7, makeItem(Material.RED_WOOL, lang.getFor(player, "setup.btn-reset"),
@@ -597,8 +686,13 @@ public class SetupWizard implements Listener {
 
     // === Step 7: Done ===
     private void showStepDone(Player player) {
+        // 收尾前先取出本次部署的目标竞技场（随后要移除会话）
+        SetupSession session = sessions.get(player.getUniqueId());
+        String arenaId = session != null ? session.arenaId : null;
+
         // 兜底：向导中途未触发生成（如跳过又手动补配置）时，配置了商店位置则补生成
-        Location shopNpcLoc = deploy().getShopNpcLocation();
+        AdminDeployManager deploy = deploy(player);
+        Location shopNpcLoc = deploy == null ? null : deploy.getShopNpcLocation();
         if (shopNpcLoc != null) {
             plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLoc);
         }
@@ -612,6 +706,9 @@ public class SetupWizard implements Listener {
         // Fix 4: clear persisted step on successful completion
         plugin.getConfig().set("wizard.step." + player.getUniqueId(), null);
         plugin.saveConfig();
+
+        // 部署完成：启用竞技场，使其获得正式实例、可被 /hilltop start 使用
+        finishDeployment(arenaId);
     }
 
     // === Command Handler (called from onCommand) ===
@@ -621,13 +718,13 @@ public class SetupWizard implements Listener {
 
         switch (sub.toLowerCase()) {
             case "confirm-world":
-                deploy().setCoreLocation(null); // ensure clean, saves world implicitly
+                deploy(player).setCoreLocation(null); // ensure clean, saves world implicitly
                 s.advance();
                 autoSave(player);
                 showStep(player, s);
                 break;
             case "confirm-core":
-                deploy().setCoreLocation(player.getLocation());
+                deploy(player).setCoreLocation(player.getLocation());
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
                 s.advance();
@@ -640,7 +737,7 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                deploy().setShopNpcLocation(player.getLocation());
+                deploy(player).setShopNpcLocation(player.getLocation());
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
                 // 静默保存：粒子/音效已给反馈，避免 setup.saved 刷屏
@@ -656,13 +753,13 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                deploy().addSpawnPoint(player.getLocation());
+                deploy(player).addSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
                 // 带序号的精简反馈：只报“生成点 #N 已添加”（&a 绿 = 已完成确认）
                 player.sendMessage(LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.spawn-added",
-                                String.valueOf(deploy().getSpawnPoints().size()))));
+                                String.valueOf(deploy(player).getSpawnPoints().size()))));
                 // 聊天滚动后按钮不方便点：反馈之后重发按钮行（黄/青 = 可操作按钮，与绿色反馈区分）
                 sendSpawnButtons(player);
                 // 静默保存：不发 setup.saved 提示，避免 addspawn 高频操作时刷屏
@@ -674,9 +771,9 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                int result = gameManager().getNodeSystem().addNode(player.getLocation());
+                int result = gameManager(player).getNodeSystem().addNode(player.getLocation());
                 if (result == 0) {
-                    int count = gameManager().getNodeSystem().getTotalCount();
+                    int count = gameManager(player).getNodeSystem().getTotalCount();
                     player.sendMessage(LegacyComponentSerializer.legacySection()
                             .deserialize(lang.getFor(player, "setup.node-added", String.valueOf(count))));
                     player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
@@ -712,7 +809,7 @@ public class SetupWizard implements Listener {
                 }
                 HandlerList.unregisterAll(this);
                 player.closeInventory();
-                int nodeCount = gameManager().getNodeSystem().getTotalCount();
+                int nodeCount = gameManager(player).getNodeSystem().getTotalCount();
                 player.sendMessage(LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.nodes-done", String.valueOf(nodeCount))));
                 s.advance();
@@ -743,7 +840,7 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                deploy().showSpawnPointParticles(player, lang);
+                deploy(player).showSpawnPointParticles(player, lang);
                 break;
             case "spawns-done":
                 // 聊天按钮入口：完成生成点设置（与 GUI 内 [完成] 逻辑一致）
@@ -752,11 +849,11 @@ public class SetupWizard implements Listener {
                     break;
                 }
                 // STORY-1.2：两套点都必须非空才能离开第 3 步（旧存档升级走双用回退，不受此限）
-                if (deploy().getSpawnPoints().isEmpty()) {
+                if (deploy(player).getSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.spawns-required"));
                     break;
                 }
-                if (deploy().getMobSpawnPoints().isEmpty()) {
+                if (deploy(player).getMobSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
                     break;
                 }
@@ -772,12 +869,12 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                deploy().addMobSpawnPoint(player.getLocation());
+                deploy(player).addMobSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
                 player.sendMessage(LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.mobspawn-added",
-                                String.valueOf(deploy().getMobSpawnPoints().size()))));
+                                String.valueOf(deploy(player).getMobSpawnPoints().size()))));
                 sendSpawnButtons(player);
                 autoSaveSilent(player);
                 break;
@@ -795,7 +892,7 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                if (deploy().getVillagers().isEmpty()) {
+                if (deploy(player).getVillagers().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.villagers-required"));
                     sendVillagerButtons(player);
                     break;
@@ -810,12 +907,12 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                deploy().addVillager(player.getLocation());
+                deploy(player).addVillager(player.getLocation());
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_YES, 1f, 1f);
                 autoSaveSilent(player);
                 player.sendMessage(lang.getFor(player, "setup.villager-added",
-                        String.valueOf(deploy().getVillagers().size())));
+                        String.valueOf(deploy(player).getVillagers().size())));
                 refreshVillagerGuiOrResend(player, s);
                 break;
             case "villagersgui":
@@ -828,19 +925,19 @@ public class SetupWizard implements Listener {
                 break;
             case "preview":
                 // 强制项校验（与预览 GUI 内的 [确认保存] 一致）
-                if (deploy().getSpawnPoints().isEmpty()) {
+                if (deploy(player).getSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.spawns-required"));
                     break;
                 }
-                if (deploy().getMobSpawnPoints().isEmpty()) {
+                if (deploy(player).getMobSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
                     break;
                 }
-                if (deploy().getVillagers().isEmpty()) {
+                if (deploy(player).getVillagers().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.villagers-required"));
                     break;
                 }
-                if (deploy().getShopNpcLocation() == null) {
+                if (deploy(player).getShopNpcLocation() == null) {
                     player.sendMessage(lang.getFor(player, "setup.shop-required"));
                     break;
                 }
@@ -903,7 +1000,7 @@ public class SetupWizard implements Listener {
     }
 
     private void autoSave(Player player) {
-        gameManager().getConfigManager().saveToFile();
+        gameManager(player).getConfigManager().saveToFile();
         // Fix 4: persist current step so it survives disconnect
         SetupSession s = sessions.get(player.getUniqueId());
         if (s != null) {
@@ -916,7 +1013,7 @@ public class SetupWizard implements Listener {
 
     /** 静默保存：与 autoSave 相同的持久化逻辑，但不发送 setup.saved 提示（高频操作防刷屏） */
     private void autoSaveSilent(Player player) {
-        gameManager().getConfigManager().saveToFile();
+        gameManager(player).getConfigManager().saveToFile();
         SetupSession s = sessions.get(player.getUniqueId());
         if (s != null) {
             plugin.getConfig().set("wizard.step." + player.getUniqueId(), s.step);
@@ -974,8 +1071,8 @@ public class SetupWizard implements Listener {
                 }
                 break;
             case "villager-next-page": {
-                int maxPage = deploy().getVillagers().isEmpty() ? 0
-                        : (deploy().getVillagers().size() - 1) / SPAWNS_PER_PAGE;
+                int maxPage = deploy(player).getVillagers().isEmpty() ? 0
+                        : (deploy(player).getVillagers().size() - 1) / SPAWNS_PER_PAGE;
                 if (s.villagerPage < maxPage) {
                     s.villagerPage++;
                     refreshVillagersGui(event.getInventory(), player, s.villagerPage);
@@ -984,7 +1081,7 @@ public class SetupWizard implements Listener {
             }
             case "setup-add-villager-item":
                 // GUI 内添加：音效 + 粒子 + 刷新
-                deploy().addVillager(player.getLocation());
+                deploy(player).addVillager(player.getLocation());
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                         player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_YES, 1f, 1f);
@@ -992,7 +1089,7 @@ public class SetupWizard implements Listener {
                 autoSaveSilent(player);
                 break;
             case "setup-villagers-done":
-                if (deploy().getVillagers().isEmpty()) {
+                if (deploy(player).getVillagers().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.villagers-required"));
                     break;
                 }
@@ -1007,7 +1104,7 @@ public class SetupWizard implements Listener {
                 if (tag.startsWith("villager-")) {
                     try {
                         int index = Integer.parseInt(tag.substring("villager-".length()));
-                        if (deploy().removeVillager(index)) {
+                        if (deploy(player).removeVillager(index)) {
                             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 0.8f, 1f);
                             s.villagerPage = 0;
                             refreshVillagersGui(event.getInventory(), player, s.villagerPage);
@@ -1037,8 +1134,8 @@ public class SetupWizard implements Listener {
                 }
                 break;
             case "setup-next-page":
-                int maxPage = deploy().getSpawnPoints().isEmpty() ? 0
-                        : (deploy().getSpawnPoints().size() - 1) / SPAWNS_PER_PAGE;
+                int maxPage = deploy(player).getSpawnPoints().isEmpty() ? 0
+                        : (deploy(player).getSpawnPoints().size() - 1) / SPAWNS_PER_PAGE;
                 if (s.spawnPage < maxPage) {
                     s.spawnPage++;
                     refreshSpawnGui(event.getInventory(), player, s.spawnPage);
@@ -1046,7 +1143,7 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-add-spawn":
                 // GUI 内添加：音效+粒子+刷新+重发按钮行（让按钮永远在聊天栏底部，方便关闭GUI后继续添加）
-                deploy().addSpawnPoint(player.getLocation());
+                deploy(player).addSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
                 refreshSpawnGui(event.getInventory(), player, s.spawnPage);
@@ -1056,7 +1153,7 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-show-particles":
                 player.closeInventory();
-                deploy().showSpawnPointParticles(player, lang);
+                deploy(player).showSpawnPointParticles(player, lang);
                 player.sendMessage(LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.particles-started")));
                 // 重新发送按钮行，方便管理员关闭GUI后继续操作
@@ -1064,11 +1161,11 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-spawns-done":
                 // STORY-1.2: two sets must both be non-empty before leaving step 3
-                if (deploy().getSpawnPoints().isEmpty()) {
+                if (deploy(player).getSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.spawns-required"));
                     break;
                 }
-                if (deploy().getMobSpawnPoints().isEmpty()) {
+                if (deploy(player).getMobSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
                     break;
                 }
@@ -1081,9 +1178,9 @@ public class SetupWizard implements Listener {
             default:
                 if (tag.startsWith("setup-spawn-")) {
                     int idx = Integer.parseInt(tag.substring("setup-spawn-".length()));
-                    deploy().removeSpawnPoint(idx);
+                    deploy(player).removeSpawnPoint(idx);
                     // If removing caused current page to become empty, go back one page
-                    int totalAfter = deploy().getSpawnPoints().size();
+                    int totalAfter = deploy(player).getSpawnPoints().size();
                     int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
                     if (s.spawnPage > maxPageAfter) s.spawnPage = maxPageAfter;
                     player.sendMessage(LegacyComponentSerializer.legacySection()
@@ -1114,15 +1211,15 @@ public class SetupWizard implements Listener {
                 }
                 break;
             case "setup-mob-next-page":
-                int maxPage = deploy().getMobSpawnPoints().isEmpty() ? 0
-                        : (deploy().getMobSpawnPoints().size() - 1) / SPAWNS_PER_PAGE;
+                int maxPage = deploy(player).getMobSpawnPoints().isEmpty() ? 0
+                        : (deploy(player).getMobSpawnPoints().size() - 1) / SPAWNS_PER_PAGE;
                 if (s.mobSpawnPage < maxPage) {
                     s.mobSpawnPage++;
                     refreshMobSpawnGui(event.getInventory(), player, s.mobSpawnPage);
                 }
                 break;
             case "setup-add-mobspawn":
-                deploy().addMobSpawnPoint(player.getLocation());
+                deploy(player).addMobSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
                 refreshMobSpawnGui(event.getInventory(), player, s.mobSpawnPage);
@@ -1131,17 +1228,17 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-mob-show-particles":
                 player.closeInventory();
-                deploy().showSpawnPointParticles(player, lang);
+                deploy(player).showSpawnPointParticles(player, lang);
                 player.sendMessage(LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.particles-started")));
                 sendSpawnButtons(player);
                 break;
             case "setup-mobspawns-done":
-                if (deploy().getSpawnPoints().isEmpty()) {
+                if (deploy(player).getSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.spawns-required"));
                     break;
                 }
-                if (deploy().getMobSpawnPoints().isEmpty()) {
+                if (deploy(player).getMobSpawnPoints().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
                     break;
                 }
@@ -1154,8 +1251,8 @@ public class SetupWizard implements Listener {
             default:
                 if (tag.startsWith("setup-mobspawn-")) {
                     int idx = Integer.parseInt(tag.substring("setup-mobspawn-".length()));
-                    deploy().removeMobSpawnPoint(idx);
-                    int totalAfter = deploy().getMobSpawnPoints().size();
+                    deploy(player).removeMobSpawnPoint(idx);
+                    int totalAfter = deploy(player).getMobSpawnPoints().size();
                     int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
                     if (s.mobSpawnPage > maxPageAfter) s.mobSpawnPage = maxPageAfter;
                     player.sendMessage(LegacyComponentSerializer.legacySection()
@@ -1178,7 +1275,7 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-add-node-item":
                 // GUI 内添加节点：检查脚下方块并注册
-                int addResult = gameManager().getNodeSystem().addNode(player.getLocation());
+                int addResult = gameManager(player).getNodeSystem().addNode(player.getLocation());
                 if (addResult == 0) {
                     player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                     player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
@@ -1197,11 +1294,11 @@ public class SetupWizard implements Listener {
             case "node-show-particles":
                 player.closeInventory();
                 // 显示节点粒子
-                List<Location> nodeLocations = gameManager().getNodeSystem().getAllNodeLocations();
+                List<Location> nodeLocations = gameManager(player).getNodeSystem().getAllNodeLocations();
                 if (nodeLocations.isEmpty()) {
                     player.sendMessage(lang.getFor(player, "particles.no-nodes"));
                 } else {
-                    deploy().showNodeParticles(player, nodeLocations, lang);
+                    deploy(player).showNodeParticles(player, nodeLocations, lang);
                     player.sendMessage(LegacyComponentSerializer.legacySection()
                             .deserialize(lang.getFor(player, "setup.particles-started")));
                 }
@@ -1209,7 +1306,7 @@ public class SetupWizard implements Listener {
             case "setup-nodes-done":
                 HandlerList.unregisterAll(this);
                 player.closeInventory();
-                int nodeCount = gameManager().getNodeSystem().getTotalCount();
+                int nodeCount = gameManager(player).getNodeSystem().getTotalCount();
                 player.sendMessage(LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.nodes-done", String.valueOf(nodeCount))));
                 s.advance();
@@ -1223,7 +1320,7 @@ public class SetupWizard implements Listener {
                 }
                 break;
             case "node-next-page":
-                List<Location> allNodes = gameManager().getNodeSystem().getAllNodeLocations();
+                List<Location> allNodes = gameManager(player).getNodeSystem().getAllNodeLocations();
                 int maxNodePage = allNodes.isEmpty() ? 0 : (allNodes.size() - 1) / 45;
                 if (s.nodePage < maxNodePage) {
                     s.nodePage++;
@@ -1237,10 +1334,10 @@ public class SetupWizard implements Listener {
                     if (!tag.equals("node-show-particles") && !tag.equals("node-prev-page") && !tag.equals("node-next-page")) {
                         try {
                             int nodeIdx = Integer.parseInt(tag.substring("node-".length()));
-                            List<Location> nodeList = gameManager().getNodeSystem().getAllNodeLocations();
+                            List<Location> nodeList = gameManager(player).getNodeSystem().getAllNodeLocations();
                             if (nodeIdx >= 0 && nodeIdx < nodeList.size()) {
                                 Location toRemove = nodeList.get(nodeIdx);
-                                gameManager().getNodeSystem().removeNode(toRemove);
+                                gameManager(player).getNodeSystem().removeNode(toRemove);
                                 player.sendMessage(LegacyComponentSerializer.legacySection()
                                         .deserialize(lang.getFor(player, "setup.node-deleted", String.valueOf(nodeIdx + 1))));
                                 // 如果删除后当前页为空，返回上一页
@@ -1269,7 +1366,7 @@ public class SetupWizard implements Listener {
         switch (tag) {
             case "setup-confirm":
                 // 强制项校验：生成点 / 村民 / 商店都是必须的
-                if (deploy().getSpawnPoints().isEmpty()) {
+                if (deploy(player).getSpawnPoints().isEmpty()) {
                     player.closeInventory();
                     player.sendMessage(lang.getFor(player, "setup.spawns-required"));
                     s.step = 3;
@@ -1277,21 +1374,21 @@ public class SetupWizard implements Listener {
                     break;
                 }
                 // STORY-1.2：怪物刷怪点同样强制（新部署的场必须两套都配）
-                if (deploy().getMobSpawnPoints().isEmpty()) {
+                if (deploy(player).getMobSpawnPoints().isEmpty()) {
                     player.closeInventory();
                     player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
                     s.step = 3;
                     showStep(player, s);
                     break;
                 }
-                if (deploy().getVillagers().isEmpty()) {
+                if (deploy(player).getVillagers().isEmpty()) {
                     player.closeInventory();
                     player.sendMessage(lang.getFor(player, "setup.villagers-required"));
                     s.step = 5;
                     showStep(player, s);
                     break;
                 }
-                if (deploy().getShopNpcLocation() == null) {
+                if (deploy(player).getShopNpcLocation() == null) {
                     player.closeInventory();
                     player.sendMessage(lang.getFor(player, "setup.shop-required"));
                     s.step = 6;
@@ -1404,6 +1501,8 @@ public class SetupWizard implements Listener {
 
     public static class SetupSession {
         int step = 1;
+        /** 本次部署的目标竞技场 ID（按玩家所在世界解析，见 {@link SetupWizard#start(Player)}） */
+        String arenaId;
         int spawnPage = 0;     // Fix 3: current page in spawn point GUI
         int mobSpawnPage = 0;  // STORY-1.2: current page in mob spawn GUI
         int nodePage = 0;      // 节点管理 GUI 当前页码
