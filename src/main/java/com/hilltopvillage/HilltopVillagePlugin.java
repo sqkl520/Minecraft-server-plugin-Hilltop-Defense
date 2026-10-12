@@ -36,6 +36,7 @@ import com.hilltopvillage.mechanics.LobbyProtectionListener;
 import com.hilltopvillage.mechanics.MapRestoreManager;
 import com.hilltopvillage.mechanics.NodeListener;
 import com.hilltopvillage.mechanics.PlayerLifecycleListener;
+import com.hilltopvillage.mechanics.VillagerPreviewManager;
 import com.hilltopvillage.mechanics.VillagerSystem;
 import com.hilltopvillage.stats.StatsManager;
 import com.hilltopvillage.shop.ShopListener;
@@ -56,6 +57,8 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
     private PlayerGoodsManager playerGoodsManager;
     private StatsManager statsManager;
     private MapRestoreManager mapRestoreManager;
+    /** 部署向导第 5 步的村民预览实体管理器（插件级，跨竞技场唯一；标记与真村民隔离） */
+    private VillagerPreviewManager villagerPreviewManager;
 
     // 竞技场管理 GUI 的共享服务（/hilltop manage）
     private ArenaAdminService arenaAdminService;      // 无状态，仍做单例以便统一注入
@@ -89,6 +92,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         this.playerGoodsManager = new PlayerGoodsManager(this);
         this.statsManager = new StatsManager(this);
         this.mapRestoreManager = new MapRestoreManager(this);
+        this.villagerPreviewManager = new VillagerPreviewManager(this);
         this.shopManager = new ShopManager(this, languageManager);
         this.shopManager.reload();
 
@@ -121,6 +125,8 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         // Shop listeners
         this.shopManager.getNpcManager().cleanupOrphans();
         this.shopManager.getNpcManager().respawnFromConfig();
+        // 村民预览实体：清掉上次部署会话崩溃残留（按 PDC 标记识别，启动阶段一次）
+        this.villagerPreviewManager.cleanupOrphans();
         this.shopListener = new ShopListener(shopManager, languageManager);
         Bukkit.getPluginManager().registerEvents(shopListener, this);
 
@@ -148,6 +154,9 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         // 村民事件监听器：全局仅此一处注册，之后按世界路由到各竞技场的 VillagerSystem 实例
         // （ArenaInstance 不再逐个注册，避免反复 enable/disable 导致监听器累积泄漏）
         Bukkit.getPluginManager().registerEvents(new VillagerSystem.GlobalListener(this), this);
+
+        // 村民预览实体：取消其一切伤害（绝对无敌），全局注册一次
+        Bukkit.getPluginManager().registerEvents(villagerPreviewManager, this);
 
         // Register tab completer
         getCommand("hilltop").setTabCompleter(tabCompleter);
@@ -230,6 +239,15 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             }
         }
 
+        // 村民预览实体是部署期临时装饰，禁用时一并清除（防止随世界存盘；下次启动 cleanupOrphans 兜底）
+        if (villagerPreviewManager != null) {
+            try {
+                villagerPreviewManager.clearAll();
+            } catch (RuntimeException exception) {
+                getLogger().log(Level.SEVERE, "村民预览实体清理失败（继续禁用流程）", exception);
+            }
+        }
+
         // 强制落盘统计（必须在竞技场停止之后：玩家被移出竞技场时才写入本局统计）
         if (statsManager != null) {
             try {
@@ -274,6 +292,11 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
 
     public MapRestoreManager getMapRestoreManager() {
         return mapRestoreManager;
+    }
+
+    /** 村民预览实体管理器（向导第 5 步专用；开局前须由调用方清理，见 ArenaInstance#onGameStart） */
+    public VillagerPreviewManager getVillagerPreviewManager() {
+        return villagerPreviewManager;
     }
 
     public MultiArenaManager getMultiArenaManager() {

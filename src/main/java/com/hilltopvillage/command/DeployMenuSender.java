@@ -100,6 +100,10 @@ public class DeployMenuSender {
                 lang.getFor(player, "deploy.desc-addvillager"));
         sendClickableLine(player, "deploy.cmd-listvillagers", "/hilltop deploy listvillagers", hover,
                 lang.getFor(player, "deploy.desc-listvillagers"));
+        sendClickableLine(player, "deploy.cmd-setshop", "/hilltop deploy setshop", hover,
+                lang.getFor(player, "deploy.desc-setshop"));
+        sendClickableLine(player, "deploy.cmd-clearshop", "/hilltop deploy clearshop", hover,
+                lang.getFor(player, "deploy.desc-clearshop"));
 
         player.sendMessage("");
     }

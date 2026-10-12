@@ -1,6 +1,66 @@
 # Changelog
 
 
+## [1.0.9-SNAPSHOT-fix2] - 2026-10-12
+
+> 1.0.9 的第二个修复版：修复作者实测反馈的 F-1~F-7，并实现作者新提的 F-8（村民预览实体）与 F-9（第 3 步合并总览界面）。
+> 原 `1.0.9-SNAPSHOT` 与 `1.0.9-SNAPSHOT-fix1` 的包与 GitHub Release 保留不动。
+
+### Fixed（2026-10-12 — F-1 刷怪点管理「显示粒子」调错方法）
+
+- 刷怪点管理 GUI 的 [显示粒子] 此前误调玩家出生点方法 `showSpawnPointParticles()`（粒子发到出生点坐标；出生点为空时静默无粒子但外层仍报「粒子动画已开始」）。新增 `AdminDeployManager.showMobSpawnPointParticles()`（数据源 `savedMobSpawnPoints`，空列表走新键 `particles.no-mobspawnpoints`），改调新方法；预览方法内部统一负责发提示，删去向导三处外层重复的 `setup.particles-started` 补发
+
+### Fixed（2026-10-12 — F-2 向导第 3 步文案与按钮对不上）
+
+- `setup.step3` 重写为总览句（明确「① 玩家出生点（开局传送位置，阵亡复活用第 2 步核心）② 怪物刷怪点（怪物出生位置）」，两套各需 ≥1）；`setup.step3-mobspawns` 重写为做法句，逐一点名五个聊天按钮（含原先只字未提的 [保存并返回大厅]）；顺带修正 `setup.spawns-required`（原文误称"怪物生成点"，实为玩家出生点）、`setup.btn-add-lore`（原文"添加为怪物生成点"，同一键被两套坐标共用）两处历史语义错误
+
+### Fixed（2026-10-12 — F-3 向导收尾缺启用指引）
+
+- `SetupWizard.finishDeployment()` 改为返回 boolean（按实际结果二选一）：新增 `setup.enable-done-auto`（已就绪/已入队）与 `setup.enable-done-manual`（未自动启用，附可点击 [启用竞技场 {id}] 按钮）两套收尾文案；`setup.saved-exit`（保存并返回大厅）补 `setup.enable-hint` 说明部署完成后竞技场如何生效（自动入队 / enabled:false 需改配置重启 / 手动 `/hilltop enable`）
+
+### Fixed（2026-10-12 — F-4 商店村民低头朝向）
+
+- `SetupWizard` confirm-shop 侧：`player.getLocation()` 克隆后 `setPitch(0)` 再存盘 + 再生成（低头不再写进 `arenas.yml`）
+- `NpcManager.spawnNpc()` 侧：全插件唯一生成入口统一 `clone().setPitch(0)` 兜底 —— 旧存档已写坏的 `pitch` 也在每次重启生成时被自动纠正（自愈，无需重设位置）
+- 附 yaw 增强：NPC 每 10 tick 面向 8 格内最近玩家（只改 yaw、pitch 恒 0，角度差 <2° 不发包）；转向任务随 `despawnNpc()` 取消，无泄漏
+
+### Fixed（2026-10-12 — F-5 商店位置无删除/清空入口）
+
+- 向导第 6 步：按钮行改为 `[设置商店位置][显示粒子][清除商店位置][继续][保存并返回大厅]`，新增商店位置状态行（`setup.shop-status`）；`confirm-shop` 设置后**不再自动跳步**（可原地重设/清除），进入第 7 步改由 [继续] → preview 子命令（校验口径不变）
+- 新增 `/hilltop deploy setshop` / `/hilltop deploy clearshop` 子命令 + Tab 补全 + 部署菜单行 + 命令文档
+- `/hilltop manage` 详情页商店条目新增**右键清除**（位置条目 + 实体；清除后立即显示"未设置"）
+- 对局中保护：三处清除入口在 STARTING/RUNNING/休整期统一拒绝（商店 NPC 是插件级单例，对局中清除会当场撤掉场内玩家的商店）
+- 顺带修两处数据一致性隐患：部署期 `AdminDeployManager` 取用时重读 `arenas.yml`（防向导旧内存值把外部清除整份写回）；`/hilltop manage` 商店读数改走 `ArenaAdminService.shopNpc()`（实例优先 + YAML 兜底）
+
+### Fixed（2026-10-12 — F-6 村民管理按钮命名统一）
+
+- `setup.btn-villagers-gui` 由 `[村民管理]/[Manage Villagers]` 改为 `[打开村民管理]/[Open Villager Manager]`，与第 3/4 步 `[打开生成点管理]/[打开刷怪点管理]/[打开节点管理]` 风格统一；顺带合并等值重复键 `setup.btn-villagers-done` → 复用 `setup.btn-done`
+
+### Fixed（2026-10-12 — F-7 五类点位粒子无配色区分）
+
+- 新增 `admin/PointKind`（枚举：五类点位 → DUST 颜色 + 文案键）与 `admin/PointParticleRenderer`（统一"垂直光柱 + 环绕螺旋"绘制，两套预览系统共用，视觉强制一致）
+- 配色：玩家出生点绿 `#3CFF5A` / 怪物刷怪点红 `#FF5555` / 能量节点蓝 `#4A8CFF` / 待保护村民黄 `#FFDE59` / 商店金 `#FFAA00`（`DustOptions` 在枚举常量构造时建好复用，避免热路径重复分配）
+- `LocationParticlePreview` 增加 `PointKind` 参数、`ArenaManageGUI` 的 `ListKind` 透传类型色；`AdminDeployManager` 五处复制粘贴的粒子循环合并为一个私有方法；新增村民 GUI [显示粒子]（黄色）与向导第 6 步 [显示粒子]（金色，子命令 `showshopparticles`）两处预览入口
+
+### Added（2026-10-12 — F-8 村民预览实体）
+
+- 新增 `mechanics/VillagerPreviewManager`（插件级单例 Listener）：向导第 5 步登记村民后，于该位置生成一只纯装饰预览村民（`setInvulnerable(true)` + 取消一切 `EntityDamageEvent`、`setCollidable(false)`、`setAI(false)`、`setSilent(true)`，头顶显示序号"村民 #N"）
+- 生命周期：进入/重入第 5 步整体重同步（天然处理删除后序号前移）；离开第 5 步 / 完成部署 / saveexit / 玩家退出 / 会话结束即清除；启动 `cleanupOrphans()` 按 PDC 标记清崩溃残留；`onDisable` `clearAll()`
+- 与开局真村民三重隔离：PDC 标记不同（`villager-preview` vs `village-villager`）、生命周期只存在于第 5 步窗口、**开局硬屏障**（`ArenaInstance.onGameStart()` 在 `villagerSystem.spawnAll()` 前 `clearInWorld()`）
+
+### Changed（2026-10-12 — F-9 第 3 步合并为总览界面 + 单一完成按钮）
+
+- 新增「生成点总览」GUI（54 格）：slot 11 玩家出生点计数/状态、slot 15 怪物刷怪点计数/状态、slot 20 [打开生成点管理]、slot 24 [打开刷怪点管理]、slot 49 唯一 [完成]（两套各 ≥1 时绿色可点，否则灰色锁定）
+- 两个子管理 GUI 的 slot 51 由 `[完成]` 改为 `[返回总览]`（红色玻璃板），消除"两个界面各有一个完成按钮"的困惑
+- 聊天栏按钮行由 5 个精简为 4 个：`[添加当前位置][添加刷怪点][打开生成点总览][保存并返回大厅]`，新增 `/hilltop setup overview` 命令
+- 旧命令 `spawns-done` 与旧 PDC tag（`setup-spawns-done`/`setup-mobspawns-done`）保留处理分支，与总览 [完成] 汇总到同一收口方法 `tryFinishSpawnsStep`
+- 顺带修一个隐藏坑：`openWizardGui()` 改为「先 `openInventory`、后 `unregister+register`」——总览↔子界面互切时会触发旧界面 `InventoryCloseEvent` 的注销逻辑，旧顺序会连带注销新界面导致点击无反应
+
+### ⚠️ 升级提示（升级到 fix2 的服主必读）
+
+- `LanguageManager` 加载规则是「JAR 为底、磁盘覆盖，**只补缺键**」。fix2 中**修改**的旧键（`setup.step3` / `setup.step3-mobspawns` / `setup.spawns-required` / `setup.btn-add-lore` / `setup.btn-villagers-gui` / `particles.hint` / `setup.btn-show-particles-lore`）在已有旧 `plugins/HilltopVillage/messages.yml` 的服务器上**不会自动更新** —— 需删掉这些键（或删整份重建）后 `/hilltop reloadconfig` 或重启，才能看到新文案；新增键会自动补写
+
+
 ## [1.0.9-SNAPSHOT-fix1] - 2026-10-11
 
 > 1.0.9 的首个修复版（命名参考 v0.1.6-SNAPSHOT-fix1 模式）：修复部署死锁等实测问题；原 1.0.9-SNAPSHOT 包与 Release 保留不动。
@@ -46,6 +106,7 @@
 ### Known issues（已核实待修，本轮只记录未修）
 
 > 出处：`docs/04-dev-reports/tests/USER-FEEDBACK_2026-10-11.md`（作者 7 条实测反馈，4 路只读核实全部属实）
+> **【状态更新 2026-10-12】以下 F-1~F-7 已全部在 `1.0.9-SNAPSHOT-fix2` 修复**（本段仅作留档，不删）。
 
 - F-1 刷怪点管理 [显示粒子] 调错方法（粒子发到玩家出生点；无 mob 专用方法）
 - F-2 向导第 3 步两条文案与五个按钮对不上（"生成点"未定义、[保存并返回大厅] 未提）

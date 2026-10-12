@@ -723,6 +723,33 @@ public class HilltopCommandHandler {
                 admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-done", 0));
                 break;
 
+            case "setshop":
+                deploy.setShopNpcLocation(admin.getLocation());
+                // 立即生成 NPC（spawnNpc 内部先 despawn，幂等可重复设置；与向导 confirm-shop 同一行为）
+                plugin.getShopManager().getNpcManager().spawnNpc(admin.getLocation());
+                admin.sendMessage(lang.getFor(admin, "deploy.setshop-set"));
+                admin.sendMessage(lang.getFor(admin, "deploy.setshop-coords",
+                        String.format("%.1f", admin.getLocation().getX()),
+                        String.format("%.1f", admin.getLocation().getY()),
+                        String.format("%.1f", admin.getLocation().getZ())));
+                admin.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
+                        admin.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
+                admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
+                break;
+
+            case "clearshop":
+                // 与向导第 6 步 [清除商店位置] / 管理 GUI 右键商店条目同一服务口径：
+                // 对局进行中拒绝（会撤掉场内玩家的商店）、无设置时如实提示、单例实体按世界归属清除
+                switch (plugin.getArenaAdminService().deleteShopNpc(deployArena.getArenaId())) {
+                    case OK -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-done"));
+                    case ARENA_NOT_FOUND -> admin.sendMessage(lang.getFor(admin, "arena-not-found",
+                            deployArena.getArenaId()));
+                    case NOT_SET -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-none"));
+                    case GAME_IN_PROGRESS -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-in-game"));
+                    case WRITE_FAILED -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-write-failed"));
+                }
+                break;
+
             default:
                 admin.sendMessage(lang.getFor(admin, "deploy.unknown-sub", args[1]));
                 admin.sendMessage(lang.getFor(admin, "deploy.unknown-sub-hint"));

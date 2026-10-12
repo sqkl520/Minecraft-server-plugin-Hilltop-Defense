@@ -6,7 +6,7 @@
 
     <groupId>com.hilltopvillage</groupId>
     <artifactId>HilltopVillage</artifactId>
-    <version>1.0.9-SNAPSHOT-fix1</version>
+    <version>1.0.9-SNAPSHOT-fix2</version>
     <packaging>jar</packaging>
 
     <name>HilltopVillage</name>

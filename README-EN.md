@@ -32,7 +32,7 @@ A cooperative PvE tower defense plugin for Minecraft servers. Players must work 
 - **Graphical Config Center** — Configure game rules, waves, monsters, items and nodes through an intuitive GUI
 - **8-Step Setup Wizard** — `/hilltop setup` walks you through core/player-spawns+mob-spawns/nodes/villagers/shop, auto-saving each step
 - **Multi-language Support** — Built-in Chinese and English; players can switch with `/hilltop lang <en|zh>`
-- **Spawn Point Particle Display** — After deploying spawn points, trigger a 30-second colorful particle animation to visualize all spawn locations
+- **Location Particle Preview** — Trigger a 30-second particle animation from the setup wizard / management GUI / commands; each of the five location types has its own color: player spawn=green, mob spawn=red, node=blue, villager=yellow, shop=gold
 
 ## Energy Nodes Explained
 
@@ -59,9 +59,12 @@ Killing wave monsters has a chance to drop **Energy Crystals** (currency; defaul
 
 **Shop villager deployment**:
 
-- Setup wizard Step 6 (`/hilltop setup`): stand at the target spot and click [Set Shop Location] (required — deployment cannot finish without a shop location)
+- Setup wizard Step 6 (`/hilltop setup`): stand at the target spot and click [Set Shop Location] (required — deployment cannot finish without a shop location). After setting you stay on the step: click [Set Shop Location] again to move it, click [Clear Shop Location] to wipe it and start over (you stay on Step 6), then click [Continue] to open the preview
+- Commands work too: `/hilltop deploy setshop` sets your position and spawns the NPC, `/hilltop deploy clearshop` clears this arena's shop (stored location + entity); the `/hilltop manage` detail page also clears the shop on right-click
+- Clearing is **refused while a match is in progress** (the shop NPC is a plugin-level singleton — clearing would take the shop away from players mid-match); run `/hilltop stop` first
 - The position persists per arena in the `arenas.<id>.shop-npc` node of `arenas.yml` and auto-restores on restart; leftover duplicate entities are cleaned up automatically on startup
 - The shop villager is invulnerable (all damage cancelled) and non-interactive — it exists purely as the shop entry
+- Facing is horizontal only: deployment copies just the player's yaw and forces pitch to 0 (the villager never looks down/up; even a pitch written wrong in an old save is auto-corrected on restart), and once spawned it turns horizontally to face the nearest player within 8 blocks
 
 **Custom items in shop.yml** (`plugins/HilltopVillage/shop.yml`):
 
@@ -189,19 +192,24 @@ Go to the **arena world** (see Phase 2.5) and run:
 > The wizard targets the arena **based on the world you are standing in** (any arena, not just the default),
 > so you can deploy even when that arena has no core yet and no running instance. If you are not standing in a
 > configured arena world (see `arenas.yml`), the wizard tells you so (`You are not standing in any configured
-> arena world`) and how to teleport in. After you finish Step 8 the arena is added to the enable queue
-> automatically (except arenas with `enabled: false`), so `/hilltop start` works right away.
+> arena world`) and how to teleport in. After you finish Step 8 the arena is **added to the enable queue
+> automatically** (when `enabled: true`); once loading finishes players can `/hilltop join` and admins can
+> `/hilltop start`. If the arena is `enabled: false` in `arenas.yml` (`arena2` / `arena3` ship that way),
+> set it to `true` and **restart the server** (it queues on startup), or queue it manually with
+> `/hilltop enable <arena>`.
 
 | Step | Content | Action |
 |------|---------|--------|
 | 1/8 Confirm world | Shows your current world name | Click [Confirm] |
 | 2/8 Set core | Stand at the village core location (the player respawn point) | Click [Set as Core] |
-| 3/8 Spawn points | Player spawns + mob spawn points (two independent sets, **at least 1 each**) | Walk to each spot, click [Add Current Location] (player) / [Add Mob Spawn] (mobs) in chat; click [Open Spawn Manager]/[Open Mob Spawn Manager] to review/delete; click [Done] in either GUI (both sets must be deployed to leave this step) |
+| 3/8 Spawn points | Player spawns + mob spawn points (two independent sets, **at least 1 each**) | Walk to each spot, click [Add Current Location] (player) / [Add Mob Spawn] (mobs) in chat; click [Open Spawn Points Overview] to enter the hub (counts/status at a glance, two sub-manager GUIs for review/delete); click the single [Done] in the overview (both sets must be deployed to leave this step) |
 | 4/8 Node registration | Register respawn anchors as energy nodes | **Place the respawn anchor blocks first**, stand next to one and click [Add Node]; click [Done] |
-| 5/8 Villagers | Positions of villagers to protect (**all dead = game lost**, **at least 1 required**) | Walk to a spot and click [Add Villager]; click [Villager Manager] to review/delete; click [Done] when finished |
-| 6/8 Shop location | Where the villager shop NPC stands (**required — deployment cannot finish without it**) | Stand where you want it and click [Set Shop Location] |
+| 5/8 Villagers | Positions of villagers to protect (**all dead = game lost**, **at least 1 required**) | Walk to a spot and click [Add Villager] — an invulnerable preview villager appears on the spot (numbered overhead, visible during this step only, removed when you leave it); click [Open Villager Manager] to review/delete ([Show Particles] inside previews all villagers in yellow); click [Done] when finished |
+| 6/8 Shop location | Where the villager shop NPC stands (**required — deployment cannot finish without it**) | Stand where you want it and click [Set Shop Location]; [Show Particles] previews it in gold; [Clear Shop Location] wipes it to start over, [Continue] moves on |
 | 7/8 Config preview | Overview of core/player-spawns/mob-spawns/nodes/villagers/players/waves | Click [Confirm & Save] in the GUI |
-| 8/8 Done | Shows the start entry | Click /hilltop start in chat |
+| 8/8 Done | Shows the start entry plus an enable hint (auto-queue outcome; an [Enable Arena] button is attached when not auto-enabled) | Click /hilltop start in chat |
+
+> **Particle color guide**: every location preview uses a colored beam + spiral, one color per location type — player spawn=**green**, mob spawn=**red**, energy node=**blue**, protected villager=**yellow**, shop=**gold**. This applies to the Step 3 manager GUIs, the Step 4 node GUI, the Step 5 villager GUI, the Step 6 shop button, `/hilltop deploy showparticles`, and the Shift+Left-click preview in the arena management GUI (`/hilltop manage`).
 
 **The three key concepts**
 
@@ -228,8 +236,8 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 | View | What you can do |
 |------|-----------------|
 | **List** | See all arenas; left-click to open the detail page |
-| **Detail** | Status / world / players / waves / deployment counts / shop location / parameter summary; enable, disable, teleport to core, open the sub-lists |
-| **Player-spawn / Mob-spawn / Node / Villager lists** | 45 entries per page; **left-click to teleport**, **right-click to delete** one entry, **Shift+Left-click** to preview its position with particles |
+| **Detail** | Status / world / players / waves / deployment counts / shop location / parameter summary; enable, disable, teleport to core, open the sub-lists, **right-click the shop entry to clear the shop NPC** (location + entity; refused mid-match) |
+| **Player-spawn / Mob-spawn / Node / Villager lists** | 45 entries per page; **left-click to teleport**, **right-click to delete** one entry, **Shift+Left-click** to preview its position with particles (color matches the list type: spawn green / mob spawn red / node blue / villager yellow) |
 | **Game parameters** | Edit that arena's `min-players` / `max-players` / `victory-waves` / `wave-interval-seconds`; left-click and type the new value in chat |
 | **Restore initial state** | Wipe all deployment data + game parameters of that arena and force-rollback the map blocks, so you can redeploy from scratch |
 
@@ -248,6 +256,7 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 | Mob spawn points set | `/hilltop deploy listmobspawns` | At least 1 mob spawn point |
 | Nodes registered | `/hilltop deploy` menu | Known nodes > 0 |
 | Villagers registered | `/hilltop deploy listvillagers` | At least 1 villager |
+| Shop set | `/hilltop deploy setshop`, then check on site | Shop villager spawned; use `/hilltop deploy clearshop` to start over |
 | Overall status | `/hilltop status` | Shows wave/players/mobs/nodes |
 
 > If both spawn sets are empty, `/hilltop start` refuses to start and tells you to finish deployment first.
@@ -271,6 +280,8 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 /hilltop deploy reloadnodes    # reload node configuration
 /hilltop deploy addvillager    # stand at each villager location (repeatable)
 /hilltop deploy listvillagers  # list all registered villagers
+/hilltop deploy setshop        # stand at the shop spot (spawns the shop NPC immediately)
+/hilltop deploy clearshop      # clear this arena's shop (refused mid-match)
 ```
 
 ## Gameplay Workflow
@@ -426,7 +437,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop help` | Show command help (Admin) | ✅ |
 | `/hilltop list` | List all arenas | ✅ |
 | `/hilltop arenas` | Detailed arena status (Admin) | ✅ |
-| `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/player-spawn/mob-spawn/villager, edit game parameters, restore initial state (Admin) | ❌ |
+| `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/player-spawn/mob-spawn/villager/shop NPC (right-click the shop entry on the detail page), edit game parameters, restore initial state (Admin) | ❌ |
 | `/hilltop enable [arena]` | Add an arena to the enable queue (Admin) | ✅ |
 | `/hilltop disable [arena]` | Disable an arena for maintenance (Admin) | ✅ |
 | `/hilltop deploy` | Open deploy menu (Admin) | ❌ |
@@ -453,11 +464,13 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `delmobspawn <id>` | Delete a mob spawn point by ID |
 | `clearmobspawns` | Clear all mob spawn points (requires `confirmclearmob`) |
 | `reloadnodes` | Re-scan energy nodes |
-| `showparticles` | Show spawn point particle display (30s) |
+| `showparticles` | Show particle display at all player spawn points (30s, green beams) |
 | `addvillager` | Register your position as a villager (all dead = defeat) |
 | `listvillagers` | List all registered villagers |
 | `delvillager <id>` | Remove a villager by id |
 | `clearvillagers` | Clear all villagers |
+| `setshop` | Set the shop NPC to your position and spawn it immediately |
+| `clearshop` | Clear this arena's shop NPC (location + entity; refused mid-match — run `stop` first) |
 
 ### Setup Wizard Sub-commands (`/hilltop setup`)
 
@@ -468,21 +481,24 @@ Available while the wizard is in progress (normally triggered via clickable chat
 | `confirm-world` | Confirm game world (Step 1) |
 | `confirm-core` | Set current location as village core (Step 2) |
 | `addspawn` | Add current location as player spawn point (Step 3, feedback includes index) |
-| `spawngui` | Open player spawn point manager GUI (Step 3, reopenable anytime) |
-| `spawns-done` | Finish spawn point setup (Step 3, kept for backward compat; use [Done] in the GUI) |
+| `overview` | Open the Spawn Points Overview GUI (Step 3 hub: counts/status of both sets + two sub-manager entries + the single [Done]) |
+| `spawngui` | Open player spawn point manager GUI (Step 3, direct; [Back to Overview] returns to the hub) |
+| `spawns-done` | Finish spawn point setup (Step 3, kept for backward compat only; same logic as [Done] in the overview) |
 | `addmobspawn` | Add current location as mob spawn point (Step 3, feedback includes index) |
-| `mobspawngui` | Open mob spawn point manager GUI (Step 3, reopenable anytime) |
+| `mobspawngui` | Open mob spawn point manager GUI (Step 3, direct; [Back to Overview] returns to the hub) |
 | `confirm-nodes` | Confirm energy node scan result (Step 4) |
 | `rescan` | Rescan energy nodes and re-send the Step 4 message (Step 4) |
 | `villagers-done` | Finish villager placement and move to the shop step (Step 5, requires at least 1 villager) |
-| `confirm-shop` | Set current location as shop villager position and spawn the NPC immediately (Step 6, **required**) |
+| `confirm-shop` | Set current location as shop villager position and spawn the NPC immediately (Step 6, **required**; you stay on the step and can overwrite / clear) |
+| `showshopparticles` | Preview the shop location with a gold particle beam (Step 6; tells you if not set yet) |
+| `clear-shop` | Clear this arena's shop location and NPC (Step 6; you stay on the step; refused mid-match) |
 | `preview` | Open the config preview GUI (Step 7; refused with a jump back if spawns/villagers/shop are missing) |
 | `goto <step>` | Jump to a specific step (1-8) |
 
-> Step 3 deploys two independent sets: walk to a player-spawn location and click [Add Current Location] (feedback: "Spawn point #N added"), then walk to a mob-spawn location and click [Add Mob Spawn] (feedback: "Mob spawn point #N added"). [Open Spawn Manager] / [Open Mob Spawn Manager] open 54-slot GUIs (45 entries per page) to review/delete either set at any time. The [Done] button lives in either manager GUI (slot 51) — both sets must have at least 1 point to leave this step.
+> Step 3 deploys two independent sets: walk to a player-spawn location and click [Add Current Location] (feedback: "Spawn point #N added"), then walk to a mob-spawn location and click [Add Mob Spawn] (feedback: "Mob spawn point #N added"). [Open Spawn Points Overview] opens the Step 3 hub: counts and status of both sets, plus entries into the two 54-slot sub-manager GUIs (45 entries per page, each with [Back to Overview]). The hub carries the single [Done] button (green when both sets have ≥1 point) — both sets must have at least 1 point to leave this step.
 > Step 4 explains that energy nodes are respawn anchors placed in the world (auto-detected); place more blocks and click [Rescan Nodes] to recount.
-> Step 5 villagers are a **defeat condition**: the game is lost if all of them die, so place at least 1. Walk around and click [Add Villager] to record, [Villager Manager] to review, [Done] to continue.
-> Step 6 shop location is **required**: a shop villager position must be set before deployment can finish. The shop villager position persists per arena in the `arenas.<id>.shop-npc` node of `arenas.yml` and auto-restores on server restart; leftover duplicate shop villager entities are cleaned up automatically on plugin startup.
+> Step 5 villagers are a **defeat condition**: the game is lost if all of them die, so place at least 1. Walk around and click [Add Villager] to record — each recorded villager spawns an invulnerable, non-collidable preview villager at that spot (numbered overhead, e.g. “Villager #3”) so you can see exactly where they are; these previews live only during Step 5 and are removed the moment you leave it. [Open Villager Manager] opens the review GUI (its [Show Particles] previews all villagers in yellow); click [Done] to continue.
+> Step 6 shop location is **required**: a shop villager position must be set before deployment can finish. Stand where you want it and click [Set Shop Location] (you stay on the step and can overwrite / clear); [Clear Shop Location] wipes it to start over and [Continue] opens the preview. The position persists per arena in the `arenas.<id>.shop-npc` node of `arenas.yml` and auto-restores on server restart; leftover duplicate shop villager entities are cleaned up automatically on plugin startup. `/hilltop deploy setshop` / `/hilltop deploy clearshop` and right-clicking the shop entry on the `/hilltop manage` detail page offer the same set / clear entry points (clearing is refused mid-match — run `stop` first).
 > `/hilltop start` validates first: if a game is already running it tells you to stop first; if player count is below min-players it reports current/required counts instead of failing silently.
 
 ### Config Sub-commands (`/hilltop config`)

@@ -149,6 +149,20 @@ public class CommandsDocumentGenerator {
         md.append("- **使用示例**: `/hilltop deploy reloadnodes`\n");
         md.append("- **注意事项**: 重新从世界方块中加载能量节点，用于地图更新后刷新节点状态。\n\n");
 
+        md.append("### `/hilltop deploy setshop`\n\n");
+        md.append("- **功能**: 将管理员当前所在坐标设为商店 NPC 位置，并立即生成商店村民。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy setshop`\n");
+        md.append("- **注意事项**: 需站在目标竞技场世界内执行。位置按竞技场持久化在 `arenas.yml` 的 `arenas.<id>.shop-npc`，可重复执行覆盖旧位置（NPC 先移除再生成）。与向导第 6 步 [设置商店位置] 等效。\n\n");
+
+        md.append("### `/hilltop deploy clearshop`\n\n");
+        md.append("- **功能**: 清除本竞技场的商店 NPC（位置条目 + 实体）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy clearshop`\n");
+        md.append("- **注意事项**: 删除 `arenas.yml` 的 `arenas.<id>.shop-npc` 并移除「正站在本竞技场世界」的商店村民实体（商店 NPC 为插件级单例，别处竞技场 / 大厅的商店不受影响）。**对局进行中会被拒绝**，需先 `/hilltop stop`。清除后商店变为「未设置」，向导第 7 步与最终确认会重新要求设置。\n\n");
+
         md.append("### `/hilltop manage`\n\n");
         md.append("- **功能**: 打开竞技场管理 GUI。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");

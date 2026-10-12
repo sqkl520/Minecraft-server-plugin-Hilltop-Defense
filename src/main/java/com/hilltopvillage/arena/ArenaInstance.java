@@ -974,6 +974,10 @@ public class ArenaInstance implements IArena {
         nodeSystem.applyAllBuffs();
 
         // 生成待保护村民（全部阵亡 = 游戏失败）
+        // 关键隔离：先清掉部署期残留的村民预览实体。预览是纯装饰、绝对无敌（取消一切伤害）且带独立的
+        // PDC 标记，VillagerSystem 既不会把它当真村民、其孤儿清理也不会删它 —— 一旦漏进对局，
+        // 就会凭空多出一批打不死的“村民”把游戏搞坏。此处是本场开局的最后屏障。
+        plugin.getVillagerPreviewManager().clearInWorld(getWorld());
         villagerSystem.cleanupOrphans();
         villagerSystem.spawnAll();
 

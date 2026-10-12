@@ -3,7 +3,6 @@ package com.hilltopvillage.admin;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Location;
-import org.bukkit.Particle;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -16,13 +15,15 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 按玩家隔离的通用坐标粒子预览（生成点 / 能量节点 / 待保护村民共用）。
+ * 按玩家隔离的通用坐标粒子预览（出生点 / 刷怪点 / 能量节点 / 村民共用）。
  *
- * <p>为什么不复用 {@link AdminDeployManager#showNodeParticles}：那边文案硬编码中文、
- * {@code showParticlesTaskId} 是单实例字段（两个玩家同时预览会互相打断），
- * 而且「未实例化的竞技场」根本拿不到对应的 {@code AdminDeployManager}。</p>
+ * <p>为什么不复用 {@link AdminDeployManager} 的预览方法：那边 {@code showParticlesTaskId}
+ * 是单实例字段（两个玩家同时预览会互相打断），而且「未实例化的竞技场」根本拿不到对应的
+ * {@code AdminDeployManager}。</p>
  *
- * <p>本类按 {@link UUID} 隔离任务，不同玩家互不打断；文案全部走 {@link LanguageManager}。</p>
+ * <p>本类按 {@link UUID} 隔离任务，不同玩家互不打断；文案全部走 {@link LanguageManager}。
+ * 点位配色由调用方通过 {@link PointKind} 指定（F-7 五类点位配色体系），
+ * 绘制统一走 {@link PointParticleRenderer}，与部署向导侧视觉一致。</p>
  *
  * <p><b>线程约束：</b>本类所有方法均必须在主线程调用（Bukkit 事件线程），
  * 内部使用 {@code runTaskTimer} 而非异步任务，粒子生成也在主线程完成。
@@ -50,9 +51,10 @@ public final class LocationParticlePreview {
      *
      * @param viewer        观看者
      * @param locations     待预览坐标（世界未加载的点会被跳过，不抛异常）
+     * @param kind          点位类别（决定粒子颜色，见 {@link PointKind}）
      * @param durationTicks 持续时间（tick），到点自动结束
      */
-    public void show(Player viewer, List<Location> locations, long durationTicks) {
+    public void show(Player viewer, List<Location> locations, PointKind kind, long durationTicks) {
         if (viewer == null) return;
 
         // 先停掉该玩家上一次的预览
@@ -97,48 +99,9 @@ public final class LocationParticlePreview {
                     // 距离剔除：viewer 超过 64 格则跳过该点
                     if (viewer.getLocation().distanceSquared(loc) > VIEW_DISTANCE * VIEW_DISTANCE) continue;
 
-                    // === 方案C：符文 + 垂直光柱（与 AdminDeployManager 视觉一致）===
-
-                    // 1. 垂直光柱（END_ROD 白色粒子，从地面到 y+20）
-                    //
-                    // 【为什么保留 51 次逐点调用，不做「一次调用 + 大 offset」合并】
-                    // 性能审计建议合并为 1 次（count=51、中心 y+10、offset y=10），前提是
-                    // offset 为「均匀覆盖范围」。反编译 paper-1.21.4 核实该前提不成立：
-                    //   ServerLevel.sendParticlesSource(ServerPlayer,...)
-                    //     → 构造 ClientboundLevelParticlesPacket（字段名 xDist/yDist/zDist
-                    //       已用 javap 确认）→ private sendParticles(...) 里只做
-                    //       同世界 + 距离（32 格 / overrideLimiter 时 512 格）判定，不做范围变换。
-                    //   offset 的语义在客户端 ClientPacketListener#handleParticleEvent，
-                    //   该 jar 为纯服务端包（无 net/minecraft/client/*），故此项无法在本机核实，
-                    //   依据既有知识：count>0 时 offset 是高斯散布的标准差 σ，
-                    //   count==0 时才当作速度。
-                    // 两种口径下结论相同：无论 σ 还是均匀半径，σ=10 都会让约 32% 粒子
-                    // 落到 y<0 或 y>20 之外，且密度中浓端淡、地面起点消失 ——
-                    // 与现状不一致。因此保留逐点循环（本类的真实收益来自别处）。
-                    //
-                    // 另外：本方法在循环开头已有 `viewer.getWorld() != world` 与 64 格距离剔除，
-                    // 且每 4 tick 才跑一次、每个 viewer 一个任务，因此这条路径并不是热路径。
-                    double beamHeight = 20.0;
-                    double beamStep = 0.4;  // 每0.4格一个粒子（y=0→20 共 51 次迭代）
-                    for (double y = 0; y <= beamHeight; y += beamStep) {
-                        world.spawnParticle(Particle.END_ROD,
-                            loc.getX() + 0.5, loc.getY() + y, loc.getZ() + 0.5,
-                            1, 0, 0, 0, 0);
-                    }
-
-                    // 2. 周围螺旋符文装饰（ENCHANTED_HIT 紫色附魔粒子）
-                    double spiralRadius = 1.2;
-                    double spiralHeight = 3.0;
-                    int spiralPoints = 3;  // 每帧3个粒子点
-                    for (int i = 0; i < spiralPoints; i++) {
-                        double spiralAngle = angle + (i * 2 * Math.PI / spiralPoints);
-                        double spiralY = (ticksElapsed % 60) * (spiralHeight / 60.0);  // 3秒循环一次
-                        double spiralX = loc.getX() + 0.5 + Math.cos(spiralAngle) * spiralRadius;
-                        double spiralZ = loc.getZ() + 0.5 + Math.sin(spiralAngle) * spiralRadius;
-                        world.spawnParticle(Particle.ENCHANTED_HIT,
-                            spiralX, loc.getY() + spiralY, spiralZ,
-                            1, 0, 0, 0, 0);
-                    }
+                    // 类别色标记（垂直光柱 + 环绕螺旋）；逐点循环而非「一次调用 + 大 offset」
+                    // 的原因见 PointParticleRenderer 的类 javadoc。
+                    PointParticleRenderer.drawMarker(world, loc, kind, angle, ticksElapsed);
                 }
 
                 ticksElapsed++;

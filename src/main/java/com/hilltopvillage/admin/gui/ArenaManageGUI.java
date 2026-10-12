@@ -9,6 +9,7 @@ import com.hilltopvillage.admin.ArenaResetService.Gate;
 import com.hilltopvillage.admin.ArenaResetService.Outcome;
 import com.hilltopvillage.admin.ArenaResetService.ReinstateSkip;
 import com.hilltopvillage.admin.LocationParticlePreview;
+import com.hilltopvillage.admin.PointKind;
 import com.hilltopvillage.arena.ArenaDefinition;
 import com.hilltopvillage.arena.ArenaStatus;
 import com.hilltopvillage.arena.MultiArenaManager;
@@ -101,12 +102,19 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         RESET_CONFIRM
     }
 
-    /** 四个坐标列表视图的差异（数据源 / 图标 / 标题键），渲染与删除逻辑共用一份。 */
+    /** 四个坐标列表视图的差异（数据源 / 图标 / 标题键 / 预览配色），渲染与删除逻辑共用一份。 */
     private enum ListKind {
-        SPAWN,
-        MOB_SPAWN,
-        NODE,
-        VILLAGER
+        SPAWN(PointKind.SPAWN),
+        MOB_SPAWN(PointKind.MOB_SPAWN),
+        NODE(PointKind.NODE),
+        VILLAGER(PointKind.VILLAGER);
+
+        /** 粒子预览的颜色类别（F-7 五类点位配色体系） */
+        final PointKind pointKind;
+
+        ListKind(PointKind pointKind) {
+            this.pointKind = pointKind;
+        }
     }
 
     private View view = View.LIST;
@@ -283,16 +291,44 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         fillEmpty();
     }
 
-    /** 商店 NPC：只读展示坐标；未设置时用中性图标，不注册点击。 */
+    /**
+     * 商店 NPC：展示坐标；已设置时右键可清除，未设置时用中性图标、不注册点击。
+     *
+     * <p>坐标读 {@link ArenaAdminService#shopNpc(String)}（实例优先 / YAML 兜底），
+     * 不读 {@code ArenaDefinition#getShopNpc()} —— 后者是 registry 的固化副本，清除后不会立即更新。
+     * 清除用右键（与坐标列表的「右键删除」同一约定），其余点击类型忽略防误触。</p>
+     */
     private void renderShopItem(ArenaView arena) {
         if (!arena.shopNpcSet()) {
             setItemWithData(19, Material.GRAY_DYE, lang.getFor(admin, "manage.detail.shop"),
                     List.of(lang.getFor(admin, "manage.detail.shop-none")));
             return;
         }
-        Location shop = shopNpcOf(arena.arenaId());
-        setItemWithData(19, Material.EMERALD, lang.getFor(admin, "manage.detail.shop"),
-                List.of(lang.getFor(admin, "manage.detail.shop-lore", shop == null ? "-" : coords(shop))));
+        Location shop = adminService().shopNpc(arena.arenaId());
+        setClickableItemWithData(19, Material.EMERALD, lang.getFor(admin, "manage.detail.shop"),
+                List.of(lang.getFor(admin, "manage.detail.shop-lore", shop == null ? "-" : coords(shop)),
+                        lang.getFor(admin, "manage.detail.shop-clear-lore")),
+                clickType -> {
+                    if (clickType != ClickType.RIGHT) return;
+                    clearShopNpc(arena.arenaId());
+                });
+    }
+
+    /**
+     * 清除商店 NPC（右键商店条目）。
+     *
+     * <p>结果按 {@link ArenaAdminService.ShopNpcDelete} 逐项播报；成功后 {@code reopen()} 重建详情页，
+     * 商店条目立即回到「未设置」状态（读数走 {@code shopNpc()}，不依赖 registry 的陈旧定义）。</p>
+     */
+    private void clearShopNpc(String arenaId) {
+        switch (adminService().deleteShopNpc(arenaId)) {
+            case OK -> lang.send(admin, "manage.detail.shop-cleared");
+            case ARENA_NOT_FOUND -> lang.send(admin, "manage.reset.blocked-not-found");
+            case NOT_SET -> lang.send(admin, "manage.detail.shop-clear-none");
+            case GAME_IN_PROGRESS -> lang.send(admin, "manage.detail.shop-clear-in-game", arenaId);
+            case WRITE_FAILED -> lang.send(admin, "manage.entry.delete-failed");
+        }
+        reopen();
     }
 
     /**
@@ -425,7 +461,8 @@ public class ArenaManageGUI extends AbstractAdminMenu {
     private void handleLocationClick(ListKind kind, String arenaId, int index, Location location,
                                      String worldName, ClickType clickType) {
         if (clickType == ClickType.SHIFT_LEFT) {
-            previewService().show(admin, List.of(location), PREVIEW_TICKS);
+            // 透传列表类别：预览颜色与该列表的点位类型一致（出生点绿 / 刷怪点红 / 节点蓝 / 村民黄）
+            previewService().show(admin, List.of(location), kind.pointKind, PREVIEW_TICKS);
             return;
         }
 
@@ -941,12 +978,6 @@ public class ArenaManageGUI extends AbstractAdminMenu {
     private Location coreOf(String arenaId) {
         ArenaDefinition definition = definitionOf(arenaId);
         return definition == null ? null : definition.getCore();
-    }
-
-    /** 商店 NPC 坐标；竞技场不存在或未设置返回 null。 */
-    private Location shopNpcOf(String arenaId) {
-        ArenaDefinition definition = definitionOf(arenaId);
-        return definition == null ? null : definition.getShopNpc();
     }
 
     private ArenaDefinition definitionOf(String arenaId) {

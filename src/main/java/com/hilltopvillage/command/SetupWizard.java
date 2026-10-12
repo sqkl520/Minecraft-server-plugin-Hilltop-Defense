@@ -5,6 +5,7 @@ import com.hilltopvillage.admin.AdminDeployManager;
 import com.hilltopvillage.arena.ArenaDefinition;
 import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.core.GameManager;
+import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.util.LanguageManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -106,6 +107,14 @@ public class SetupWizard implements Listener {
             deploymentContexts.remove(arenaId);
             return live.getGameManager();
         }
+        GameManager cached = deploymentContexts.get(arenaId);
+        if (cached != null) {
+            // 每次取用时重读 arenas.yml：部署期上下文的 AdminDeployManager 在构造时缓存了整份文件副本，
+            // 两次向导操作之间磁盘可能被外部写入（如管理 GUI 的商店清除、其它竞技场的部署命令），
+            // 不刷新的话向导的下一次 saveSpawnPoints() 会拿旧内存值把外部改动整份写回（「清除没生效」）。
+            cached.getAdminDeployManager().loadSpawnPoints();
+            return cached;
+        }
         return deploymentContexts.computeIfAbsent(arenaId, this::createDeploymentContext);
     }
 
@@ -125,9 +134,13 @@ public class SetupWizard implements Listener {
      *
      * <p>仅当该竞技场当前还没有正式实例时才 reload+enable（re-setup 已部署竞技场时实例已在跑、无需重启；
      * {@code enabled: false} 的竞技场会被 {@code enableArena} 如实拒绝，符合预期）。</p>
+     *
+     * @return true = 该竞技场已就绪或已成功入队（玩家可 join）；false = 未能启用，
+     *         需要服主检查 arenas.yml（{@code enabled: false} 时按 F-3 文案指引改 true 重启，
+     *         或在 {@code auto-start-arenas=false} 时用 /hilltop enable 手动入队）
      */
-    private void finishDeployment(String arenaId) {
-        if (arenaId == null) return;
+    private boolean finishDeployment(String arenaId) {
+        if (arenaId == null) return false;
         if (plugin.getMultiArenaManager().getArena(arenaId) == null) {
             // 部署数据已由 AdminDeployManager 写入 arenas.yml，但 registry 里的定义仍是旧快照（core 为空），
             // 必须先 reload 让 enableArena 读到非空 core，否则会被「尚未部署核心」拒绝。
@@ -135,6 +148,9 @@ public class SetupWizard implements Listener {
             plugin.getMultiArenaManager().enableArena(arenaId);
         }
         deploymentContexts.remove(arenaId);
+        // enableArena 返回 true 覆盖三种情形：已就绪 / 刚入队 / 已在队列中；只有被拒绝才需要服主手动处理
+        return plugin.getMultiArenaManager().getArena(arenaId) != null
+                || plugin.getMultiArenaManager().getStatus(arenaId).isPending();
     }
 
     public void start(Player player) {
@@ -184,6 +200,11 @@ public class SetupWizard implements Listener {
     private static final int TOTAL_STEPS = 8;
 
     private void showStep(Player player, SetupSession s) {
+        // 预览村民只服务于第 5 步村民管理：一旦离开该步就立即移除，
+        // 避免它们残留到后续步骤、部署完成乃至开局（与开局生成的真村民混淆）。
+        if (s.step != 5) {
+            clearVillagerPreviews(player);
+        }
         switch (s.step) {
             case 1: showStepWorld(player, s); break;
             case 2: showStepCore(player, s); break;
@@ -240,40 +261,76 @@ public class SetupWizard implements Listener {
     }
 
     /**
-     * 发送 Step 3 的可点击按钮行（添加当前位置 / 打开生成点管理）。
-     * 完成入口统一放在生成点管理 GUI 内（slot 51），聊天栏不再放 [完成] 按钮避免误触。
+     * 发送 Step 3 的可点击按钮行（添加当前位置 / 添加刷怪点 / 打开生成点总览 / 保存并返回大厅）。
+     *
+     * <p>F-9：两个子管理界面收进「生成点总览」枢纽，聊天栏只保留一个入口按钮；
+     * 全流程唯一的 [完成] 按钮在总览 GUI 内（底行正中 slot 49），聊天栏不再放 [完成] 避免误触。</p>
      */
     private void sendSpawnButtons(Player player) {
         List<Button> buttons = new ArrayList<>();
         buttons.add(new Button(lang.getFor(player, "setup.btn-add"), "/hilltop setup addspawn"));
-        buttons.add(new Button(lang.getFor(player, "setup.btn-open-gui"), "/hilltop setup spawngui"));
-        // STORY-1.2：怪物刷怪点入口（与玩家出生点同一行，避免聊天栏过长分两次发送）
         buttons.add(new Button(lang.getFor(player, "setup.btn-add-mobspawn"), "/hilltop setup addmobspawn"));
-        buttons.add(new Button(lang.getFor(player, "setup.btn-open-mobspawn-gui"), "/hilltop setup mobspawngui"));
+        // F-9：总览入口（内含两个子管理界面与唯一 [完成]）
+        buttons.add(new Button(lang.getFor(player, "setup.btn-open-overview"), "/hilltop setup overview"));
         buttons.add(new Button(lang.getFor(player, "setup.btn-save-exit"), "/hilltop setup saveexit"));
         sendButtonLine(player, buttons);
     }
 
-    /** 打开生成点管理 GUI（可从聊天按钮或命令随时重新打开，不再丢失入口） */
+    /**
+     * 打开生成点总览 GUI（F-9：第 3 步的枢纽界面——作者需求「将两个管理界面用一个界面链接起来，
+     * 在那个链接界面添加完成按钮」）。聊天栏 [打开生成点总览] 按钮与命令 {@code /hilltop setup overview}
+     * 均走这里；界面内显示两套点的计数与状态、两个子管理界面入口，以及全流程唯一的 [完成]。
+     */
+    private void showStepSpawnsOverview(Player player) {
+        openWizardGui(player, buildSpawnsOverview(player));
+    }
+
+    /** 构建生成点总览界面（不打开；供同步打开与点击后的延迟切换共用） */
+    private Inventory buildSpawnsOverview(Player player) {
+        Inventory inv = Bukkit.createInventory(player, 54,
+                lang.getFor(player, "setup.gui-spawns-overview-title"));
+        refreshSpawnsOverview(inv, player);
+        return inv;
+    }
+
+    /** 打开生成点管理 GUI（可从聊天按钮或命令随时重新打开，不再丢失入口；F-9 起亦可从总览进入） */
     private void showStepSpawnsGui(Player player, SetupSession s) {
-        // 54-slot GUI with pagination
+        openWizardGui(player, buildSpawnGui(player, s));
+    }
+
+    /** 构建生成点管理界面（54 格，带翻页；不打开——F-9 总览内延迟切换复用） */
+    private Inventory buildSpawnGui(Player player, SetupSession s) {
         Inventory inv = Bukkit.createInventory(player, 54,
                 lang.getFor(player, "setup.gui-spawns-title"));
         refreshSpawnGui(inv, player, s.spawnPage);
-        // 先 unregister 再 register，防止 step3 → reset → step3 导致二次注册喵
-        HandlerList.unregisterAll(this);
-        Bukkit.getPluginManager().registerEvents(this, plugin);
-        player.openInventory(inv);
+        return inv;
     }
 
     /** 打开怪物刷怪点管理 GUI（STORY-1.2：与生成点 GUI 同布局，数据源为 mob-spawn-points） */
     private void showStepMobSpawnsGui(Player player, SetupSession s) {
+        openWizardGui(player, buildMobSpawnGui(player, s));
+    }
+
+    /** 构建怪物刷怪点管理界面（不打开；F-9 总览内延迟切换复用） */
+    private Inventory buildMobSpawnGui(Player player, SetupSession s) {
         Inventory inv = Bukkit.createInventory(player, 54,
                 lang.getFor(player, "setup.gui-mobspawns-title"));
         refreshMobSpawnGui(inv, player, s.mobSpawnPage);
+        return inv;
+    }
+
+    /**
+     * 打开向导 GUI 并保证监听器在位。
+     *
+     * <p>注册必须放在 {@code openInventory} <b>之后</b>：打开新界面会同步触发旧界面的
+     * InventoryCloseEvent（若旧界面是生成点/刷怪点界面，onSetupInventoryClose 会把监听器
+     * unregister 掉），先注册后打开会被这一步连带注销，导致新界面点击无反应喵。
+     * 打开后再 unregister + register 同时防止重复注册。</p>
+     */
+    private void openWizardGui(Player player, Inventory inv) {
+        player.openInventory(inv);
         HandlerList.unregisterAll(this);
         Bukkit.getPluginManager().registerEvents(this, plugin);
-        player.openInventory(inv);
     }
 
     private void refreshSpawnGui(Inventory inv, Player player, int page) {
@@ -303,9 +360,9 @@ public class SetupWizard implements Listener {
         // slot 49: add current location
         inv.setItem(49, makeItem(Material.EMERALD_BLOCK, lang.getFor(player, "setup.btn-add"),
                 lang.getFor(player, "setup.btn-add-lore"), "setup-add-spawn"));
-        // slot 51: done
-        inv.setItem(51, makeItem(Material.GREEN_WOOL, lang.getFor(player, "setup.btn-done"),
-                lang.getFor(player, "setup.btn-done-lore"), "setup-spawns-done"));
+        // slot 51: F-9 返回总览（[完成] 已统一收敛到总览 GUI，此处不再放第二个完成按钮）
+        inv.setItem(51, makeItem(Material.RED_STAINED_GLASS_PANE,
+                lang.getFor(player, "setup.btn-back-overview"), "setup-back-overview"));
         // slot 53: next page arrow (or placeholder)
         int maxPage = points.isEmpty() ? 0 : (points.size() - 1) / SPAWNS_PER_PAGE;
         if (page < maxPage) {
@@ -313,6 +370,70 @@ public class SetupWizard implements Listener {
         } else {
             inv.setItem(53, makeItem(Material.GRAY_STAINED_GLASS_PANE, " ", "setup-noop"));
         }
+    }
+
+    /**
+     * 刷新生成点总览 GUI（F-9 枢纽，全 54 格无翻页）。
+     *
+     * <p>布局：两套点各一行「计数 + 状态」信息物品与子管理入口按钮（对称），
+     * 底行唯一 [完成] 居中。校验与旧完成入口完全一致（两套各 ≥1）。</p>
+     */
+    private void refreshSpawnsOverview(Inventory inv, Player player) {
+        inv.clear();
+        int spawnCount = deploy(player).getSpawnPoints().size();
+        int mobCount = deploy(player).getMobSpawnPoints().size();
+
+        // 第 2 行：玩家出生点（信息 + 状态）
+        inv.setItem(11, makeItem(Material.COMPASS,
+                lang.getFor(player, "setup.overview-spawn-status",
+                        String.valueOf(spawnCount)),
+                spawnCount > 0 ? lang.getFor(player, "setup.overview-status-ok")
+                        : lang.getFor(player, "setup.overview-status-missing"),
+                "setup-noop"));
+        // 第 2 行：怪物刷怪点（信息 + 状态）
+        inv.setItem(15, makeItem(Material.SPAWNER,
+                lang.getFor(player, "setup.overview-mobspawn-status",
+                        String.valueOf(mobCount)),
+                mobCount > 0 ? lang.getFor(player, "setup.overview-status-ok")
+                        : lang.getFor(player, "setup.overview-status-missing"),
+                "setup-noop"));
+        // 第 3 行：两个子管理界面入口（与上方信息物品垂直对齐）
+        inv.setItem(20, makeItem(Material.CHEST,
+                lang.getFor(player, "setup.btn-open-gui"),
+                lang.getFor(player, "setup.overview-open-gui-lore"), "setup-open-spawns-gui"));
+        inv.setItem(24, makeItem(Material.CHEST,
+                lang.getFor(player, "setup.btn-open-mobspawn-gui"),
+                lang.getFor(player, "setup.overview-open-mobspawn-gui-lore"), "setup-open-mobspawns-gui"));
+        // 底行正中：唯一 [完成]（F-9 的核心 —— 全流程只有一个完成入口）
+        boolean ready = spawnCount > 0 && mobCount > 0;
+        inv.setItem(49, makeItem(ready ? Material.GREEN_WOOL : Material.GRAY_WOOL,
+                lang.getFor(player, "setup.btn-done"),
+                ready ? lang.getFor(player, "setup.btn-done-lore")
+                        : lang.getFor(player, "setup.overview-done-locked-lore"),
+                "setup-overview-done"));
+    }
+
+    /**
+     * 第 3 步完成收口：两套点各 ≥1 才推进到第 4 步（校验与旧双完成按钮完全一致）。
+     *
+     * <p>调用方：总览 GUI 的 [完成]、旧版 GUI 遗留 tag（{@code setup-spawns-done} /
+     * {@code setup-mobspawns-done}）与命令 {@code /hilltop setup spawns-done}——
+     * 三处自此共用同一份校验 + 推进 + 保存实现。</p>
+     */
+    private void tryFinishSpawnsStep(Player player, SetupSession s) {
+        if (deploy(player).getSpawnPoints().isEmpty()) {
+            player.sendMessage(lang.getFor(player, "setup.spawns-required"));
+            return;
+        }
+        if (deploy(player).getMobSpawnPoints().isEmpty()) {
+            player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
+            return;
+        }
+        HandlerList.unregisterAll(this);
+        player.closeInventory();
+        s.advance();
+        autoSave(player);
+        showStep(player, s);
     }
 
     /** 刷新怪物刷怪点管理 GUI（STORY-1.2：slot 布局与 refreshSpawnGui 完全一致，tags 加 mob- 前缀隔离） */
@@ -339,13 +460,13 @@ public class SetupWizard implements Listener {
         }
         // slot 47: show particles
         inv.setItem(47, makeItem(Material.FIREWORK_STAR, lang.getFor(player, "setup.btn-show-particles"),
-                lang.getFor(player, "setup.btn-show-particles-lore"), "setup-mob-show-particles"));
+                lang.getFor(player, "setup.btn-particles-lore-mobspawn"), "setup-mob-show-particles"));
         // slot 49: add current location
         inv.setItem(49, makeItem(Material.EMERALD_BLOCK, lang.getFor(player, "setup.btn-add"),
                 lang.getFor(player, "setup.btn-add-lore"), "setup-add-mobspawn"));
-        // slot 51: done
-        inv.setItem(51, makeItem(Material.GREEN_WOOL, lang.getFor(player, "setup.btn-done"),
-                lang.getFor(player, "setup.btn-done-lore"), "setup-mobspawns-done"));
+        // slot 51: F-9 返回总览（[完成] 已统一收敛到总览 GUI，此处不再放第二个完成按钮）
+        inv.setItem(51, makeItem(Material.RED_STAINED_GLASS_PANE,
+                lang.getFor(player, "setup.btn-back-overview"), "setup-mob-back-overview"));
         // slot 53: next page arrow (or placeholder)
         int maxPage = points.isEmpty() ? 0 : (points.size() - 1) / SPAWNS_PER_PAGE;
         if (page < maxPage) {
@@ -437,6 +558,10 @@ public class SetupWizard implements Listener {
                     null, "villager-prev-page"));
         }
 
+        // slot 47: 显示粒子（F-7：黄色光柱 = 待保护村民，与生成点 GUI 布局一致）
+        inv.setItem(47, taggedItem(Material.FIREWORK_STAR, lang.getFor(player, "setup.btn-show-particles"),
+                lang.getFor(player, "setup.btn-particles-lore-villager"), "villager-show-particles"));
+
         inv.setItem(49, taggedItem(Material.VILLAGER_SPAWN_EGG,
                 lang.getFor(player, "setup.btn-add-villager"),
                 lang.getFor(player, "setup.btn-add-villager-lore"), "setup-add-villager-item"));
@@ -479,6 +604,33 @@ public class SetupWizard implements Listener {
         } else {
             sendVillagerButtons(player);
         }
+    }
+
+    // === 村民预览实体（第 5 步专用，见 VillagerPreviewManager） ===
+
+    /**
+     * 把本次部署竞技场世界内的村民预览实体同步为与已登记位置一一对应（序号 = 下标 + 1）。
+     * 进入第 5 步、增删村民后调用；预览实体与开局真村民完全隔离（独立 PDC 标记 + 独立生命周期）。
+     */
+    private void syncVillagerPreviews(Player player) {
+        AdminDeployManager d = deploy(player);
+        if (d == null) return;
+        World world = arenaWorld(player);
+        if (world == null) return;
+        plugin.getVillagerPreviewManager().syncPreviews(world, d.getVillagers(), player);
+    }
+
+    /** 清理本次部署竞技场世界内的村民预览实体（离开第 5 步 / 会话结束 / 部署完成时调用，幂等） */
+    private void clearVillagerPreviews(Player player) {
+        World world = arenaWorld(player);
+        if (world == null) return;
+        plugin.getVillagerPreviewManager().clearInWorld(world);
+    }
+
+    /** 本次会话目标竞技场世界（解析不到返回 null） */
+    private World arenaWorld(Player player) {
+        GameManager gm = gameManager(player);
+        return gm == null ? null : gm.getGameWorld();
     }
 
     /** 打开节点管理 GUI（54格，类似生成点管理） */
@@ -598,6 +750,8 @@ public class SetupWizard implements Listener {
         String msg = lang.getFor(player, "setup.step5-villagers",
                 "5", String.valueOf(TOTAL_STEPS), String.valueOf(deploy(player).getVillagers().size()));
         player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
+        // 进入第 5 步：同步预览实体（重连/重入时也能看到已登记村民的位置与序号）
+        syncVillagerPreviews(player);
         sendVillagerButtons(player);
     }
 
@@ -609,7 +763,7 @@ public class SetupWizard implements Listener {
         List<Button> buttons = new ArrayList<>();
         buttons.add(new Button(lang.getFor(player, "setup.btn-add-villager"), "/hilltop setup addvillager"));
         buttons.add(new Button(lang.getFor(player, "setup.btn-villagers-gui"), "/hilltop setup villagersgui"));
-        buttons.add(new Button(lang.getFor(player, "setup.btn-villagers-done"), "/hilltop setup villagers-done"));
+        buttons.add(new Button(lang.getFor(player, "setup.btn-done"), "/hilltop setup villagers-done"));
         buttons.add(new Button(lang.getFor(player, "setup.btn-save-exit"), "/hilltop setup saveexit"));
         sendButtonLine(player, buttons);
     }
@@ -618,24 +772,41 @@ public class SetupWizard implements Listener {
     private void showStepShop(Player player, SetupSession s) {
         String msg = lang.getFor(player, "setup.step5-shop", "6", String.valueOf(TOTAL_STEPS));
         player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
+        sendShopStatus(player);
         sendShopButtons(player);
     }
 
     /**
-     * 发送 Step 6 的可点击按钮行（设置商店位置）。
-     * 商店为**强制步骤**：未设置商店位置不能完成部署。
+     * 发送 Step 6 的可点击按钮行（设置 / 预览粒子 / 清除 / 继续 / 保存并返回大厅）。
+     * 商店为**强制步骤**：未设置商店位置不能完成部署；设置后停留本步可随时重设 / 清除，
+     * 由 [继续] 进入第 7 步预览（preview 子命令负责校验并推进）。
      */
     private void sendShopButtons(Player player) {
         List<Button> buttons = new ArrayList<>();
         buttons.add(new Button(lang.getFor(player, "setup.btn-set-shop"), "/hilltop setup confirm-shop"));
+        // F-7：商店位置预览（金色光柱；未设置时点按钮会提示「还没有设置商店位置」）
+        buttons.add(new Button(lang.getFor(player, "setup.btn-show-particles"), "/hilltop setup showshopparticles"));
+        buttons.add(new Button(lang.getFor(player, "setup.btn-clear-shop"), "/hilltop setup clear-shop"));
+        buttons.add(new Button(lang.getFor(player, "setup.btn-continue"), "/hilltop setup preview"));
         buttons.add(new Button(lang.getFor(player, "setup.btn-save-exit"), "/hilltop setup saveexit"));
         sendButtonLine(player, buttons);
+    }
+
+    /** 发送 Step 6 的当前商店位置状态行（未设置时给出必填提示，清除后能立刻看到变化） */
+    private void sendShopStatus(Player player) {
+        Location shop = deploy(player).getShopNpcLocation();
+        String value = shop == null
+                ? lang.getFor(player, "setup.shop-status-unset")
+                : fmt(shop.getX()) + ", " + fmt(shop.getY()) + ", " + fmt(shop.getZ());
+        player.sendMessage(LegacyComponentSerializer.legacySection()
+                .deserialize(lang.getFor(player, "setup.shop-status", value)));
     }
 
     /** goto命令辅助：仅发送Step 6消息（不修改session） */
     private void sendStepShopMessage(Player player, SetupSession s) {
         String msg = lang.getFor(player, "setup.step5-shop", "6", String.valueOf(TOTAL_STEPS));
         player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
+        sendShopStatus(player);
         sendShopButtons(player);
     }
 
@@ -708,7 +879,20 @@ public class SetupWizard implements Listener {
         plugin.saveConfig();
 
         // 部署完成：启用竞技场，使其获得正式实例、可被 /hilltop start 使用
-        finishDeployment(arenaId);
+        boolean enableQueued = finishDeployment(arenaId);
+        // F-3：按实际结果补启用指引 —— 自动入队成功与「未能启用（如 enabled: false）」给出不同文案，
+        // 后者附可点击的 [启用竞技场] 按钮（对 auto-start-arenas=false 直接有效；enabled: false 需先改配置重启）
+        if (arenaId != null) {
+            if (enableQueued) {
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.enable-done-auto")));
+            } else {
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.enable-done-manual")));
+                sendClickableMsg(player, lang.getFor(player, "setup.btn-enable-arena", arenaId),
+                        "/hilltop enable " + arenaId);
+            }
+        }
     }
 
     // === Command Handler (called from onCommand) ===
@@ -737,15 +921,67 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                deploy(player).setShopNpcLocation(player.getLocation());
+                // 只复制玩家的水平朝向（yaw），pitch 归零：村民不低头/抬头（F-4）。
+                // 存盘与生成都用这份已归零的坐标，避免低头状态被写进 arenas.yml 后连重启也保留。
+                Location shopNpcLocation = player.getLocation().clone();
+                shopNpcLocation.setPitch(0f);
+                deploy(player).setShopNpcLocation(shopNpcLocation);
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
                 // 静默保存：粒子/音效已给反馈，避免 setup.saved 刷屏
                 autoSaveSilent(player);
                 // 立即生成 NPC（spawnNpc 内部先 despawn，幂等可重复设置）
-                plugin.getShopManager().getNpcManager().spawnNpc(player.getLocation());
-                s.advance();
-                showStep(player, s);
+                plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLocation);
+                // 刻意不 advance：停留第 6 步允许原地重设 / 清除，避免「设置完立刻跳走、想改只能 goto 6」；
+                // 进入第 7 步改由 [继续]（preview 子命令）负责，其校验与本步一致
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.shop-set")));
+                sendShopStatus(player);
+                sendShopButtons(player);
+                break;
+            case "clear-shop":
+                // 聊天按钮入口：清除商店位置与 NPC 实体（限步骤 6 使用；清除后留在本步）
+                if (s.step != 6) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                if (deploy(player).getShopNpcLocation() == null) {
+                    player.sendMessage(lang.getFor(player, "setup.shop-clear-none"));
+                    sendShopButtons(player);
+                    break;
+                }
+                // 对局进行中拒绝：商店 NPC 是插件级单例，清除会当场撤掉场内玩家正在使用的商店
+                // （与管理 GUI 的清除口径一致，见 ArenaAdminService.deleteShopNpc）
+                GameState state = gameManager(player).getState();
+                if (state == GameState.STARTING || state == GameState.RUNNING
+                        || state == GameState.WAVE_INTERMISSION) {
+                    player.sendMessage(lang.getFor(player, "setup.shop-clear-in-game"));
+                    sendShopButtons(player);
+                    break;
+                }
+                // 清配置：setShopNpcLocation(null) 会同步删除 arenas.yml 的 shop-npc 键并打「已定论」标记
+                deploy(player).setShopNpcLocation(null);
+                // 清实体：只清「正站在目标竞技场世界」的单例实体，别处（其它竞技场/大厅）的商店保持不动
+                plugin.getShopManager().getNpcManager().despawnIfInWorld(
+                        gameManager(player).getGameWorld().getName());
+                player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 0.8f, 1f);
+                autoSaveSilent(player);
+                // 不 advance：清除是「重来」的起点，留在第 6 步直接重新设置；
+                // 第 7 步预览/最终确认会重新以 setup.shop-required 拦截（商店为必填项，这是预期行为）
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.shop-cleared")));
+                sendShopStatus(player);
+                sendShopButtons(player);
+                break;
+            case "showshopparticles":
+                // F-7：商店位置预览（限步骤 6 使用；提示由预览方法统一发送）
+                if (s.step != 6) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                deploy(player).showShopParticles(player, lang);
+                // 重新发送按钮行，与生成点/刷怪点 GUI 的预览行为对齐
+                sendShopButtons(player);
                 break;
             case "addspawn":
                 // 聊天按钮入口：添加玩家当前位置为生成点（限步骤3使用）
@@ -834,6 +1070,20 @@ public class SetupWizard implements Listener {
                 }
                 showStepSpawnsGui(player, s);
                 break;
+            case "overview":
+                // F-9：聊天按钮入口：打开生成点总览 GUI（第 3 步枢纽，内含唯一 [完成]）
+                // 与 spawngui 同样容错：无 session 时临时创建仅用于 GUI 的会话
+                if (s == null) {
+                    s = new SetupSession();
+                    s.step = 3;
+                    sessions.put(player.getUniqueId(), s);
+                }
+                if (s.step != 3) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                showStepSpawnsOverview(player);
+                break;
             case "show-particles":
                 // GUI 按钮入口：显示所有生成点的粒子效果（限步骤3使用）
                 if (s.step != 3) {
@@ -843,25 +1093,13 @@ public class SetupWizard implements Listener {
                 deploy(player).showSpawnPointParticles(player, lang);
                 break;
             case "spawns-done":
-                // 聊天按钮入口：完成生成点设置（与 GUI 内 [完成] 逻辑一致）
+                // 聊天按钮入口：完成生成点设置（F-9 起收敛到 tryFinishSpawnsStep，与总览 [完成] 同一路径；
+                // README 已标注该命令仅向后兼容保留）
                 if (s.step != 3) {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                // STORY-1.2：两套点都必须非空才能离开第 3 步（旧存档升级走双用回退，不受此限）
-                if (deploy(player).getSpawnPoints().isEmpty()) {
-                    player.sendMessage(lang.getFor(player, "setup.spawns-required"));
-                    break;
-                }
-                if (deploy(player).getMobSpawnPoints().isEmpty()) {
-                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
-                    break;
-                }
-                HandlerList.unregisterAll(this);
-                player.closeInventory();
-                s.advance();
-                autoSave(player);
-                showStep(player, s);
+                tryFinishSpawnsStep(player, s);
                 break;
             case "addmobspawn":
                 // 聊天按钮入口：添加玩家当前位置为怪物刷怪点（限步骤3使用）
@@ -908,6 +1146,8 @@ public class SetupWizard implements Listener {
                     break;
                 }
                 deploy(player).addVillager(player.getLocation());
+                // 在该位置生成/刷新预览村民（编号 = 列表下标 + 1）
+                syncVillagerPreviews(player);
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_YES, 1f, 1f);
                 autoSaveSilent(player);
@@ -945,11 +1185,15 @@ public class SetupWizard implements Listener {
                     s.step = 7;
                     autoSaveSilent(player);
                 }
+                // 进入预览 = 离开第 5 步：清掉村民预览实体（此命令直连 showStepPreview，不经 showStep）
+                clearVillagerPreviews(player);
                 showStepPreview(player, s);
                 break;
             case "saveexit":
                 // 保存进度并返回大厅（向导进度已按步骤持久化，稍后可在竞技场世界内 /hilltop setup 继续）
                 autoSave(player);
+                // 会话结束：清掉第 5 步的村民预览实体（玩家此刻还在竞技场世界，可正常解析世界）
+                clearVillagerPreviews(player);
                 if (player.getOpenInventory().getTitle() != null) {
                     player.closeInventory();
                 }
@@ -962,6 +1206,9 @@ public class SetupWizard implements Listener {
                     plugin.getMultiArenaManager().sendToLobby(player);
                 }
                 player.sendMessage(lang.getFor(player, "setup.saved-exit"));
+                // F-3：提前说明「部署走完后如何让玩家进场」，避免服主卡在最后一步不知要 enable
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.enable-hint")));
                 break;
             case "goto":
                 String[] args = sub.split(" ", 2);
@@ -978,6 +1225,12 @@ public class SetupWizard implements Listener {
                     }
                     s.step = targetStep;
                     autoSaveSilent(player);
+                    // 预览村民只属于第 5 步：跳进第 5 步就重建，跳到别处就清掉（goto 直连各步发送器、不经 showStep）
+                    if (targetStep == 5) {
+                        syncVillagerPreviews(player);
+                    } else {
+                        clearVillagerPreviews(player);
+                    }
                     // 根据目标步骤发送相应消息
                     switch (targetStep) {
                         case 1: sendStepWorldMessage(player, s); break;
@@ -1027,6 +1280,7 @@ public class SetupWizard implements Listener {
         if (!(event.getWhoClicked() instanceof Player player)) return;
 
         String title = event.getView().getTitle();
+        String overviewTitle = lang.getFor(player, "setup.gui-spawns-overview-title");
         String spawnsTitle = lang.getFor(player, "setup.gui-spawns-title");
         String mobSpawnsTitle = lang.getFor(player, "setup.gui-mobspawns-title");
         String nodesTitle = lang.getFor(player, "setup.gui-nodes-title");
@@ -1034,8 +1288,8 @@ public class SetupWizard implements Listener {
         String previewTitle = lang.getFor(player, "setup.gui-preview-title");
 
         // 只处理 setup 向导的 GUI
-        if (!title.equals(spawnsTitle) && !title.equals(mobSpawnsTitle) && !title.equals(nodesTitle)
-                && !title.equals(villagersTitle) && !title.equals(previewTitle)) return;
+        if (!title.equals(overviewTitle) && !title.equals(spawnsTitle) && !title.equals(mobSpawnsTitle)
+                && !title.equals(nodesTitle) && !title.equals(villagersTitle) && !title.equals(previewTitle)) return;
 
         // 防御：向导 GUI 内一律禁止移动物品（即使 session 意外丢失）
         event.setCancelled(true);
@@ -1043,7 +1297,9 @@ public class SetupWizard implements Listener {
         SetupSession s = sessions.get(player.getUniqueId());
         if (s == null) return;
 
-        if (title.equals(spawnsTitle)) {
+        if (title.equals(overviewTitle)) {
+            handleSpawnsOverviewClick(player, s, event);
+        } else if (title.equals(spawnsTitle)) {
             handleSpawnGuiClick(player, s, event);
         } else if (title.equals(mobSpawnsTitle)) {
             handleMobSpawnGuiClick(player, s, event);
@@ -1053,6 +1309,41 @@ public class SetupWizard implements Listener {
             handleVillagersGuiClick(player, s, event);
         } else if (title.equals(previewTitle)) {
             handlePreviewGuiClick(player, s, event);
+        }
+    }
+
+    /**
+     * 生成点总览 GUI 点击处理（F-9 枢纽）。
+     *
+     * <p>子界面切换必须延迟 1 tick（点击处理器内同步 openInventory 会造成视图状态不一致）：
+     * 先用 build* 重建目标界面，再 {@code runTask} 打开；返回总览时重建保证计数新鲜。</p>
+     */
+    private void handleSpawnsOverviewClick(Player player, SetupSession s, InventoryClickEvent event) {
+        ItemStack item = event.getCurrentItem();
+        if (item == null) return;
+        String tag = getTag(item);
+        if (tag == null) return;
+
+        switch (tag) {
+            case "setup-noop":
+                break;
+            case "setup-open-spawns-gui": {
+                // 进入子管理：重建生成点界面后延迟打开（点击处理器内不可同步 openInventory）
+                Inventory target = buildSpawnGui(player, s);
+                Bukkit.getScheduler().runTask(plugin, () -> openWizardGui(player, target));
+                break;
+            }
+            case "setup-open-mobspawns-gui": {
+                Inventory target = buildMobSpawnGui(player, s);
+                Bukkit.getScheduler().runTask(plugin, () -> openWizardGui(player, target));
+                break;
+            }
+            case "setup-overview-done":
+                // F-9：全流程唯一 [完成] —— 与旧双完成按钮/命令走同一收口（两套各 ≥1 才推进）
+                tryFinishSpawnsStep(player, s);
+                break;
+            default:
+                break;
         }
     }
 
@@ -1079,9 +1370,16 @@ public class SetupWizard implements Listener {
                 }
                 break;
             }
+            case "villager-show-particles":
+                // F-7：村民预览（黄色光柱；空列表提示由预览方法内部统一发送）
+                player.closeInventory();
+                deploy(player).showVillagerParticles(player, lang);
+                refreshVillagerGuiOrResend(player, s);
+                break;
             case "setup-add-villager-item":
                 // GUI 内添加：音效 + 粒子 + 刷新
                 deploy(player).addVillager(player.getLocation());
+                syncVillagerPreviews(player);
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                         player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
                 player.playSound(player.getLocation(), Sound.ENTITY_VILLAGER_YES, 1f, 1f);
@@ -1107,6 +1405,8 @@ public class SetupWizard implements Listener {
                         if (deploy(player).removeVillager(index)) {
                             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 0.8f, 1f);
                             s.villagerPage = 0;
+                            // 删除该村民后同步预览：移除对应实体，后续村民序号整体前移
+                            syncVillagerPreviews(player);
                             refreshVillagersGui(event.getInventory(), player, s.villagerPage);
                             autoSaveSilent(player);
                         }
@@ -1153,28 +1453,22 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-show-particles":
                 player.closeInventory();
+                // 提示（含空列表提示）由预览方法统一发送，修复「无点位也报已启动」的双重提示
                 deploy(player).showSpawnPointParticles(player, lang);
-                player.sendMessage(LegacyComponentSerializer.legacySection()
-                        .deserialize(lang.getFor(player, "setup.particles-started")));
                 // 重新发送按钮行，方便管理员关闭GUI后继续操作
                 sendSpawnButtons(player);
                 break;
             case "setup-spawns-done":
-                // STORY-1.2: two sets must both be non-empty before leaving step 3
-                if (deploy(player).getSpawnPoints().isEmpty()) {
-                    player.sendMessage(lang.getFor(player, "setup.spawns-required"));
-                    break;
-                }
-                if (deploy(player).getMobSpawnPoints().isEmpty()) {
-                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
-                    break;
-                }
-                HandlerList.unregisterAll(this);
-                player.closeInventory();
-                s.advance();
-                autoSave(player);
-                showStep(player, s);
+                // 旧版 GUI 遗留 tag（极少数场景：/reload 时玩家还开着旧版界面）——行为保持不变
+                // （校验后完成第 3 步），新流程统一从总览 [完成] 收口
+                tryFinishSpawnsStep(player, s);
                 break;
+            case "setup-back-overview": {
+                // F-9：返回生成点总览（子管理界面已不再自带完成按钮）
+                Inventory target = buildSpawnsOverview(player);
+                Bukkit.getScheduler().runTask(plugin, () -> openWizardGui(player, target));
+                break;
+            }
             default:
                 if (tag.startsWith("setup-spawn-")) {
                     int idx = Integer.parseInt(tag.substring("setup-spawn-".length()));
@@ -1228,26 +1522,22 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-mob-show-particles":
                 player.closeInventory();
-                deploy(player).showSpawnPointParticles(player, lang);
-                player.sendMessage(LegacyComponentSerializer.legacySection()
-                        .deserialize(lang.getFor(player, "setup.particles-started")));
+                // F-1 修复：原先误调 showSpawnPointParticles（发到玩家出生点）；
+                // 现在走刷怪点专用方法（数据源 mob-spawn-points，空列表有独立提示）
+                deploy(player).showMobSpawnPointParticles(player, lang);
                 sendSpawnButtons(player);
                 break;
             case "setup-mobspawns-done":
-                if (deploy(player).getSpawnPoints().isEmpty()) {
-                    player.sendMessage(lang.getFor(player, "setup.spawns-required"));
-                    break;
-                }
-                if (deploy(player).getMobSpawnPoints().isEmpty()) {
-                    player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
-                    break;
-                }
-                HandlerList.unregisterAll(this);
-                player.closeInventory();
-                s.advance();
-                autoSave(player);
-                showStep(player, s);
+                // 旧版 GUI 遗留 tag（极少数场景：/reload 时玩家还开着旧版界面）——行为保持不变
+                // （校验后完成第 3 步），新流程统一从总览 [完成] 收口
+                tryFinishSpawnsStep(player, s);
                 break;
+            case "setup-mob-back-overview": {
+                // F-9：返回生成点总览（子管理界面已不再自带完成按钮）
+                Inventory target = buildSpawnsOverview(player);
+                Bukkit.getScheduler().runTask(plugin, () -> openWizardGui(player, target));
+                break;
+            }
             default:
                 if (tag.startsWith("setup-mobspawn-")) {
                     int idx = Integer.parseInt(tag.substring("setup-mobspawn-".length()));
@@ -1293,15 +1583,11 @@ public class SetupWizard implements Listener {
                 break;
             case "node-show-particles":
                 player.closeInventory();
-                // 显示节点粒子
+                // 显示节点粒子（空列表提示由预览方法内部统一发送，不再外层补发「已启动」）
                 List<Location> nodeLocations = gameManager(player).getNodeSystem().getAllNodeLocations();
-                if (nodeLocations.isEmpty()) {
-                    player.sendMessage(lang.getFor(player, "particles.no-nodes"));
-                } else {
-                    deploy(player).showNodeParticles(player, nodeLocations, lang);
-                    player.sendMessage(LegacyComponentSerializer.legacySection()
-                            .deserialize(lang.getFor(player, "setup.particles-started")));
-                }
+                deploy(player).showNodeParticles(player, nodeLocations, lang);
+                // 重新发送按钮行，与生成点/刷怪点 GUI 的预览行为对齐
+                sendNodeButtons(player);
                 break;
             case "setup-nodes-done":
                 HandlerList.unregisterAll(this);
@@ -1412,22 +1698,29 @@ public class SetupWizard implements Listener {
 
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
-        SetupSession s = sessions.remove(event.getPlayer().getUniqueId());
+        Player quitting = event.getPlayer();
+        // 会话结束：清掉该玩家第 5 步留下的村民预览实体。必须在移除 session 之前清理，
+        // 否则按会话 arenaId 解析目标世界会退化成按「所在世界」解析（离服瞬间仍可用，但越早越稳）。
+        clearVillagerPreviews(quitting);
+        SetupSession s = sessions.remove(quitting.getUniqueId());
         if (s != null) {
             HandlerList.unregisterAll(this);
         }
     }
 
-    // ESC 关闭 inventory 时 unregister，但不清除 session，允许玩家重新打开喵
+    // ESC 关闭 inventory 时 unregister，但不清除 session，允许玩家重新打开喵。
+    // F-9 注：总览 ↔ 子管理界面互切时 OpenEvent 会先触发旧界面的本条 CloseEvent，
+    // 但 openWizardGui 是「先打开、后重注册」，因此切换结束后监听器必然在位。
     @EventHandler
     public void onSetupInventoryClose(InventoryCloseEvent event) {
         if (!(event.getPlayer() instanceof Player player)) return;
         SetupSession s = sessions.get(player.getUniqueId());
         if (s == null) return;
         String title = event.getView().getTitle();
+        String overviewTitle = lang.getFor(player, "setup.gui-spawns-overview-title");
         String spawnsTitle = lang.getFor(player, "setup.gui-spawns-title");
         String mobSpawnsTitle = lang.getFor(player, "setup.gui-mobspawns-title");
-        if (title.equals(spawnsTitle) || title.equals(mobSpawnsTitle)) {
+        if (title.equals(overviewTitle) || title.equals(spawnsTitle) || title.equals(mobSpawnsTitle)) {
             HandlerList.unregisterAll(this);
         }
     }

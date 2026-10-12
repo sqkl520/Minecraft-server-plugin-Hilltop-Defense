@@ -11,7 +11,6 @@ import com.hilltopvillage.mechanics.MapRestoreManager;
 import com.hilltopvillage.mechanics.NodeSystem;
 import com.hilltopvillage.shop.NpcManager;
 import org.bukkit.Bukkit;
-import org.bukkit.Location;
 
 import java.io.File;
 import java.util.Map;
@@ -495,7 +494,8 @@ public final class ArenaResetService {
      *
      * <p>插件级商店是单例（{@link com.hilltopvillage.shop.NpcManager} 只持有一个实体），
      * 位置在哪个世界就归哪个竞技场，因此用<b>世界名相等</b>作为归属判定：世界不匹配说明这个商店
-     * 是别的竞技场或大厅的，保持不动。</p>
+     * 是别的竞技场或大厅的，保持不动。判定与清除统一走
+     * {@link NpcManager#despawnIfInWorld(String)}（商店清除入口共用同一份语义）。</p>
      *
      * <p>世界不加载也不会误判——插件全库没有任何 {@code unloadWorld} 调用，竞技场世界一旦加载
      * 就常驻，因此 {@code npc.getLocation()} 恒可用。</p>
@@ -505,12 +505,7 @@ public final class ArenaResetService {
         NpcManager npcManager = plugin.getShopManager().getNpcManager();
         if (npcManager == null) return false;
 
-        Location location = npcManager.getNpcLocation();
-        if (location == null || location.getWorld() == null) return false;
-        if (!location.getWorld().getName().equals(world)) return false;
-
-        npcManager.despawnNpc();
-        return true;
+        return npcManager.despawnIfInWorld(world);
     }
 
     /** 查状态；id 为 null / 空白时返回 DISABLED，避免把 null 传进底层映射（会抛 NPE）。 */

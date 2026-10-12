@@ -27,7 +27,7 @@ import java.util.Map;
 
 /**
  * 竞技场管理 GUI 的数据层：为 GUI 提供<b>任意</b>竞技场（含未启用 / 未部署 / 世界缺失）的只读视图，
- * 以及生成点 / 村民 / 节点的单条删除能力。
+ * 以及生成点 / 刷怪点 / 村民 / 节点 / 商店 NPC 的删除能力。
  *
  * <h2>为什么需要「实例优先、YAML 兜底」</h2>
  * <p>未启用的竞技场没有 {@link ArenaInstance}（{@code MultiArenaManager.getArena(id)} 返回 null），
@@ -297,6 +297,109 @@ public final class ArenaAdminService {
             return index < locations.size() && nodeSystem.removeNode(locations.get(index));
         }
         return NodeSystem.removeNodeEntryForWorld(plugin.getDataFolder(), definition.getWorldName(), index);
+    }
+
+    /**
+     * 商店 NPC 坐标。竞技场不存在或未设置时返回 null。
+     *
+     * <p>与其它只读视图同一「实例优先、YAML 兜底」口径：有实例时读
+     * {@link AdminDeployManager#getShopNpcLocation()}（清除后立即反映），否则直接读
+     * arenas.yml 的 {@code arenas.<id>.shop-npc}。</p>
+     *
+     * <p><b>刻意不读 {@link ArenaDefinition#getShopNpc()}</b>：registry 里的定义是构造时固化的副本，
+     * 清除商店后不会自动重建（只有 {@code ArenaManager.load()} 会），用它会显示「已清除但坐标还在」。</p>
+     */
+    public Location shopNpc(String arenaId) {
+        ArenaDefinition definition = resolve(arenaId);
+        if (definition == null) return null;
+
+        ArenaInstance live = liveInstance(definition.getId());
+        if (live != null) {
+            AdminDeployManager deploy = deployManager(live);
+            if (deploy != null) return deploy.getShopNpcLocation();
+        }
+        return readCoordinates(loadArenas().getConfigurationSection(arenaPath(definition.getId(), SHOP_NPC_KEY)),
+                Bukkit.getWorld(definition.getWorldName()));
+    }
+
+    /* ========== 商店 NPC 清除 ========== */
+
+    /** {@link #deleteShopNpc(String)} 的结果。清除比坐标条目删除多两类拒绝原因（已设置判定 / 对局中）。 */
+    public enum ShopNpcDelete {
+        /** 已清除（坐标条目；实体仅当插件级单例商店 NPC 正站在该竞技场世界时一并移除） */
+        OK,
+        /** registry 中不存在该竞技场 */
+        ARENA_NOT_FOUND,
+        /** 该竞技场本来就没有商店位置，无需清除 */
+        NOT_SET,
+        /** 对局进行中（STARTING / RUNNING / WAVE_INTERMISSION）；清除会让场内玩家立刻失去商店 */
+        GAME_IN_PROGRESS,
+        /** 写盘失败（IO 错误）。磁盘内容未改变 */
+        WRITE_FAILED
+    }
+
+    /**
+     * 清除某竞技场的商店 NPC：删掉 arenas.yml 的 {@code arenas.<id>.shop-npc}，
+     * 并（仅当插件级单例实体正站在该竞技场世界时）移除实体。
+     *
+     * <p>实体归属判定见 {@link com.hilltopvillage.shop.NpcManager#despawnIfInWorld(String)}：
+     * 商店 NPC 是插件级单例，一个竞技场清了不会误删别的竞技场 / 大厅正在使用的实体 ——
+     * 世界不匹配时只删坐标条目，实体保持不动。</p>
+     *
+     * <p><b>对局进行中拒绝</b>：清除会当场撤掉玩家正在使用的商店（开商店 GUI 依赖该实体），
+     * 与 {@link #updateGameParams} 的 {@code GAME_IN_PROGRESS} 同一口径，要求先 {@code /hilltop stop}。</p>
+     *
+     * <p>写盘后与其它删除路径一样防「整份覆写复活」：
+     * {@link #saveArenas} 的 YAML 兜底路径内部已调用
+     * {@link MultiArenaManager#reloadAllDeploymentData()}；有实例路径在
+     * {@code AdminDeployManager.setShopNpcLocation(null)} 落盘后同样调用一次，
+     * 让其它竞技场弃用旧副本，避免它们下次 {@code saveSpawnPoints()} 把刚删的键整份写回。</p>
+     *
+     * <p>清除后该竞技场回到「商店必填」状态：向导第 7 步预览与 {@code /hilltop setup preview} 会重新
+     * 以 {@code setup.shop-required} 拒绝；重启后 {@code NpcManager.respawnFromConfig()} 也不会为它生成
+     * NPC（多竞技场下按 ID 排序回退到下一个配置了商店的竞技场，见 {@code NpcManager} 的单例语义）。</p>
+     *
+     * @return 清除结果；{@link ShopNpcDelete#OK} 表示已落盘（实体是否移除见返回值之外的
+     *         {@code despawnIfInWorld} 语义，不影响本方法成败）
+     */
+    public ShopNpcDelete deleteShopNpc(String arenaId) {
+        ArenaDefinition definition = resolve(arenaId);
+        if (definition == null) return ShopNpcDelete.ARENA_NOT_FOUND;
+
+        ArenaInstance live = liveInstance(definition.getId());
+        if (live != null) {
+            GameState state = live.getState();
+            if (state == GameState.STARTING || state == GameState.RUNNING
+                    || state == GameState.WAVE_INTERMISSION) {
+                return ShopNpcDelete.GAME_IN_PROGRESS;
+            }
+        }
+
+        AdminDeployManager deploy = live == null ? null : deployManager(live);
+        if (deploy != null) {
+            if (deploy.getShopNpcLocation() == null) return ShopNpcDelete.NOT_SET;
+            deploy.setShopNpcLocation(null);
+            // 与 saveArenas 的 YAML 兜底路径对称：让其它活动竞技场重读 arenas.yml，
+            // 否则它们下次 saveSpawnPoints() 会用旧副本把刚删的 shop-npc 键整份写回（「复活」）
+            plugin.getMultiArenaManager().reloadAllDeploymentData();
+        } else {
+            File file = new File(plugin.getDataFolder(), "arenas.yml");
+            if (!file.exists()) return ShopNpcDelete.NOT_SET;
+
+            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+            String path = arenaPath(definition.getId(), SHOP_NPC_KEY);
+            if (!yaml.isSet(path)) return ShopNpcDelete.NOT_SET;
+            yaml.set(path, null);
+            // 「本竞技场的商店位置已有定论」标记：不打的话下次加载会把 spawnpoints.yml 的旧数据迁移回来
+            yaml.set(arenaPath(definition.getId(), ArenaManager.SHOP_NPC_MIGRATED_KEY), true);
+            if (!saveArenas(yaml, file, path)) return ShopNpcDelete.WRITE_FAILED;
+        }
+
+        // 单例实体只清「正站在本竞技场世界」的那一个；世界不匹配（属于别的竞技场 / 大厅）时保持不动
+        if (plugin.getShopManager() != null && plugin.getShopManager().getNpcManager() != null) {
+            plugin.getShopManager().getNpcManager().despawnIfInWorld(definition.getWorldName());
+        }
+        return ShopNpcDelete.OK;
     }
 
     /* ========== 游戏参数写入 ========== */

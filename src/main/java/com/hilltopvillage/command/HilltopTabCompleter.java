@@ -98,7 +98,8 @@ public class HilltopTabCompleter implements TabCompleter {
             for (String sub : Arrays.asList("help", "setcore", "addspawn", "listspawns", "delspawn", "clearspawns",
                     "confirmclear", "reloadnodes", "showparticles",
                     "addmobspawn", "listmobspawns", "delmobspawn", "clearmobspawns", "confirmclearmob",
-                    "addvillager", "listvillagers", "delvillager", "clearvillagers")) {
+                    "addvillager", "listvillagers", "delvillager", "clearvillagers",
+                    "setshop", "clearshop")) {
                 if (sub.startsWith(input)) {
                     completions.add(sub);
                 }
@@ -109,9 +110,10 @@ public class HilltopTabCompleter implements TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("setup") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
             String input = args[1].toLowerCase();
-            for (String sub : Arrays.asList("confirm-world", "confirm-core", "addspawn", "spawngui", "spawns-done",
+            for (String sub : Arrays.asList("confirm-world", "confirm-core", "addspawn", "overview", "spawngui", "spawns-done",
                     "addmobspawn", "mobspawngui",
-                    "confirm-nodes", "rescan", "villagers-done", "confirm-shop", "skip-shop", "preview", "goto")) {
+                    "confirm-nodes", "rescan", "villagers-done", "confirm-shop", "showshopparticles", "clear-shop",
+                    "preview", "goto")) {
                 if (sub.startsWith(input)) completions.add(sub);
             }
             return completions;

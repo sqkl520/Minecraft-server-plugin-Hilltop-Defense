@@ -49,18 +49,78 @@ public class AdminDeployManager {
 
     /* ========== 粒子展示 ========== */
 
+    /** 单次预览的默认持续时间（tick）：600 = 30 秒 */
+    private static final long PREVIEW_DURATION_TICKS = 600L;
+    /** 预览任务轮询间隔（tick），与 {@link LocationParticlePreview} 的刷新频率一致 */
+    private static final long PREVIEW_PERIOD_TICKS = 4L;
+    /** 距离剔除半径（格）：超过该距离的点不绘制粒子 */
+    private static final double PREVIEW_VIEW_DISTANCE = 64.0;
+
     public void showSpawnPointParticles(Player viewer, LanguageManager lang) {
-        showSpawnPointParticles(viewer, lang, 600L);
+        showSpawnPointParticles(viewer, lang, PREVIEW_DURATION_TICKS);
     }
 
     /** 重载：向导模式专用（无需传入 LanguageManager，自动获取） */
     public void showSpawnPointParticles(Player viewer) {
-        showSpawnPointParticles(viewer, plugin.getLanguageManager(), 600L);
+        showSpawnPointParticles(viewer, plugin.getLanguageManager(), PREVIEW_DURATION_TICKS);
     }
 
     public void showSpawnPointParticles(Player viewer, LanguageManager lang, long durationTicks) {
-        if (savedSpawnPoints.isEmpty()) {
-            viewer.sendMessage(lang.getFor(viewer, "particles.no-spawnpoints"));
+        showPointParticles(viewer, savedSpawnPoints, PointKind.SPAWN, lang, durationTicks);
+    }
+
+    /**
+     * 怪物刷怪点粒子预览（F-1：与玩家出生点分开的第二套数据源 {@link #savedMobSpawnPoints}）。
+     *
+     * <p>向导刷怪点管理 GUI 的 [显示粒子] 由此进入。修复前该按钮误调
+     * {@link #showSpawnPointParticles}，粒子全发到玩家出生点、出生点为空时静默无粒子；
+     * 现在空列表会明确提示 {@code particles.no-mobspawnpoints}。</p>
+     */
+    public void showMobSpawnPointParticles(Player viewer, LanguageManager lang) {
+        showPointParticles(viewer, savedMobSpawnPoints, PointKind.MOB_SPAWN, lang, PREVIEW_DURATION_TICKS);
+    }
+
+    /** 重载：向导模式专用（无需传入 LanguageManager，自动获取） */
+    public void showMobSpawnPointParticles(Player viewer) {
+        showMobSpawnPointParticles(viewer, plugin.getLanguageManager());
+    }
+
+    /** 显示节点粒子（节点位置由调用方提供：向导场景下可能还未经 saveSpawnPoints 落盘） */
+    public void showNodeParticles(Player viewer, List<Location> nodeLocations, LanguageManager lang) {
+        showPointParticles(viewer, nodeLocations, PointKind.NODE, lang, PREVIEW_DURATION_TICKS);
+    }
+
+    /** 显示待保护村民位置的粒子预览（F-7：向导第 5 步村民管理 GUI 的 [显示粒子]） */
+    public void showVillagerParticles(Player viewer, LanguageManager lang) {
+        showPointParticles(viewer, savedVillagerPositions, PointKind.VILLAGER, lang, PREVIEW_DURATION_TICKS);
+    }
+
+    /** 显示商店村民位置的粒子预览（F-7：商店只有一个坐标；未设置时走空列表提示） */
+    public void showShopParticles(Player viewer, LanguageManager lang) {
+        List<Location> targets = savedShopNpcLocation == null
+                ? Collections.emptyList()
+                : Collections.singletonList(savedShopNpcLocation);
+        showPointParticles(viewer, targets, PointKind.SHOP, lang, PREVIEW_DURATION_TICKS);
+    }
+
+    /**
+     * 五类点位预览的统一实现。
+     *
+     * <p>提示文案由本方法统一发送：空列表 → {@code kind.emptyKey()}，有列表 →
+     * {@code kind.showingKey()}（占位符 {0}=点位数、{1}=持续秒数）+ 颜色图例
+     * {@code particles.hint}。调用方（向导 / 命令）不再自行补发「已启动」类提示 ——
+     * 修复前向导在空列表时也会照发 {@code setup.particles-started}，与「无点位」提示互相矛盾。</p>
+     *
+     * <p>颜色与绘制统一走 {@link PointParticleRenderer}（配色表见 {@link PointKind}），
+     * 与竞技场管理 GUI 的 {@link LocationParticlePreview} 视觉完全一致。</p>
+     *
+     * <p>同一实例同一时刻只保留一个预览任务（与旧行为一致）：同一竞技场的第二个管理员
+     * 触发预览会打断前一个。按玩家隔离的任务隔离由 {@link LocationParticlePreview} 负责。</p>
+     */
+    private void showPointParticles(Player viewer, List<Location> locations, PointKind kind,
+                                    LanguageManager lang, long durationTicks) {
+        if (locations.isEmpty()) {
+            viewer.sendMessage(lang.getFor(viewer, kind.emptyKey()));
             return;
         }
 
@@ -68,10 +128,11 @@ public class AdminDeployManager {
             Bukkit.getScheduler().cancelTask(showParticlesTaskId);
         }
 
-        viewer.sendMessage(lang.getFor(viewer, "particles.showing", savedSpawnPoints.size(), durationTicks / 20));
+        viewer.sendMessage(lang.getFor(viewer, kind.showingKey(), locations.size(), durationTicks / 20));
         viewer.sendMessage(lang.getFor(viewer, "particles.hint"));
 
-        double radius = 3.0;
+        // 快照一份，避免预览过程中源列表被 add / remove 改动
+        final List<Location> targets = new ArrayList<>(locations);
 
         showParticlesTaskId = new BukkitRunnable() {
             int ticksElapsed = 0;
@@ -95,137 +156,21 @@ public class AdminDeployManager {
                 angle += Math.PI / 16;  // 慢速旋转
                 if (angle >= 2 * Math.PI) angle = 0;
 
-                World world = gameManager.getGameWorld();
-
-                for (Location loc : savedSpawnPoints) {
+                for (Location loc : targets) {
+                    World world = loc.getWorld();
+                    if (world == null) continue;  // 世界未加载：跳过该点，不抛异常
                     // 距离剔除：viewer 超过 64 格则跳过该点
-                    if (viewer.getWorld() != loc.getWorld()
-                            || viewer.getLocation().distanceSquared(loc) > 64 * 64) {
+                    if (viewer.getWorld() != world
+                            || viewer.getLocation().distanceSquared(loc) > PREVIEW_VIEW_DISTANCE * PREVIEW_VIEW_DISTANCE) {
                         continue;
                     }
 
-                    // === 方案C：符文 + 垂直光柱 ===
-
-                    // 1. 垂直光柱（END_ROD 白色粒子，从地面到 y+20）
-                    //
-                    // 【刻意不合并为「一次调用 + 大 offset」，原因见 LocationParticlePreview 同类注释】
-                    // count>0 时 offset 是高斯散布的标准差 σ（客户端 ClientPacketListener
-                    // 对每个粒子执行 pos += nextGaussian() × offset），不是 ±均匀范围。
-                    // 合并成 σ=10、中心 y+10 会有约 32% 粒子溢出到柱外、密度中浓端淡，
-                    // 地面起点消失 —— 视觉与现状不一致，故保留逐点循环。
-                    double beamHeight = 20.0;
-                    double beamStep = 0.4;  // 每0.4格一个粒子（y=0→20 共 51 次迭代）
-                    for (double y = 0; y <= beamHeight; y += beamStep) {
-                        world.spawnParticle(Particle.END_ROD,
-                            loc.getX() + 0.5, loc.getY() + y, loc.getZ() + 0.5,
-                            1, 0, 0, 0, 0);
-                    }
-
-                    // 2. 周围螺旋符文装饰（ENCHANT 紫色附魔台粒子）
-                    double spiralRadius = 1.2;
-                    double spiralHeight = 3.0;
-                    int spiralPoints = 3;  // 每帧3个粒子点
-                    for (int i = 0; i < spiralPoints; i++) {
-                        double spiralAngle = angle + (i * 2 * Math.PI / spiralPoints);
-                        double spiralY = (ticksElapsed % 60) * (spiralHeight / 60.0);  // 3秒循环一次
-                        double spiralX = loc.getX() + 0.5 + Math.cos(spiralAngle) * spiralRadius;
-                        double spiralZ = loc.getZ() + 0.5 + Math.sin(spiralAngle) * spiralRadius;
-                        world.spawnParticle(Particle.ENCHANTED_HIT,
-                            spiralX, loc.getY() + spiralY, spiralZ,
-                            1, 0, 0, 0, 0);
-                    }
+                    PointParticleRenderer.drawMarker(world, loc, kind, angle, ticksElapsed);
                 }
 
                 ticksElapsed++;
             }
-        }.runTaskTimer(plugin, 0L, 4L).getTaskId();
-    }
-
-    /** 显示节点粒子（复用生成点粒子逻辑） */
-    public void showNodeParticles(Player viewer, List<Location> nodeLocations, LanguageManager lang) {
-        if (nodeLocations.isEmpty()) {
-            viewer.sendMessage(lang.getFor(viewer, "particles.no-nodes"));
-            return;
-        }
-
-        if (showParticlesTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(showParticlesTaskId);
-        }
-
-        long durationTicks = 600L; // 30秒
-        viewer.sendMessage(lang.getFor(viewer, "particles.showing-nodes",
-                nodeLocations.size(), durationTicks / 20));
-
-        showParticlesTaskId = new BukkitRunnable() {
-            int ticksElapsed = 0;
-            double angle = 0;
-
-            @Override
-            public void run() {
-                if (ticksElapsed >= durationTicks) {
-                    cancel();
-                    showParticlesTaskId = -1;
-                    return;
-                }
-
-                if (!viewer.isOnline()) {
-                    cancel();
-                    showParticlesTaskId = -1;
-                    return;
-                }
-
-                angle += Math.PI / 16;
-                if (angle >= 2 * Math.PI) angle = 0;
-
-                World world = gameManager.getGameWorld();
-
-                for (Location loc : nodeLocations) {
-                    if (viewer.getWorld() != loc.getWorld()
-                            || viewer.getLocation().distanceSquared(loc) > 64 * 64) {
-                        continue;
-                    }
-
-                    // 垂直光柱（蓝色粒子，区分生成点）
-                    double beamHeight = 15.0;
-                    double beamStep = 0.5;
-                    for (double y = 0; y <= beamHeight; y += beamStep) {
-                        world.spawnParticle(Particle.SOUL_FIRE_FLAME,
-                            loc.getX() + 0.5, loc.getY() + y, loc.getZ() + 0.5,
-                            1, 0, 0, 0, 0);
-                    }
-
-                    // 螺旋符文（金色粒子）
-                    double spiralRadius = 1.0;
-                    double spiralHeight = 2.5;
-                    int spiralPoints = 3;
-                    for (int i = 0; i < spiralPoints; i++) {
-                        double spiralAngle = angle + (i * 2 * Math.PI / spiralPoints);
-                        double spiralY = (ticksElapsed % 50) * (spiralHeight / 50.0);
-                        double spiralX = loc.getX() + 0.5 + Math.cos(spiralAngle) * spiralRadius;
-                        double spiralZ = loc.getZ() + 0.5 + Math.sin(spiralAngle) * spiralRadius;
-                        world.spawnParticle(Particle.ENCHANTED_HIT,
-                            spiralX, loc.getY() + spiralY, spiralZ,
-                            1, 0, 0, 0, 0);
-                    }
-                }
-
-                ticksElapsed++;
-            }
-        }.runTaskTimer(plugin, 0L, 4L).getTaskId();
-    }
-
-    /** 在两点之间绘制粒子连线 */
-    private void drawLine(World world, Particle particle,
-                          double x1, double y1, double z1,
-                          double x2, double y2, double z2) {
-        int steps = 4;
-        for (int i = 0; i <= steps; i++) {
-            double t = (double) i / steps;
-            double x = x1 + (x2 - x1) * t;
-            double y = y1 + (y2 - y1) * t;
-            double z = z1 + (z2 - z1) * t;
-            world.spawnParticle(particle, x, y, z, 1, 0, 0, 0, 0);
-        }
+        }.runTaskTimer(plugin, 0L, PREVIEW_PERIOD_TICKS).getTaskId();
     }
 
     public void stopParticleShow() {
@@ -690,6 +635,11 @@ public class AdminDeployManager {
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy addvillager" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-addvillager"));
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy listvillagers" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-listvillagers"));
         admin.sendMessage(ChatColor.AQUA + "/hilltop deploy delvillager <id>" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-delvillager"));
+
+        admin.sendMessage("");
+        admin.sendMessage(lang.getFor(admin, "deploy.menu-shop-label"));
+        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy setshop" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-setshop"));
+        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy clearshop" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-clearshop"));
 
         admin.sendMessage("");
         admin.sendMessage(lang.getFor(admin, "deploy.menu-game-control-label"));
