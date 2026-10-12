@@ -8,7 +8,7 @@
 
 ### Fixed（2026-10-12 — F-1 刷怪点管理「显示粒子」调错方法）
 
-- 刷怪点管理 GUI 的 [显示粒子] 此前误调玩家出生点方法 `showSpawnPointParticles()`（粒子发到出生点坐标；出生点为空时静默无粒子但外层仍报「粒子动画已开始」）。新增 `AdminDeployManager.showMobSpawnPointParticles()`（数据源 `savedMobSpawnPoints`，空列表走新键 `particles.no-mobspawnpoints`），改调新方法；预览方法内部统一负责发提示，删去向导三处外层重复的 `setup.particles-started` 补发
+- 刷怪点管理 GUI 的 [显示粒子] 此前误调玩家出生点方法 `showSpawnPointParticles()`（粒子发到出生点坐标；出生点为空时静默无粒子但外层仍报「粒子动画已开始」）。新增 `AdminDeployManager.showMobSpawnPointParticles()`（数据源 `savedMobSpawnPoints`，空列表走新键 `particles.no-mobspawnpoints`），改调新方法；预览方法内部统一负责发提示，删去向导三处外层重复的 `setup.particles-started` 补发（该键随之成为死键，已删；`showSpawnPointParticles(Player)` / `showMobSpawnPointParticles(Player)` 两个无调用方的单参重载一并清理 —— 代码测试复测项）
 
 ### Fixed（2026-10-12 — F-2 向导第 3 步文案与按钮对不上）
 
