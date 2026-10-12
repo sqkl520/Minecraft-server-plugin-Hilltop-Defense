@@ -60,11 +60,6 @@ public class AdminDeployManager {
         showSpawnPointParticles(viewer, lang, PREVIEW_DURATION_TICKS);
     }
 
-    /** 重载：向导模式专用（无需传入 LanguageManager，自动获取） */
-    public void showSpawnPointParticles(Player viewer) {
-        showSpawnPointParticles(viewer, plugin.getLanguageManager(), PREVIEW_DURATION_TICKS);
-    }
-
     public void showSpawnPointParticles(Player viewer, LanguageManager lang, long durationTicks) {
         showPointParticles(viewer, savedSpawnPoints, PointKind.SPAWN, lang, durationTicks);
     }
@@ -78,11 +73,6 @@ public class AdminDeployManager {
      */
     public void showMobSpawnPointParticles(Player viewer, LanguageManager lang) {
         showPointParticles(viewer, savedMobSpawnPoints, PointKind.MOB_SPAWN, lang, PREVIEW_DURATION_TICKS);
-    }
-
-    /** 重载：向导模式专用（无需传入 LanguageManager，自动获取） */
-    public void showMobSpawnPointParticles(Player viewer) {
-        showMobSpawnPointParticles(viewer, plugin.getLanguageManager());
     }
 
     /** 显示节点粒子（节点位置由调用方提供：向导场景下可能还未经 saveSpawnPoints 落盘） */
