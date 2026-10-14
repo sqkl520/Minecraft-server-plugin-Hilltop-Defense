@@ -3,7 +3,6 @@ package com.hilltopvillage.shop;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.ChatColor;
-import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -14,8 +13,9 @@ import org.bukkit.persistence.PersistentDataType;
 
 /**
  * 村民商店管理器：配置生命周期 + 货币物品工厂 + 发货路由 + 背包货币统计/扣除。
- * 货币识别<b>只认 PDC 标记</b>（hilltopvillage:shop-currency），材质仅作快速短路；
- * 真币一律由 {@link #createCurrencyItem} 发放。详见 {@link #isCurrency}。
+ * 货币识别<b>只认 PDC 标记</b>（hilltopvillage:shop-currency），不做材质判定
+ * （材质短路会让 {@code shop reload} 换材质后存量真币作废，见 {@link #isCurrency}）。
+ * 真币一律由 {@link #createCurrencyItem} 发放。
  */
 public class ShopManager {
 
@@ -70,8 +70,14 @@ public class ShopManager {
     /**
      * 构建货币物品（击杀掉落 / 后续购买找零均用此工厂）。
      * 名称优先 shop.yml 的 currency.name，否则 i18n 的 shop.currency.name。
+     *
+     * <p>入参钳制（P2-26）：{@code ItemStack(Material, int)} 对 amount ≤ 0 直接抛
+     * IllegalArgumentException。配置链（{@code shop.currency-drop-amount}）无钳制时，
+     * 服主配 0 / 负数会让每次掉币判定命中都在死亡事件里抛异常（吞击杀统计 + 刷日志）；
+     * 退款分支同样走本工厂。这里统一兜底为至少 1。</p>
      */
     public ItemStack createCurrencyItem(int amount) {
+        amount = Math.max(1, amount);
         ItemStack item = new ItemStack(config.getCurrencyMaterial(), amount);
         ItemMeta meta = item.getItemMeta();
 
@@ -112,7 +118,7 @@ public class ShopManager {
         }
     }
 
-    /** 统计玩家背包中的货币数量 */
+    /** 统计玩家背包中的货币数量（含副手槽，P2-28：与扣除口径保持读写同源） */
     public int countCurrency(Player player) {
         int count = 0;
         PlayerInventory inv = player.getInventory();
@@ -121,11 +127,17 @@ public class ShopManager {
                 count += item.getAmount();
             }
         }
+        // getStorageContents 不含副手/盔甲槽：副手单独判定并入统计，否则 F 键换到副手的货币
+        // 会从余额里「消失」（既不计余额也无法支付）
+        ItemStack offHand = inv.getItemInOffHand();
+        if (isCurrency(offHand)) {
+            count += offHand.getAmount();
+        }
         return count;
     }
 
     /**
-     * 从背包移除指定数量货币（从后往前删）。
+     * 从背包移除指定数量货币（主背包从后往前删，不够再从副手扣）。
      * 不足时不部分扣除，直接返回 false。
      */
     public boolean removeCurrency(Player player, int amount) {
@@ -136,7 +148,7 @@ public class ShopManager {
         ItemStack[] contents = inv.getStorageContents();
         int remaining = amount;
 
-        // 从后往前扣
+        // 从后往前扣主背包
         for (int i = contents.length - 1; i >= 0 && remaining > 0; i--) {
             ItemStack item = contents[i];
             if (!isCurrency(item)) continue;
@@ -149,6 +161,21 @@ public class ShopManager {
             }
             remaining -= take;
         }
+
+        // 主背包扣完还不够（或一开始就都在副手）：从副手扣，与 countCurrency 的口径一致
+        if (remaining > 0) {
+            ItemStack offHand = inv.getItemInOffHand();
+            if (isCurrency(offHand)) {
+                int take = Math.min(offHand.getAmount(), remaining);
+                if (offHand.getAmount() > take) {
+                    offHand.setAmount(offHand.getAmount() - take);
+                    inv.setItemInOffHand(offHand); // 显式写回，确保变更落盘（不依赖引用共享）
+                } else {
+                    inv.setItemInOffHand(null);
+                }
+                remaining -= take;
+            }
+        }
         return remaining <= 0;
     }
 
@@ -156,19 +183,21 @@ public class ShopManager {
      * 判断一个 ItemStack 是否为货币。
      *
      * <p><b>只认 PDC 标记</b>（{@link #currencyKey}）：真币一律由
-     * {@link #createCurrencyItem} 发放，必带此标记。材质检查仅作快速短路。</p>
+     * {@link #createCurrencyItem} 发放，必带此标记。材质检查已删除（P2-27）——
+     * 它作为前置短路会让服主 {@code shop reload} 更换 {@code currency.material} 后，
+     * 所有带 PDC 的存量真币立即作废（材质不等 → 短路否决权威标记）；作为后置独立条件
+     * 则排斥换材质前的存量货币。PDC 即唯一权威，与 P0-A 的「只认 PDC」规范一致。</p>
      *
      * <p>曾经的「材质 + 显示名回退」已删除 —— 它会把玩家用铁砧 / 命名牌改名成货币名的
      * 普通方块误判为真币，造成假币无限付款（P0-A）。服主手工发币请改用
      * {@code /hilltop shop give <玩家> [数量]}（见 {@code HilltopCommandHandler}）。</p>
      */
     private boolean isCurrency(ItemStack item) {
-        if (item == null || item.getType() != config.getCurrencyMaterial()) return false;
-        if (!item.hasItemMeta()) return false;
+        if (item == null || !item.hasItemMeta()) return false;
 
         ItemMeta meta = item.getItemMeta();
         if (meta == null) return false;
-        // 只认 PDC 标记：玩家无法用铁砧 / 命名牌伪造，材质相同的改名道具一律被拒。
+        // 只认 PDC 标记：玩家无法用铁砧 / 命名牌伪造。
         return meta.getPersistentDataContainer().has(currencyKey, PersistentDataType.STRING);
     }
 }

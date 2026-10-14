@@ -37,6 +37,11 @@ public class AdminDeployManager {
     /** 商店村民位置（null = 本图无商店） */
     private Location savedShopNpcLocation;
     private int showParticlesTaskId = -1;
+    /**
+     * P2-10：最近一次 arenas.yml 写盘是否失败（由 {@link #saveSpawnPoints()} 设置）。
+     * 向导在 autoSave / autoSaveSilent 中读取并清除，用于向管理员如实播报保存失败。
+     */
+    private volatile boolean lastSaveFailed = false;
 
     public AdminDeployManager(HilltopVillagePlugin plugin, GameManager gameManager) {
         this.plugin = plugin;
@@ -355,7 +360,16 @@ public class AdminDeployManager {
         yaml.set(path + ".pitch", location.getPitch());
     }
 
-    public void saveSpawnPoints() {
+    /**
+     * 把内存中的部署数据写入 arenas.yml。
+     *
+     * <p>P2-10：返回写盘结果（IOException 时 log severe + false），供调用方（向导）向管理员
+     * 如实播报 —— 修复前写盘失败全程静默、向导照报「已添加/已保存」，第 8 步还会把「写失败」
+     * 误诊为 enabled 配置问题乱引导。</p>
+     *
+     * @return true = 生成点/核心与商店位置均已落盘（或无需写盘）；false = 至少一次写盘失败
+     */
+    public boolean saveSpawnPoints() {
         String arenaId = gameManager.getArenaId();
 
         // 生成点与核心位置写入 arenas.yml（按竞技场隔离）。
@@ -405,10 +419,12 @@ public class AdminDeployManager {
             arenasConfig.set("arenas." + arenaId + ".core.z", savedCoreLocation.getZ());
         }
 
+        boolean saved = true;
         try {
             arenasConfig.save(arenasFile);
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to save arenas.yml: " + e.getMessage());
+            saved = false;
         }
 
         // 刷新内存中的 GameManager（生成点与核心位置）
@@ -419,7 +435,12 @@ public class AdminDeployManager {
         }
 
         // 商店村民位置写入同一份 arenas.yml 的 arenas.<id>.shop-npc（按竞技场隔离）
-        saveShopNpcLocation();
+        if (!saveShopNpcLocation()) {
+            saved = false;
+        }
+        // P2-10：记录本次写盘结果（反映最近一次写入，供向导的 autoSave 调用点消费并如实播报）
+        lastSaveFailed = !saved;
+        return saved;
     }
 
     /**
@@ -431,8 +452,10 @@ public class AdminDeployManager {
      *
      * <p>每次写入前重新从磁盘读取：{@code arenasConfig} 字段可能是较旧的副本，
      * 直接用它整份覆写会丢掉在此期间由其他管理器（如 ArenaManager）写入的内容。</p>
+     *
+     * @return true = 已落盘或无需写盘；false = 写盘失败（已 log severe）
      */
-    private void saveShopNpcLocation() {
+    private boolean saveShopNpcLocation() {
         if (arenasFile == null) {
             arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
         }
@@ -445,7 +468,7 @@ public class AdminDeployManager {
             // isSet 先行判断：对不存在的键 set(path, null) 会创建空的父节点（竞技场不存在时会写入垃圾节点）
             yaml.set(path, null);
         } else {
-            return; // 无位置且磁盘上也没有：无需写盘
+            return true; // 无位置且磁盘上也没有：无需写盘
         }
         // 无论写入还是清除都打上标记：管理员对商店 NPC 的显式决定优先于旧版遗留数据，
         // 否则刚清除的位置会在下次加载时被 migrateLegacyShopNpc 从 spawnpoints.yml 复活
@@ -455,10 +478,11 @@ public class AdminDeployManager {
             yaml.save(arenasFile);
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to save shop NPC location to arenas.yml: " + e.getMessage());
-            return;
+            return false;
         }
         // 与磁盘保持一致：否则后续 saveSpawnPoints() 会用缺少 shop-npc 的旧副本整份覆写、把位置抹掉
         arenasConfig = yaml;
+        return true;
     }
 
     /* ========== 生成点操作 ========== */
@@ -475,7 +499,45 @@ public class AdminDeployManager {
         return !savedSpawnPoints.isEmpty();
     }
 
+    /**
+     * M-02 兜底：坐标世界与竞技场世界一致性校验。
+     *
+     * <p>向导的 handle() 入口已统一加世界守卫；本方法防的是<b>未来新增入口漏加守卫</b>——
+     * 异世界坐标一旦落盘（world 字段被 arenas.yml 丢弃、下次加载按竞技场世界重建）会产生
+     * 「重启后坐标固化到错误位置」的静默数据损坏，代价远高于这里的一次日志。</p>
+     */
+    private boolean isInArenaWorld(Location location) {
+        World arenaWorld = gameManager.getGameWorld();
+        return location != null && location.getWorld() != null
+                && arenaWorld != null && location.getWorld().equals(arenaWorld);
+    }
+
+    /** 异世界坐标被拒收时的日志行（世界名 + 坐标，便于排障） */
+    private void logRejectedLocation(String kind, Location location) {
+        World arenaWorld = gameManager.getGameWorld();
+        plugin.getLogger().warning("拒绝登记异世界的" + kind + "（期望世界 "
+                + (arenaWorld != null ? arenaWorld.getName() : "未加载")
+                + "，实际 "
+                + (location != null && location.getWorld() != null ? location.getWorld().getName() : "null")
+                + " @ " + (location != null ? location.getBlockX() + "," + location.getBlockY()
+                        + "," + location.getBlockZ() : "null") + "）");
+    }
+
+    /**
+     * P2-10：取走（读取并清除）最近一次写盘失败标记（主线程专用；读取即消费，避免重复提示）。
+     */
+    public boolean consumeSaveFailure() {
+        boolean failed = lastSaveFailed;
+        lastSaveFailed = false;
+        return failed;
+    }
+
     public void addSpawnPoint(Location location) {
+        // M-02 兜底：异世界坐标拒收 + 日志（不落盘）
+        if (!isInArenaWorld(location)) {
+            logRejectedLocation("玩家出生点", location);
+            return;
+        }
         // 保存方块坐标（整数），粒子显示时+0.5才是方块正中心
         Location blockCenter = new Location(
             location.getWorld(),
@@ -511,6 +573,11 @@ public class AdminDeployManager {
     }
 
     public void addMobSpawnPoint(Location location) {
+        // M-02 兜底：异世界坐标拒收 + 日志（不落盘）
+        if (!isInArenaWorld(location)) {
+            logRejectedLocation("怪物刷怪点", location);
+            return;
+        }
         // 保存方块坐标（整数），与 addSpawnPoint 同口径
         Location blockCenter = new Location(
             location.getWorld(),
@@ -543,8 +610,12 @@ public class AdminDeployManager {
         return Collections.unmodifiableList(copies);
     }
 
-    /** 登记一个村民位置（保存方块坐标） */
+    /** 登记一个村民位置（保存方块坐标；异世界坐标拒收 + 日志，见 M-02 兜底） */
     public void addVillager(Location location) {
+        if (!isInArenaWorld(location)) {
+            logRejectedLocation("村民位置", location);
+            return;
+        }
         Location blockCenter = new Location(
                 location.getWorld(),
                 location.getBlockX(),
@@ -566,9 +637,14 @@ public class AdminDeployManager {
         saveSpawnPoints();
     }
 
-    public void setCoreLocation(Location location) {
+    /**
+     * 设置竞技场核心位置并落盘。
+     *
+     * @return true = 已落盘（或新值为 null 时也视为成功，删除语义见 P2-4）；false = 写盘失败
+     */
+    public boolean setCoreLocation(Location location) {
         savedCoreLocation = (location != null) ? location.clone() : null;
-        saveSpawnPoints();
+        return saveSpawnPoints();
     }
 
     /* ========== 商店村民位置 ========== */
@@ -578,10 +654,14 @@ public class AdminDeployManager {
         return savedShopNpcLocation != null ? savedShopNpcLocation.clone() : null;
     }
 
-    /** 设置商店村民位置并持久化到 arenas.yml 的 {@code arenas.<id>.shop-npc}（null = 删除该节点） */
-    public void setShopNpcLocation(Location location) {
+    /**
+     * 设置商店村民位置并持久化到 arenas.yml 的 {@code arenas.<id>.shop-npc}（null = 删除该节点）。
+     *
+     * @return true = 已落盘；false = 写盘失败（已 log severe，调用方应向管理员如实播报）
+     */
+    public boolean setShopNpcLocation(Location location) {
         savedShopNpcLocation = (location != null) ? location.clone() : null;
-        saveSpawnPoints();
+        return saveSpawnPoints();
     }
 
     /* ========== 部署菜单 ========== */

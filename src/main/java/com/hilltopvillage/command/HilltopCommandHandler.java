@@ -21,6 +21,7 @@ import org.bukkit.inventory.ItemStack;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.admin.AdminDeployManager;
 import com.hilltopvillage.admin.gui.ArenaManageGUI;
+import com.hilltopvillage.arena.ArenaDefinition;
 import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.arena.ArenaStatus;
 import com.hilltopvillage.arena.MultiArenaManager;
@@ -29,6 +30,7 @@ import com.hilltopvillage.config.menu.MainConfigMenu;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.diagnostic.TpsDiagnostic;
+import com.hilltopvillage.shop.NpcManager;
 import com.hilltopvillage.shop.ShopManager;
 import com.hilltopvillage.stats.StatsManager;
 import com.hilltopvillage.util.LanguageManager;
@@ -45,6 +47,8 @@ public class HilltopCommandHandler {
     private final Set<UUID> pendingClearConfirm = new HashSet<>();
     /** clearmobspawns 的二次确认集合（与玩家出生点的 pendingClearConfirm 独立，避免互相串确认） */
     private final Set<UUID> pendingClearMobConfirm = new HashSet<>();
+    /** clearvillagers 的二次确认集合（与其它两个清除确认各自独立，避免互相串确认） */
+    private final Set<UUID> pendingClearVillagersConfirm = new HashSet<>();
 
     /** /hilltop shop give 单次发放上限（防手滑输入天文数字刷爆背包 / 卡服） */
     private static final int MAX_SHOP_GIVE = 6400;
@@ -118,15 +122,15 @@ public class HilltopCommandHandler {
                 String startArenaId = args.length >= 2 ? args[1] : null;
                 ArenaInstance startArena = arenaManager.resolveArena(startArenaId, player);
                 if (startArena == null) {
-                    sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+                    sendArenaResolveFailure(sender, player, startArenaId);
                     break;
                 }
                 GameManager startGm = startArena.getGameManager();
                 // Check if game is deployed (spawn points configured)
                 if (!startGm.hasSpawnPoints()) {
-                    // 走 i18n（按玩家语言）；两键均为仓库既有键，hint 保留「如何部署」的指引
-                    sender.sendMessage(lang.getFor(player, "arena-not-deployed"));
-                    sender.sendMessage(lang.getFor(player, "arena-not-deployed-hint"));
+                    // 走 i18n（按玩家语言）；hint 带竞技场 ID，指引 /hilltop setup 或 /hilltop enable
+                    sender.sendMessage(lang.getFor(player, "arena-not-deployed", startArena.getArenaId()));
+                    sender.sendMessage(lang.getFor(player, "arena-not-deployed-hint", startArena.getArenaId()));
                     break;
                 }
                 // STORY-1.2：怪物刷怪坐标同样不能为空（旧存档双用回退的场不受影响）
@@ -162,7 +166,7 @@ public class HilltopCommandHandler {
                 String stopArenaId = args.length >= 2 ? args[1] : null;
                 ArenaInstance stopArena = arenaManager.resolveArena(stopArenaId, player);
                 if (stopArena == null) {
-                    sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+                    sendArenaResolveFailure(sender, player, stopArenaId);
                     break;
                 }
                 stopArena.stopGame();
@@ -215,7 +219,7 @@ public class HilltopCommandHandler {
                 String statusArenaId = args.length >= 2 ? args[1] : null;
                 ArenaInstance statusArena = arenaManager.resolveArena(statusArenaId, player);
                 if (statusArena == null) {
-                    sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+                    sendArenaResolveFailure(sender, player, statusArenaId);
                     break;
                 }
                 GameManager statusGm = statusArena.getGameManager();
@@ -308,7 +312,10 @@ public class HilltopCommandHandler {
                     return true;
                 }
                 if (args.length >= 2 && setupWizard.hasSession(player)) {
-                    setupWizard.handle(player, args[1]);
+                    // M-01：拆包重拼为完整子命令串（含空白分隔的余下参数）——goto 是唯一双 token
+                    // 子命令（goto <N>），此前只传 args[1] 导致数字被丢弃、goto 永远只回用法提示
+                    setupWizard.handle(player, String.join(" ",
+                            java.util.Arrays.copyOfRange(args, 1, args.length)));
                 } else {
                     setupWizard.start(player);
                 }
@@ -480,29 +487,67 @@ public class HilltopCommandHandler {
 
         Player admin = (Player) sender;
 
-        // 解析目标竞技场：玩家所在竞技场 → 默认竞技场 → 第一个活动竞技场
-        ArenaInstance deployArena = arenaManager.resolveArena(null, admin);
-        if (deployArena == null) {
-            admin.sendMessage(lang.getFor(admin, "no-active-arenas"));
+        // 解析目标竞技场：优先按管理员所在世界反查定义（与向导同源）。
+        // 旧链「玩家已加入场 → 默认场 → 第一个活动场」在多竞技场下会把站在 arena2 世界
+        // 却未 join 的管理员指向 arena1（随后世界校验失败，命令路径无解）；世界反查不中才回退旧链。
+        ArenaDefinition worldDef = plugin.getMultiArenaManager().getDefinitionManager()
+                .getArenaByWorld(admin.getWorld().getName());
+        ArenaInstance deployArena = worldDef != null
+                ? arenaManager.getArena(worldDef.getId())
+                : arenaManager.resolveArena(null, admin);
+
+        if (deployArena == null && worldDef == null) {
+            sendArenaResolveFailure(sender, admin, null);
             return;
         }
 
-        // 部署必须在目标竞技场世界内进行，否则会把大厅坐标误写成竞技场坐标
-        if (!admin.getWorld().getName().equals(deployArena.getWorldName())) {
+        // 部署必须在目标竞技场世界内进行，否则会把大厅坐标误写成竞技场坐标。
+        // 世界反查命中的分支天然同世界，无需再校验。
+        // C2-01：大小写不敏感比较 —— Bukkit 世界查找不区分大小写（arenas.yml 写 Hilltop_Arena1、
+        // 实际文件夹 hilltop_arena1 仍能正常加载游玩），精确 equals 会把站在正确世界里的管理员误拒。
+        if (deployArena != null && !admin.getWorld().getName().equalsIgnoreCase(deployArena.getWorldName())) {
             admin.sendMessage(lang.getFor(admin, "deploy.must-be-in-arena-world",
                     deployArena.getDisplayName(), deployArena.getWorldName()));
             return;
         }
-
-        GameManager deployGm = deployArena.getGameManager();
-        AdminDeployManager deploy = deployGm.getAdminDeployManager();
 
         if (args.length < 2) {
             deployMenuSender.sendDeployMenu(admin);
             return;
         }
 
+        // 已配置但尚无活动实例的场（未启用 / 未部署）：help 与 clearshop 无需实例即可工作
+        if (deployArena == null) {
+            String sub = args[1].toLowerCase();
+            if (sub.equals("help")) {
+                deployMenuSender.sendDeployMenu(admin);
+                return;
+            }
+            if (sub.equals("clearshop")) {
+                // clearshop 走 ArenaAdminService 的「实例优先 + YAML 兜底」路径，无实例的场也可清除
+                switch (plugin.getArenaAdminService().deleteShopNpc(worldDef.getId())) {
+                    case OK -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-done"));
+                    case ARENA_NOT_FOUND -> admin.sendMessage(lang.getFor(admin, "arena-not-found",
+                            worldDef.getId()));
+                    case NOT_SET -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-none"));
+                    case GAME_IN_PROGRESS -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-in-game"));
+                    case WRITE_FAILED -> admin.sendMessage(lang.getFor(admin, "deploy.clearshop-write-failed"));
+                }
+                return;
+            }
+            admin.sendMessage(lang.getFor(admin, "arena-not-deployed", worldDef.getId()));
+            admin.sendMessage(lang.getFor(admin, "arena-not-deployed-hint", worldDef.getId()));
+            return;
+        }
+
+        GameManager deployGm = deployArena.getGameManager();
+        AdminDeployManager deploy = deployGm.getAdminDeployManager();
+
         switch (args[1].toLowerCase()) {
+            case "help":
+                deployMenuSender.sendDeployMenu(admin);
+                break;
+
             case "setcore":
                 deploy.setCoreLocation(admin.getLocation());
                 plugin.reloadConfig();
@@ -646,7 +691,8 @@ public class HilltopCommandHandler {
                         }
                     }, 20L * 15);
                 } else {
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-already"));
+                    // C2-02：用本族专用键（旧版复用 clearspawns-already，指引的 confirmclear 不在本 pending 集）
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearmobspawns-already"));
                 }
                 break;
 
@@ -719,19 +765,58 @@ public class HilltopCommandHandler {
                 break;
 
             case "clearvillagers":
-                deploy.clearVillagers();
-                admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-done", 0));
+                // 与 clearspawns / clearmobspawns 同一套 15 秒二次确认（各自的 pending 集合独立）
+                if (!pendingClearVillagersConfirm.contains(admin.getUniqueId())) {
+                    pendingClearVillagersConfirm.add(admin.getUniqueId());
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-warning", deploy.getVillagers().size()));
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-confirm"));
+                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
+                        if (pendingClearVillagersConfirm.remove(admin.getUniqueId())) {
+                            admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-expired"));
+                        }
+                    }, 20L * 15);
+                } else {
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-already"));
+                }
+                break;
+
+            case "confirmclearvillagers":
+                if (pendingClearVillagersConfirm.remove(admin.getUniqueId())) {
+                    // 先取数量再清除：旧实现清完再报 0，恒报「已清除 0 个」
+                    int clearedVillagers = deploy.getVillagers().size();
+                    deploy.clearVillagers();
+                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-done", clearedVillagers));
+                } else {
+                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclearvillagers-no-pending"));
+                }
                 break;
 
             case "setshop":
-                deploy.setShopNpcLocation(admin.getLocation());
-                // 立即生成 NPC（spawnNpc 内部先 despawn，幂等可重复设置；与向导 confirm-shop 同一行为）
-                plugin.getShopManager().getNpcManager().spawnNpc(admin.getLocation());
+                // 对局进行中拒绝（P2-23）：set 会先 despawn 旧实体再生成新实体，对局中移动
+                // 会当场把场内玩家正在使用的商店撤掉、换到管理员脚下 —— 与清除入口同一保护口径。
+                // 判定读 live 实例状态（与 ArenaAdminService.deleteShopNpc 同源）；
+                // 无实例 = 未开打，放行。
+                if (NpcManager.isGameInProgress(deployArena.getState())) {
+                    admin.sendMessage(lang.getFor(admin, "deploy.setshop-in-game"));
+                    return;
+                }
+                // pitch 归零对齐向导 confirm-shop（F-4）：存盘与生成都用水平朝向，
+                // 实体侧 spawnNpc 本会自愈，但 YAML 里不应写入低头值。
+                Location shopLocation = admin.getLocation().clone();
+                shopLocation.setPitch(0f);
+                // 先生成后存盘（与向导 confirm-shop 同序）：spawnNpc 返回 false（旧 NPC 在别世界
+                // 且那场正在对局，跨世界抽走被拒）时不写配置、整次操作原样拒绝 ——
+                // 避免「配置指向新位置、实体留在旧世界」的分叉状态
+                if (!plugin.getShopManager().getNpcManager().spawnNpc(shopLocation)) {
+                    admin.sendMessage(lang.getFor(admin, "deploy.setshop-in-game"));
+                    return;
+                }
+                deploy.setShopNpcLocation(shopLocation);
                 admin.sendMessage(lang.getFor(admin, "deploy.setshop-set"));
                 admin.sendMessage(lang.getFor(admin, "deploy.setshop-coords",
-                        String.format("%.1f", admin.getLocation().getX()),
-                        String.format("%.1f", admin.getLocation().getY()),
-                        String.format("%.1f", admin.getLocation().getZ())));
+                        String.format("%.1f", shopLocation.getX()),
+                        String.format("%.1f", shopLocation.getY()),
+                        String.format("%.1f", shopLocation.getZ())));
                 admin.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                         admin.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
@@ -772,6 +857,75 @@ public class HilltopCommandHandler {
     }
 
     /**
+     * enable / disable 的竞技场 ID 解析：显式 ID 优先；未提供时**优先按管理员所在世界反查定义**
+     * （多竞技场管理员站在 arena2 世界执行无参 {@code /hilltop enable} 时，
+     * {@code resolveArenaId} 的「玩家已加入场」映射在他身上为空，会静默落到默认场），
+     * 世界反查不中再走 {@link MultiArenaManager#resolveArenaId} 的旧回退链。
+     *
+     * @return 竞技场 ID；显式 ID 未命中 / 无任何可解析竞技场时返回 null
+     */
+    private String resolveArenaIdForAdmin(String explicitId, Player player) {
+        if (explicitId != null && !explicitId.isBlank()) {
+            return arenaManager.resolveArenaId(explicitId, player);
+        }
+        if (player != null) {
+            ArenaDefinition byWorld = arenaManager.getDefinitionManager()
+                    .getArenaByWorld(player.getWorld().getName());
+            if (byWorld != null) return byWorld.getId();
+        }
+        return arenaManager.resolveArenaId(null, player);
+    }
+
+    /**
+     * start / stop / status（以及 deploy 入口解析失败）共用的解析失败播报。
+     *
+     * <ul>
+     *   <li>显式传了非空 ID 且解析不到实例 → {@code arena-not-found}（打错字的 ID 不再静默改靶）；</li>
+     *   <li>未传 ID / 传了 ID 但该场「有定义、无实例」（未启用 / 未部署）→ {@code arena-not-deployed}
+     *       + 指引（跑 /hilltop setup 或用 /hilltop enable 启用）；</li>
+     *   <li>完全没有已配置竞技场 → 原 {@code no-active-arenas}。</li>
+     * </ul>
+     *
+     * @param explicitId 调用方解析时传入的显式 ID（null / 空白 = 未提供）
+     */
+    private void sendArenaResolveFailure(CommandSender sender, Player player, String explicitId) {
+        boolean explicit = explicitId != null && !explicitId.isBlank();
+        if (explicit) {
+            // 定义存在但无活动实例 → 走「未启用/未部署」指引；完全查无此场 → arena-not-found
+            ArenaDefinition def = arenaManager.getDefinitionManager().getArena(explicitId);
+            if (def == null) {
+                sender.sendMessage(lang.getFor(player, "arena-not-found", explicitId));
+                return;
+            }
+            sender.sendMessage(lang.getFor(player, "arena-not-deployed", def.getId()));
+            sender.sendMessage(lang.getFor(player, "arena-not-deployed-hint", def.getId()));
+            return;
+        }
+
+        // 未提供 ID：解析失败只可能是「无活动实例」。优先给出定向指引：
+        // 玩家所在世界反查到定义 → 该场；否则取默认 / 第一个定义（resolveArenaId 回退链）。
+        // 只要 definitionManager 里有对应的场就报「未部署/未启用」+ 指引；
+        // 完全没有已配置竞技场才落到 no-active-arenas。
+        ArenaDefinition byWorld = player != null
+                ? arenaManager.getDefinitionManager().getArenaByWorld(player.getWorld().getName())
+                : null;
+        String defId = byWorld != null ? byWorld.getId() : null;
+        if (defId == null) {
+            String resolved = arenaManager.resolveArenaId(null, player);
+            // 排除指向已删除定义的陈旧映射：只认 definitionManager 里真实存在的场
+            if (resolved != null && arenaManager.getDefinitionManager().getArena(resolved) != null) {
+                defId = resolved;
+            }
+        }
+        if (defId != null && arenaManager.getArena(defId) == null) {
+            sender.sendMessage(lang.getFor(player, "arena-not-deployed", defId));
+            sender.sendMessage(lang.getFor(player, "arena-not-deployed-hint", defId));
+            return;
+        }
+        sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+    }
+
+    /**
      * /hilltop enable [竞技场]
      * 把竞技场加入启用队列（对应 BedWars1058 的 {@code /bw enable}）。
      */
@@ -781,9 +935,15 @@ public class HilltopCommandHandler {
             return;
         }
 
-        String arenaId = arenaManager.resolveArenaId(args.length >= 2 ? args[1] : null, player);
+        String requestedId = args.length >= 2 ? args[1] : null;
+        String arenaId = resolveArenaIdForAdmin(requestedId, player);
         if (arenaId == null) {
-            sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+            // 显式 ID 打错 → arena-not-found；否则无场可操作
+            if (requestedId != null && !requestedId.isBlank()) {
+                sender.sendMessage(lang.getFor(player, "arena-not-found", requestedId));
+            } else {
+                sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+            }
             return;
         }
 
@@ -816,9 +976,14 @@ public class HilltopCommandHandler {
             return;
         }
 
-        String arenaId = arenaManager.resolveArenaId(args.length >= 2 ? args[1] : null, player);
+        String requestedId = args.length >= 2 ? args[1] : null;
+        String arenaId = resolveArenaIdForAdmin(requestedId, player);
         if (arenaId == null) {
-            sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+            if (requestedId != null && !requestedId.isBlank()) {
+                sender.sendMessage(lang.getFor(player, "arena-not-found", requestedId));
+            } else {
+                sender.sendMessage(lang.getFor(player, "no-active-arenas"));
+            }
             return;
         }
 

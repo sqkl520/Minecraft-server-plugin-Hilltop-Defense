@@ -10,6 +10,7 @@ import com.hilltopvillage.arena.MultiArenaManager;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.mechanics.NodeSystem;
+import com.hilltopvillage.shop.NpcManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -347,7 +348,10 @@ public final class ArenaAdminService {
      * 世界不匹配时只删坐标条目，实体保持不动。</p>
      *
      * <p><b>对局进行中拒绝</b>：清除会当场撤掉玩家正在使用的商店（开商店 GUI 依赖该实体），
-     * 与 {@link #updateGameParams} 的 {@code GAME_IN_PROGRESS} 同一口径，要求先 {@code /hilltop stop}。</p>
+     * 与 {@link #updateGameParams} 的 {@code GAME_IN_PROGRESS} 同一口径，要求先 {@code /hilltop stop}。
+     * 拒绝状态含<b>结算倒计时</b>（VICTORY / DEFEAT —— 玩家仍在场内）与 STARTING / RUNNING /
+     * WAVE_INTERMISSION，判定统一走 {@link com.hilltopvillage.shop.NpcManager#isGameInProgress(GameState)}
+     * （L2-10/L12-03 同源：三处清除守卫 + set 守卫共用同一谓词）。</p>
      *
      * <p>写盘后与其它删除路径一样防「整份覆写复活」：
      * {@link #saveArenas} 的 YAML 兜底路径内部已调用
@@ -367,12 +371,8 @@ public final class ArenaAdminService {
         if (definition == null) return ShopNpcDelete.ARENA_NOT_FOUND;
 
         ArenaInstance live = liveInstance(definition.getId());
-        if (live != null) {
-            GameState state = live.getState();
-            if (state == GameState.STARTING || state == GameState.RUNNING
-                    || state == GameState.WAVE_INTERMISSION) {
-                return ShopNpcDelete.GAME_IN_PROGRESS;
-            }
+        if (live != null && NpcManager.isGameInProgress(live.getState())) {
+            return ShopNpcDelete.GAME_IN_PROGRESS;
         }
 
         AdminDeployManager deploy = live == null ? null : deployManager(live);

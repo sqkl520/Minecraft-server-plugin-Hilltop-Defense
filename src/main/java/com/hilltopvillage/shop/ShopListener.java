@@ -2,6 +2,7 @@ package com.hilltopvillage.shop;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.util.LanguageManager;
+import org.bukkit.GameMode;
 import org.bukkit.Sound;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
@@ -42,6 +43,10 @@ public class ShopListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onPlayerInteractEntity(PlayerInteractEntityEvent event) {
         if (!shopManager.getNpcManager().isShopNpc(event.getRightClicked())) return;
+
+        // P2-30：旁观者（阵亡等待复活 / 对局外旁观）不开商店——旁观不属于对局玩家，
+        // 且避免旁观状态下误触发购买流程；也不取消其事件（旁观者本就不会打开交易界面）
+        if (event.getPlayer().getGameMode() == GameMode.SPECTATOR) return;
 
         // 阻止原版村民交易界面
         event.setCancelled(true);
@@ -121,8 +126,17 @@ public class ShopListener implements Listener {
 
         ItemStack product = shopManager.deliverItem(item, player);
         if (product == null) {
-            // 类型异常：退回货币（deliverItem 已 warning 日志）
-            player.getInventory().addItem(shopManager.createCurrencyItem(item.getPrice()));
+            // 类型异常：退回货币（deliverItem 已 warning 日志）。
+            // price > 0 才退：createCurrencyItem 已对 amount 钳制（P2-26），price=0 时若照退
+            // 会发出 1 个水晶（0 价商品刷钱）；price=0 本就未扣款，无需退款。
+            // 退款同样处理背包溢出（与正常发货分支一致），避免退款静默丢失。
+            if (item.getPrice() > 0) {
+                java.util.Map<Integer, ItemStack> refundOverflow =
+                        player.getInventory().addItem(shopManager.createCurrencyItem(item.getPrice()));
+                for (ItemStack leftover : refundOverflow.values()) {
+                    player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+                }
+            }
             return;
         }
 

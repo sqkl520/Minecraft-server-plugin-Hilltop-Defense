@@ -172,6 +172,7 @@ public class MultiArenaManager {
         ArenaInstance arena = activeArenas.get(pending.arenaId());
         if (arena == null) {
             playerArenaMap.remove(player.getUniqueId());
+            restoreGoodsOnFailedRejoin(player);
             return false;
         }
 
@@ -179,9 +180,29 @@ public class MultiArenaManager {
             // 竞技场已结束或玩家已被移出：按正常流程送回大厅
             arena.removePlayer(player);
             playerArenaMap.remove(player.getUniqueId());
+            // P2-11：重连窗口内登录且局已结束 → removePlayer 对「已被 reset 清出 players 集合」
+            // 的玩家会早退（第一行 !players.contains 分支），跳过其物品归还；这里补一次，
+            // 保证物品当场归还而不是拖到下一次登录（期间对局货币可在大厅消费，经济口径漏洞）。
+            // restore 幂等：无快照时返回 false 且不发送提示，不会重复归还。
+            restoreGoodsOnFailedRejoin(player);
             return false;
         }
         return true;
+    }
+
+    /**
+     * 重连失败后的物品归还兜底（P2-11）。
+     *
+     * <p>正常路径下 {@code removePlayer} 内部已归还；但「重连窗口内登录且局已结束并完成
+     * reset」的时序里，reset 已把玩家从 players 集合清出，removePlayer 第一行即早退，
+     * 归还被跳过。restore 幂等，无快照时为无害空操作。</p>
+     */
+    private void restoreGoodsOnFailedRejoin(Player player) {
+        if (plugin.getPlayerGoodsManager().has(player)) {
+            if (plugin.getPlayerGoodsManager().restore(player)) {
+                plugin.getLanguageManager().send(player, "goods-restored");
+            }
+        }
     }
 
     /** 该玩家当前是否处于重连窗口内 */
@@ -425,9 +446,15 @@ public class MultiArenaManager {
      * 保留旧接口：直接创建一个已就绪的竞技场实例（不走队列）。
      * 供需要同步就绪的场景使用。
      *
-     * @param arenaId arena ID from arenas.yml
-     * @return true if started successfully
+     * <p>⚠️ 已弃用（P2-35）：本方法绕过「启用队列」状态机——不登记 {@code enableQueue}、
+     * 不更新 {@code statuses} 的全部语义（{@code startAllArenas()} 同样零调用方），
+     * 与队列路径并存会让 {@code getStatus()} / {@code disableArena} / {@code canReset()}
+     * 得到与实际不符的判断。正常启用请走 {@code enableAllConfiguredArenas()} / 启用队列。
+     * 实测除 {@link #startAllArenas()}（同样零外部调用方）外无其它调用方。</p>
+     *
+     * @deprecated 绕过启用队列状态机的旧接口；请走启用队列路径（enableArena / enableAllConfiguredArenas）。
      */
+    @Deprecated(forRemoval = true)
     public boolean startArena(String arenaId) {
         if (activeArenas.containsKey(arenaId)) {
             return false;
@@ -666,7 +693,14 @@ public class MultiArenaManager {
     /**
      * Start all enabled arenas.
      * Called on plugin enable.
+     *
+     * <p>⚠️ 已弃用（P2-35）：与 {@link #startArena(String)} 同款旧接口——实测全仓库零调用方
+     * （插件启动实际走 {@code enableAllConfiguredArenas()} 的启用队列）。
+     * 与之同弃用可顺便抑制内部调用的 deprecation 警告（javac 不警告「弃用实体内部」的使用）。</p>
+     *
+     * @deprecated 死接口；请走启用队列路径（enableAllConfiguredArenas / enableArena）。
      */
+    @Deprecated(forRemoval = true)
     public void startAllArenas() {
         List<ArenaDefinition> definitions = definitionManager.getRegistry().list();
         int started = 0;
@@ -728,14 +762,22 @@ public class MultiArenaManager {
      * @return true if joined successfully
      */
     public boolean joinArena(Player player, String arenaId) {
-        ArenaInstance arena = activeArenas.get(arenaId);
+        // C3-01：显式 ID 先经定义侧归一化（ArenaRegistry.get 大小写不敏感，activeArenas 按规范 ID
+        // 精确键查找）——否则 /hilltop join Arena1 会拿不到实例而误报 arena-not-found，
+        // 与 stop/enable/disable 的归一化口径分裂。
+        String canonicalId = arenaId;
+        if (arenaId != null && !arenaId.isBlank()) {
+            ArenaDefinition def = definitionManager.getArena(arenaId);
+            if (def != null) canonicalId = def.getId();
+        }
+        ArenaInstance arena = canonicalId == null ? null : activeArenas.get(canonicalId);
         if (arena == null) {
             plugin.getLanguageManager().send(player, "arena-not-found", arenaId);
             return false;
         }
 
         if (arena.addPlayer(player)) {
-            playerArenaMap.put(player.getUniqueId(), arenaId);
+            playerArenaMap.put(player.getUniqueId(), canonicalId);
             return true;
         }
 
@@ -845,12 +887,17 @@ public class MultiArenaManager {
      *
      * <p>优先级：显式 ID → 玩家所在竞技场 → 默认竞技场 → 第一个已配置的竞技场。</p>
      *
+     * <p><b>显式 ID 未命中不回退</b>：只要传入了非空 arenaId 但没有任何定义匹配，
+     * 直接返回 null（调用方据此报 {@code arena-not-found}）——旧行为会静默落回
+     * 「玩家所在 → 默认 → 第一个」链，`/hilltop enable <typo>` 会误操作另一个竞技场。
+     * 仅 arenaId 为 null / 空白时才走回退链。</p>
+     *
      * <p>与 {@link #resolveArena(String, Player)} 的区别：后者返回运行时实例，
      * 因此无法用于 {@code /hilltop enable} 这类需要操作「未启用竞技场」的场景。</p>
      *
      * @param arenaId 显式竞技场 ID（可为 null）
      * @param player  命令发送者（可为 null）
-     * @return 竞技场 ID；无任何已配置竞技场时返回 null
+     * @return 竞技场 ID；显式 ID 未命中或（未提供 ID 且）无任何已配置竞技场时返回 null
      */
     public String resolveArenaId(String arenaId, Player player) {
         // 键必须归一化：ArenaRegistry.get() 大小写不敏感，但 activeArenas（以及 getArena / disableArena /
@@ -859,7 +906,7 @@ public class MultiArenaManager {
         // 只调用一次 getArena，保证 null 判定与取 ID 用的是同一个对象。
         if (arenaId != null && !arenaId.isBlank()) {
             ArenaDefinition explicit = definitionManager.getArena(arenaId);
-            if (explicit != null) return explicit.getId();
+            return explicit != null ? explicit.getId() : null;
         }
         if (player != null) {
             String current = playerArenaMap.get(player.getUniqueId());
@@ -876,14 +923,25 @@ public class MultiArenaManager {
      * Resolve the target arena for a command.
      * Priority: explicit arenaId → player's current arena → default arena → first active arena.
      *
+     * <p><b>显式 ID 未命中不回退</b>：只要传入了非空 arenaId 但没有任何活动实例匹配，
+     * 直接返回 null（调用方据此报 {@code arena-not-found}）——旧行为会静默落回
+     * 「玩家所在 → 默认 → 第一个活动」链，`/hilltop stop <typo>` 会停掉另一个竞技场的对局。
+     * 仅 arenaId 为 null / 空白时才走回退链。</p>
+     *
      * @param arenaId explicit arena ID (may be null)
      * @param player  command sender if a player (may be null)
-     * @return resolved arena, or null if none found
+     * @return resolved arena, or null if none found (explicit ID given but unknown → also null)
      */
     public ArenaInstance resolveArena(String arenaId, Player player) {
         if (arenaId != null && !arenaId.isBlank()) {
+            // 先精确命中活动实例（原有语义保留）；再按定义归一化大小写查一次
+            // （ArenaRegistry.get() 大小写不敏感，但 activeArenas 按规范 ID 精确键）。
+            // 两种情况都未命中时直接返回 null，绝不掉进回退链（M-09：打错的 ID 静默改靶）。
             ArenaInstance explicit = activeArenas.get(arenaId);
             if (explicit != null) return explicit;
+            ArenaDefinition explicitDef = definitionManager.getArena(arenaId);
+            if (explicitDef == null) return null;
+            return activeArenas.get(explicitDef.getId());
         }
         if (player != null) {
             ArenaInstance playerArena = getPlayerArena(player);

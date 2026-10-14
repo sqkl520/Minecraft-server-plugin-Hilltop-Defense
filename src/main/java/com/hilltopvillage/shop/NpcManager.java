@@ -2,6 +2,8 @@ package com.hilltopvillage.shop;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.arena.ArenaDefinition;
+import com.hilltopvillage.arena.ArenaInstance;
+import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -55,10 +57,33 @@ public class NpcManager {
      * <p>朝向<b>只保留水平 yaw，pitch 一律归零</b>：村民永远不低头/抬头（F-4）。这里是全插件
      * 生成商店村民的唯一入口，在此统一兜底——即便旧存档（arenas.yml）里 {@code pitch} 被写坏，
      * 重启恢复（{@link #respawnFromConfig()}）或任何调用方传进来的坐标也会在生成时被自动纠正。</p>
+     *
+     * <p><b>跨世界抽走保护（P2-23）</b>：商店 NPC 是插件级单例，旧实体与目标位置不在同一世界时，
+     * 若旧实体所在世界对应的竞技场正处于对局窗口（见 {@link #isGameInProgress}），<b>拒绝迁移</b>
+     * 并返回 false（旧实体留在原地继续服务场内玩家）——否则会把别的竞技场玩家正在使用的商店
+     * 当场撤走。旧实体在别世界、但该世界没有对局时保持原语义：正常迁移（despawn 旧的、生成新的）。
+     * 同一世界内移动由调用方（向导 / 命令）先做目标场对局判定。</p>
+     *
+     * @param location 目标位置
+     * @return true = 已生成；false = 未生成（坐标 / 世界无效，或跨世界迁移被对局保护拒绝）
      */
-    public void spawnNpc(Location location) {
+    public boolean spawnNpc(Location location) {
+        if (location == null || location.getWorld() == null) return false;
+
+        // 跨世界迁移前先查旧实体所在世界是否在对局：在则拒绝并保留旧实体，保护他场玩家的商店
+        Location previous = getNpcLocation();
+        if (previous != null && previous.getWorld() != null
+                && !previous.getWorld().equals(location.getWorld())) {
+            ArenaInstance previousArena = liveArenaByWorld(previous.getWorld().getName());
+            if (previousArena != null && isGameInProgress(previousArena.getState())) {
+                plugin.getLogger().warning("拒绝迁移商店 NPC：当前实体位于 " + previous.getWorld().getName()
+                        + "（竞技场 " + previousArena.getArenaId() + " 正在对局中），目标世界 "
+                        + location.getWorld().getName() + "；请先对该竞技场执行 /hilltop stop 再重试");
+                return false;
+            }
+        }
+
         despawnNpc();
-        if (location == null || location.getWorld() == null) return;
 
         // 只保留水平朝向：克隆后把 pitch 归零再生成，避免低头状态被带入实体
         Location spawnLocation = location.clone();
@@ -83,6 +108,21 @@ public class NpcManager {
         villager.getPersistentDataContainer().set(shopNpcKey, PersistentDataType.BYTE, (byte) 1);
         this.npc = villager;
         startLookTask();
+        return true;
+    }
+
+    /**
+     * 商店守卫的统一「对局窗口」口径（向导 / ArenaAdminService / set 路径共用）：
+     * 开局倒计时 / 进行中 / 波间休整 / <b>结算倒计时（VICTORY / DEFEAT，玩家仍在场内）</b>
+     * 均视为「对局进行中」——移动或清除商店会当场撤掉场内玩家正在使用的商店，一律拒绝。
+     *
+     * <p>{@code ENDING}（结算倒计时结束后的地图回滚期）玩家已全部移出竞技场，不在此列；
+     * {@code WAITING} 与 null 同理放行。</p>
+     */
+    public static boolean isGameInProgress(GameState state) {
+        return state == GameState.STARTING || state == GameState.RUNNING
+                || state == GameState.WAVE_INTERMISSION
+                || state == GameState.VICTORY || state == GameState.DEFEAT;
     }
 
     /** 清除当前商店村民（未生成时无操作，幂等）；同时停掉转向任务 */
@@ -108,9 +148,26 @@ public class NpcManager {
         if (worldName == null || worldName.isBlank()) return false;
         Location location = getNpcLocation();
         if (location == null || location.getWorld() == null) return false;
-        if (!location.getWorld().getName().equals(worldName)) return false;
+        // 世界名比较忽略大小写（P2-29）：arenas.yml 的原始字符串与实际世界名大小写不一致时
+        // （Bukkit 世界查找本身不区分大小写，能正常加载与游玩），equals 会漏判导致
+        // 「清除删了 YAML 但实体残留」。
+        if (!location.getWorld().getName().equalsIgnoreCase(worldName)) return false;
         despawnNpc();
         return true;
+    }
+
+    /** 按世界名取活动实例（大小写不敏感；世界未加载 / 无对局实例时返回 null） */
+    private ArenaInstance liveArenaByWorld(String worldName) {
+        if (worldName == null || worldName.isBlank()) return null;
+        ArenaInstance arena = plugin.getMultiArenaManager().getArenaByWorld(worldName);
+        if (arena == null) {
+            // MultiArenaManager.getArenaByWorld 是区分大小写的世界名比较，这里做一次兜底：
+            // 实例世界名与传入名忽略大小写相等时同样命中（与 despawnIfInWorld 的口径一致）
+            for (ArenaInstance candidate : plugin.getMultiArenaManager().getActiveArenas()) {
+                if (candidate.getWorldName().equalsIgnoreCase(worldName)) return candidate;
+            }
+        }
+        return arena;
     }
 
     /**
@@ -219,11 +276,21 @@ public class NpcManager {
             plugin.getLogger().warning("有 " + configured + " 个竞技场配置了商店 NPC 位置，"
                     + "但商店 NPC 是插件级单例，仅生成竞技场 " + target.getId() + " 的位置");
         }
-        spawnNpc(location);
-        plugin.getLogger().info("Shop NPC respawned for arena " + target.getId());
+        if (spawnNpc(location)) {
+            plugin.getLogger().info("Shop NPC respawned for arena " + target.getId());
+        } else {
+            plugin.getLogger().warning("Shop NPC 生成失败（坐标 / 世界无效），arena=" + target.getId());
+        }
     }
 
-    /** 清理孤儿实体：PDC 有标记但非当前引用（崩溃/重装残留），启动 spawn 前调用一次 */
+    /**
+     * 清理孤儿实体：PDC 有标记但非当前引用（崩溃/重装残留）。
+     *
+     * <p><b>调用次序（P2-25）</b>：必须在 {@link #respawnFromConfig()} <b>之后</b>调用 ——
+     * 该方法只遍历已加载实体，而硬崩后商店区块可能尚未加载（孤儿不可见），
+     * 随后 respawnFromConfig 的 spawnEntity 会强制加载该区块让孤儿物化并与新 NPC 并存。
+     * 先生成（强制加载）再清理，孤儿必然可见。本方法跳过 {@code entity == npc}，不会误删新实体。</p>
+     */
     public void cleanupOrphans() {
         int removed = 0;
         for (World world : Bukkit.getWorlds()) {

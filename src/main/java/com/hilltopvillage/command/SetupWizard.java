@@ -5,7 +5,7 @@ import com.hilltopvillage.admin.AdminDeployManager;
 import com.hilltopvillage.arena.ArenaDefinition;
 import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.core.GameManager;
-import com.hilltopvillage.core.GameState;
+import com.hilltopvillage.shop.NpcManager;
 import com.hilltopvillage.util.LanguageManager;
 import net.kyori.adventure.text.Component;
 import net.kyori.adventure.text.event.ClickEvent;
@@ -13,10 +13,8 @@ import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
 import org.bukkit.*;
 import org.bukkit.entity.Player;
 import org.bukkit.persistence.PersistentDataType;import org.bukkit.event.EventHandler;
-import org.bukkit.event.HandlerList;
 import org.bukkit.event.Listener;
 import org.bukkit.event.inventory.InventoryClickEvent;
-import org.bukkit.event.inventory.InventoryCloseEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.inventory.Inventory;
 import org.bukkit.inventory.ItemStack;
@@ -87,6 +85,25 @@ public class SetupWizard implements Listener {
     }
 
     /**
+     * 目标竞技场的运行时（live）实例；未启用 / 无实例 / ID 解析失败时返回 null。
+     *
+     * <p>商店守卫（清除 / 移动）必须读 <b>live 实例状态</b>（{@link ArenaInstance#getState()}）：
+     * {@code GameManager.getState()} 的 {@code STARTING} 是 startGame() 同步方法体内的瞬时帧、
+     * 外部永不可观测（L4-01），用它判定会让开局倒计时期间的守卫成为死代码。
+     * 无实例 = 未开打，一律放行。</p>
+     */
+    private ArenaInstance liveInstance(String arenaId) {
+        if (arenaId == null || arenaId.isBlank()) return null;
+        return plugin.getMultiArenaManager().getArena(arenaId);
+    }
+
+    /** 本次部署目标竞技场是否正处于对局窗口（含结算倒计时）；无实例 = 未开打，返回 false */
+    private boolean isTargetArenaInGame(Player player) {
+        ArenaInstance live = liveInstance(resolveArenaId(player));
+        return live != null && NpcManager.isGameInProgress(live.getState());
+    }
+
+    /**
      * 取某竞技场的部署期 GameManager。
      *
      * <p>优先返回已启用竞技场<b>正式实例</b>的 GameManager（部署改动须由它写入，才能让运行中的对局
@@ -113,6 +130,17 @@ public class SetupWizard implements Listener {
             // 两次向导操作之间磁盘可能被外部写入（如管理 GUI 的商店清除、其它竞技场的部署命令），
             // 不刷新的话向导的下一次 saveSpawnPoints() 会拿旧内存值把外部改动整份写回（「清除没生效」）。
             cached.getAdminDeployManager().loadSpawnPoints();
+            // M-16：NodeSystem 同样重载。部署期上下文的 NodeSystem 在创建时把 nodes.yml 读进内存，
+            // 重置竞技场（ArenaResetService）清空 nodes.yml 后不回写这里的旧内存表；同会话重走第 4 步
+            // 增删任一节点会以内存为准整份写回 → 被清空的节点复活。重载按世界过滤重读磁盘
+            // （reset 后已空 → 重读得空表），部署期上下文无对局（无血量状态可洗），安全。
+            // 守卫：仅当目标世界仍加载时重载——世界未加载时 loadNodesFromConfig 会把全部节点
+            // 跳过并清空内存（保留旧内存更安全，世界恢复后玩家自然重进本分支刷新）。
+            // 双保险：ArenaResetService 收尾还会调 invalidateDeploymentContext(arenaId) 直接丢弃上下文。
+            org.bukkit.World arenaWorld = cached.getGameWorld();
+            if (arenaWorld != null && Bukkit.getWorld(arenaWorld.getName()) != null) {
+                cached.getNodeSystem().loadNodesFromConfig();
+            }
             return cached;
         }
         return deploymentContexts.computeIfAbsent(arenaId, this::createDeploymentContext);
@@ -153,6 +181,26 @@ public class SetupWizard implements Listener {
                 || plugin.getMultiArenaManager().getStatus(arenaId).isPending();
     }
 
+    /**
+     * 丢弃某竞技场的部署期上下文缓存（跨 lane 接口，供重置竞技场路径调用，见 M-16）。
+     *
+     * <p>部署期 GameManager 缓存里挂着 NodeSystem 等内存侧数据；竞技场重置（清空部署数据）
+     * 后若缓存仍在，同会话再走向导第 4 步会把已清空的节点整份写回 nodes.yml（数据复活）。
+     * 重置路径（ArenaResetService）在清空部署数据后调用本方法即可让下次取用重新构建。</p>
+     *
+     * @return true = 确有缓存被丢弃；false = 本就没有缓存
+     */
+    public boolean invalidateDeploymentContext(String arenaId) {
+        return arenaId != null && deploymentContexts.remove(arenaId) != null;
+    }
+
+    /**
+     * 丢弃全部部署期上下文缓存（重置路径按世界无法定位 arenaId 时的兜底）。
+     */
+    public void invalidateAllDeploymentContexts() {
+        deploymentContexts.clear();
+    }
+
     public void start(Player player) {
         // 按玩家当前所在世界解析竞技场定义（不再写死默认竞技场）——这同时修复了
         // 「服主站在未部署竞技场世界里执行 setup 被提示无活动竞技场」的部署死锁。
@@ -173,27 +221,89 @@ public class SetupWizard implements Listener {
         // Fix 5: resume in-memory session instead of resetting
         SetupSession existing = sessions.get(player.getUniqueId());
         if (existing != null) {
+            boolean arenaSwitched = existing.arenaId != null && !existing.arenaId.equals(arenaId);
+            if (arenaSwitched) {
+                // P2-2：内存会话属于另一个竞技场（换场）—— 步骤指针不能跟着走，从第 1 步重新开始
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.resumed-arena-mismatch",
+                                existing.arenaId, arenaId)));
+                existing.step = 1;
+            }
             existing.arenaId = arenaId;  // 跨重连重建 / 换场时刷新目标竞技场
-            player.sendMessage(LegacyComponentSerializer.legacySection()
-                    .deserialize(lang.getFor(player, "setup.resuming", String.valueOf(existing.step))));
-            HandlerList.unregisterAll(this);
-            Bukkit.getPluginManager().registerEvents(this, plugin);
+            if (arenaSwitched) {
+                // 同步落盘（step=1 + 新 arenaId）：防止此刻重启后 config.yml 里的旧步骤指针再次接管
+                plugin.getConfig().set("wizard.step." + player.getUniqueId(), existing.step);
+                plugin.getConfig().set("wizard.arena." + player.getUniqueId(), existing.arenaId);
+                plugin.saveConfig();
+            }
+            if (existing.step > 1) {
+                sendResuming(player, existing.step, arenaId);
+            }
             showStep(player, existing);
             return;
         }
         // Fix 4: restore step from persistent config after disconnect
         int savedStep = plugin.getConfig().getInt("wizard.step." + player.getUniqueId(), 0);
+        // P2-2：同时读取上次进度所属的竞技场 —— wizard.step 只有步骤、没有竞技场，
+        // 换场后恢复会把步骤指针接到另一个竞技场（并最终在完成时顶掉原场的半程记忆）
+        String savedArena = plugin.getConfig().getString("wizard.arena." + player.getUniqueId());
         SetupSession session = new SetupSession();
         session.arenaId = arenaId;
-        if (savedStep > 1 && savedStep < TOTAL_STEPS) {
-            session.step = savedStep;
-            player.sendMessage(LegacyComponentSerializer.legacySection()
-                    .deserialize(lang.getFor(player, "setup.resuming", String.valueOf(savedStep))));
-            HandlerList.unregisterAll(this);
-            Bukkit.getPluginManager().registerEvents(this, plugin);
+        // P2-7：恢复条件放宽为 1..TOTAL_STEPS（step=8 恢复后由 showStepDone 的四项复核兜底，
+        // 复核不过会自动跳回缺项步骤，不会再出现「step=8 落盘但被拒绝恢复」的死循环）
+        if (savedStep >= 1 && savedStep <= TOTAL_STEPS) {
+            if (savedArena != null && !savedArena.equals(arenaId)) {
+                // P2-2：持久化进度属于另一个竞技场 —— 从第 1 步重新开始并说明原因
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.resumed-arena-mismatch", savedArena, arenaId)));
+            } else {
+                session.step = savedStep;
+                // 第 1 步与全新开始无差别，不额外播报恢复横幅（避免「从第 1 步恢复」的怪话）
+                if (savedStep > 1) {
+                    sendResuming(player, savedStep, arenaId);
+                }
+            }
         }
         sessions.put(player.getUniqueId(), session);
         showStep(player, session);
+    }
+
+    /** 发送恢复横幅（setup.resuming；{0}=步骤、{1}=竞技场、{2}=世界名，便于服主自检目标是否正确） */
+    private void sendResuming(Player player, int step, String arenaId) {
+        ArenaDefinition def = arenaId == null ? null
+                : plugin.getMultiArenaManager().getDefinitionManager().getArena(arenaId);
+        player.sendMessage(LegacyComponentSerializer.legacySection()
+                .deserialize(lang.getFor(player, "setup.resuming", String.valueOf(step),
+                        arenaId != null ? arenaId : "?",
+                        def != null ? def.getWorldName() : "?")));
+    }
+
+    /**
+     * M-02：坐标采集类子命令的世界守卫。
+     *
+     * <p>会话在竞技场世界建立后会一直存活（saveexit 也不销毁），聊天历史里的按钮在离开
+     * 竞技场世界后仍可点击 —— 若无此守卫，大厅坐标会被静默写入 arenas.yml（不重启时开局
+     * 会把玩家跨世界传送、村民生成到大厅；重启后坐标按竞技场世界重新绑定固化），而粒子
+     * 预览因世界不匹配又看不到错误点，管理员几乎不可能自查发现。</p>
+     *
+     * <p>只对「采集 player.getLocation() 写入配置」的子命令生效；saveexit / goto / rescan /
+     * preview / overview / spawngui / nodesgui / villagersgui / show-particles 等展示类或
+     * 不采坐标的子命令不受此守卫限制。</p>
+     *
+     * @return true = 玩家不在会话目标竞技场世界内，已发送拒绝提示（调用方须立即 break）
+     */
+    private boolean blockedByWorldGuard(Player player, SetupSession s) {
+        World target = arenaWorld(player);
+        if (target != null && player.getWorld().equals(target)) return false;
+        ArenaDefinition def = s != null && s.arenaId != null
+                ? plugin.getMultiArenaManager().getDefinitionManager().getArena(s.arenaId)
+                : null;
+        String name = def == null ? "setup"
+                : (def.getDisplayName() != null ? ChatColor.translateAlternateColorCodes('&', def.getDisplayName())
+                        : def.getId());
+        player.sendMessage(lang.getFor(player, "deploy.must-be-in-arena-world",
+                name, def != null ? def.getWorldName() : "?"));
+        return true;
     }
 
     /** 向导总步骤数（1 世界 → 2 核心 → 3 生成点 → 4 节点 → 5 村民 → 6 商店 → 7 预览 → 8 完成） */
@@ -320,17 +430,13 @@ public class SetupWizard implements Listener {
     }
 
     /**
-     * 打开向导 GUI 并保证监听器在位。
+     * 打开向导 GUI。
      *
-     * <p>注册必须放在 {@code openInventory} <b>之后</b>：打开新界面会同步触发旧界面的
-     * InventoryCloseEvent（若旧界面是生成点/刷怪点界面，onSetupInventoryClose 会把监听器
-     * unregister 掉），先注册后打开会被这一步连带注销，导致新界面点击无反应喵。
-     * 打开后再 unregister + register 同时防止重复注册。</p>
+     * <p>M-03 常驻化后本方法不再需要注册/注销监听器：监听器在 onEnable 注册一次、永不注销，
+     * 「先开后注册」的顺序问题随之消失（事件处理器内部自带标题匹配 + 会话 null 判断）。</p>
      */
     private void openWizardGui(Player player, Inventory inv) {
         player.openInventory(inv);
-        HandlerList.unregisterAll(this);
-        Bukkit.getPluginManager().registerEvents(this, plugin);
     }
 
     private void refreshSpawnGui(Inventory inv, Player player, int page) {
@@ -429,7 +535,6 @@ public class SetupWizard implements Listener {
             player.sendMessage(lang.getFor(player, "setup.mobspawns-required"));
             return;
         }
-        HandlerList.unregisterAll(this);
         player.closeInventory();
         s.advance();
         autoSave(player);
@@ -496,15 +601,12 @@ public class SetupWizard implements Listener {
 
     // === Step 5: 村民管理 GUI ===
 
-    /** 打开村民管理 GUI（54 格，参照节点管理） */
+    /** 打开村民管理 GUI（54 格，参照节点管理；M-03 常驻化后无需重注册监听器） */
     private void showVillagersGui(Player player, SetupSession s) {
         Inventory inv = Bukkit.createInventory(player, 54,
                 lang.getFor(player, "setup.gui-villagers-title"));
 
         refreshVillagersGui(inv, player, s.villagerPage);
-
-        HandlerList.unregisterAll(this);
-        Bukkit.getPluginManager().registerEvents(this, plugin);
 
         player.openInventory(inv);
     }
@@ -529,8 +631,12 @@ public class SetupWizard implements Listener {
                 meta.displayName(Component.text(lang.getFor(player, "setup.villager-entry",
                         String.valueOf(i + 1))));
                 List<Component> lore = new ArrayList<>();
-                lore.add(Component.text("§7世界: §f" + (loc.getWorld() == null ? "?" : loc.getWorld().getName())));
-                lore.add(Component.text("§7坐标: §f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ()));
+                // P2-8：改走 i18n（EN 界面此前中英混杂；复用节点侧同款世界/坐标键）
+                lore.add(Component.text(lang.getFor(player, "setup.node-entry-lore-world",
+                        loc.getWorld() == null ? "?" : loc.getWorld().getName())));
+                lore.add(Component.text(lang.getFor(player, "setup.node-entry-lore-coord",
+                        String.valueOf(loc.getBlockX()), String.valueOf(loc.getBlockY()),
+                        String.valueOf(loc.getBlockZ()))));
                 lore.add(Component.text(""));
                 lore.add(Component.text(lang.getFor(player, "setup.villager-entry-lore")));
                 meta.lore(lore);
@@ -633,16 +739,21 @@ public class SetupWizard implements Listener {
         return gm == null ? null : gm.getGameWorld();
     }
 
-    /** 打开节点管理 GUI（54格，类似生成点管理） */
+    /** 本次会话目标竞技场的世界名（按 session.arenaId 反查定义；解析不到返回 "?"，供文案兜底） */
+    private String arenaWorldName(SetupSession s) {
+        if (s != null && s.arenaId != null) {
+            ArenaDefinition def = plugin.getMultiArenaManager().getDefinitionManager().getArena(s.arenaId);
+            if (def != null) return def.getWorldName();
+        }
+        return "?";
+    }
+
+    /** 打开节点管理 GUI（54格，类似生成点管理；M-03 常驻化后无需重注册监听器） */
     private void showStepNodesGui(Player player, SetupSession s) {
         Inventory inv = Bukkit.createInventory(player, 54,
                 lang.getFor(player, "setup.gui-nodes-title"));
 
         refreshNodesGui(inv, player, s.nodePage);
-
-        // 重新注册监听器（确保GUI可交互）
-        HandlerList.unregisterAll(this);
-        Bukkit.getPluginManager().registerEvents(this, plugin);
 
         player.openInventory(inv);
     }
@@ -665,12 +776,16 @@ public class SetupWizard implements Listener {
             ItemStack item = new ItemStack(Material.BEACON);
             ItemMeta meta = item.getItemMeta();
             if (meta != null) {
-                meta.displayName(Component.text("§e节点 #" + (i + 1)));
+                // P2-8：全部改走 i18n（EN 管理员的界面此前中英混杂）
+                meta.displayName(Component.text(lang.getFor(player, "setup.node-entry", String.valueOf(i + 1))));
                 List<Component> lore = new ArrayList<>();
-                lore.add(Component.text("§7世界: §f" + loc.getWorld().getName()));
-                lore.add(Component.text("§7坐标: §f" + loc.getBlockX() + ", " + loc.getBlockY() + ", " + loc.getBlockZ()));
+                lore.add(Component.text(lang.getFor(player, "setup.node-entry-lore-world",
+                        loc.getWorld() == null ? "?" : loc.getWorld().getName())));
+                lore.add(Component.text(lang.getFor(player, "setup.node-entry-lore-coord",
+                        String.valueOf(loc.getBlockX()), String.valueOf(loc.getBlockY()),
+                        String.valueOf(loc.getBlockZ()))));
                 lore.add(Component.text(""));
-                lore.add(Component.text("§c点击删除"));
+                lore.add(Component.text(lang.getFor(player, "setup.node-entry-lore-delete")));
                 meta.lore(lore);
 
                 // 使用 PDC 保存节点索引
@@ -686,7 +801,7 @@ public class SetupWizard implements Listener {
             ItemStack prevPage = new ItemStack(Material.ARROW);
             ItemMeta meta = prevPage.getItemMeta();
             if (meta != null) {
-                meta.displayName(Component.text("§e上一页"));
+                meta.displayName(Component.text(lang.getFor(player, "setup.btn-prev-page")));
                 meta.getPersistentDataContainer().set(TAG_KEY, PersistentDataType.STRING, "node-prev-page");
                 prevPage.setItemMeta(meta);
             }
@@ -699,7 +814,7 @@ public class SetupWizard implements Listener {
         if (particleMeta != null) {
             particleMeta.displayName(Component.text(lang.getFor(player, "setup.btn-show-particles")));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("§7查看所有节点的位置"));
+            lore.add(Component.text(lang.getFor(player, "setup.nodes-info-lore")));
             particleMeta.lore(lore);
             particleMeta.getPersistentDataContainer().set(TAG_KEY, PersistentDataType.STRING, "node-show-particles");
             showParticles.setItemMeta(particleMeta);
@@ -712,7 +827,7 @@ public class SetupWizard implements Listener {
         if (addMeta != null) {
             addMeta.displayName(Component.text(lang.getFor(player, "setup.btn-add-node")));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("§7站在节点方块上方点击注册"));
+            lore.add(Component.text(lang.getFor(player, "setup.node-add-hint")));
             addMeta.lore(lore);
             addMeta.getPersistentDataContainer().set(TAG_KEY, PersistentDataType.STRING, "setup-add-node-item");
             addNode.setItemMeta(addMeta);
@@ -723,9 +838,10 @@ public class SetupWizard implements Listener {
         ItemStack done = new ItemStack(Material.LIME_WOOL);
         ItemMeta doneMeta = done.getItemMeta();
         if (doneMeta != null) {
-            doneMeta.displayName(Component.text("§a完成"));
+            doneMeta.displayName(Component.text(lang.getFor(player, "setup.btn-done")));
             List<Component> lore = new ArrayList<>();
-            lore.add(Component.text("§7共注册 §f" + nodeList.size() + " §7个节点"));
+            lore.add(Component.text(lang.getFor(player, "setup.node-count",
+                    String.valueOf(nodeList.size()))));
             doneMeta.lore(lore);
             doneMeta.getPersistentDataContainer().set(TAG_KEY, PersistentDataType.STRING, "setup-nodes-done");
             done.setItemMeta(doneMeta);
@@ -737,7 +853,7 @@ public class SetupWizard implements Listener {
             ItemStack nextPage = new ItemStack(Material.ARROW);
             ItemMeta meta = nextPage.getItemMeta();
             if (meta != null) {
-                meta.displayName(Component.text("§e下一页"));
+                meta.displayName(Component.text(lang.getFor(player, "setup.btn-next-page")));
                 meta.getPersistentDataContainer().set(TAG_KEY, PersistentDataType.STRING, "node-next-page");
                 nextPage.setItemMeta(meta);
             }
@@ -814,7 +930,10 @@ public class SetupWizard implements Listener {
     private void showStepPreview(Player player, SetupSession s) {
         Inventory inv = Bukkit.createInventory(player, 9,
                 lang.getFor(player, "setup.gui-preview-title"));
-        var cfg = gameManager(player).getConfigManager().getActiveConfig();
+        // P2-6：人数 / 通关波数改读 per-arena 值（arena2/arena3 与全局 game-settings 不同，
+        // 此前预览显示全局值、实际开局按 per-arena 执行，预览与对局不符）：
+        // 有 live 实例时优先实例 getter，否则从 ArenaDefinition 取
+        int[] previewNumbers = previewGameNumbers(s);
         inv.setItem(0, infoItem(Material.GRASS_BLOCK, lang.getFor(player, "setup.preview-world",
                 gameManager(player).getGameWorld().getName())));
         // Fix 6: use deploy(player).getCoreLocation() instead of gameManager to avoid stale/null NPE
@@ -832,9 +951,9 @@ public class SetupWizard implements Listener {
         inv.setItem(4, infoItem(Material.CRYING_OBSIDIAN, lang.getFor(player, "setup.preview-nodes",
                 String.valueOf(gameManager(player).getNodeSystem().getTotalCount()))));
         inv.setItem(5, infoItem(Material.PLAYER_HEAD, lang.getFor(player, "setup.preview-players",
-                String.valueOf(cfg.getMinPlayers()), String.valueOf(cfg.getMaxPlayers()))));
+                String.valueOf(previewNumbers[0]), String.valueOf(previewNumbers[1]))));
         inv.setItem(6, infoItem(Material.CLOCK, lang.getFor(player, "setup.preview-waves",
-                String.valueOf(cfg.getVictoryWaves()))));
+                String.valueOf(previewNumbers[2]))));
         // 村民统计：预览 GUI 只有 9 格（slot 7/8 是重置/确认按钮），刷怪点占用 slot 3 后已无空位，
         // 因此村民数拼进 slot 5（人数项）的 lore 第二行，只读展示，不影响 setup-confirm 的强制校验
         ItemStack playersItem = inv.getItem(5);
@@ -849,10 +968,29 @@ public class SetupWizard implements Listener {
                 lang.getFor(player, "setup.btn-reset-lore"), "setup-reset"));
         inv.setItem(8, makeItem(Material.GREEN_WOOL, lang.getFor(player, "setup.btn-confirm"),
                 lang.getFor(player, "setup.btn-confirm-lore"), "setup-confirm"));
-        // Fix: Step 3 done 时 unregisterAll 了解听器，这里必须重新注册，否则预览 GUI 点击无反应、物品可被拿走
-        HandlerList.unregisterAll(this);
-        Bukkit.getPluginManager().registerEvents(this, plugin);
         player.openInventory(inv);
+    }
+
+    /**
+     * P2-6：预览 GUI 的 [minPlayers, maxPlayers, victoryWaves]。
+     *
+     * <p>有 live 实例时走实例 getter（与实际对局同源）；无实例（未部署场）从会话目标竞技场的
+     * {@link ArenaDefinition} 取；两者都解析不到时回退全局配置（兜底，正常不可达）。</p>
+     */
+    private int[] previewGameNumbers(SetupSession s) {
+        String arenaId = s != null ? s.arenaId : null;
+        if (arenaId != null) {
+            ArenaInstance live = plugin.getMultiArenaManager().getArena(arenaId);
+            if (live != null) {
+                return new int[]{live.getMinPlayers(), live.getMaxPlayers(), live.getTotalWaves()};
+            }
+            ArenaDefinition def = plugin.getMultiArenaManager().getDefinitionManager().getArena(arenaId);
+            if (def != null) {
+                return new int[]{def.getMinPlayers(), def.getMaxPlayers(), def.getVictoryWaves()};
+            }
+        }
+        var cfg = plugin.getConfigManager().getActiveConfig();
+        return new int[]{cfg.getMinPlayers(), cfg.getMaxPlayers(), cfg.getVictoryWaves()};
     }
 
     // === Step 7: Done ===
@@ -861,11 +999,26 @@ public class SetupWizard implements Listener {
         SetupSession session = sessions.get(player.getUniqueId());
         String arenaId = session != null ? session.arenaId : null;
 
-        // 兜底：向导中途未触发生成（如跳过又手动补配置）时，配置了商店位置则补生成
+        // P2-1：完成前最后屏障 —— 四项必填复核（preview 入口已有同样校验，但 goto 8 /
+        // step=8 恢复两条旁路不经 preview；不通过则发送对应 required 提示并跳回缺项步骤）
+        if (session != null && !validateCompletion(player, session)) {
+            return;
+        }
+
+        // 兜底：向导中途未触发生成（如跳过又手动补配置）时，配置了商店位置则补生成。
+        // P2-23：对局进行中（含结算倒计时）拒绝迁移单例 NPC（会撤走场内玩家的商店），
+        // 跳过生成并提示；完成部署本身不拦截（正常流程 NPC 已在 confirm-shop 生成过）。
+        // spawnNpc 返回 false（旧 NPC 在别世界且那场正在对局 / 坐标无效）同样提示。
         AdminDeployManager deploy = deploy(player);
         Location shopNpcLoc = deploy == null ? null : deploy.getShopNpcLocation();
-        if (shopNpcLoc != null) {
-            plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLoc);
+        if (shopNpcLoc != null
+                && (isTargetArenaInGame(player)
+                    || !plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLoc))) {
+            player.sendMessage(lang.getFor(player, "setup.shop-set-in-game"));
+        }
+        // 若玩家还开着向导 GUI（如预览后 goto 8），会话即将移除、界面点击将不再生效 —— 顺手关掉
+        if (player.getOpenInventory().getTitle() != null) {
+            player.closeInventory();
         }
         String msg = lang.getFor(player, "setup.done");
         player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
@@ -876,6 +1029,8 @@ public class SetupWizard implements Listener {
         sessions.remove(player.getUniqueId());
         // Fix 4: clear persisted step on successful completion
         plugin.getConfig().set("wizard.step." + player.getUniqueId(), null);
+        // P2-2：一并清掉持久化的竞技场记录，避免残留旧场名在下次换场恢复时误触发 mismatch 提示
+        plugin.getConfig().set("wizard.arena." + player.getUniqueId(), null);
         plugin.saveConfig();
 
         // 部署完成：启用竞技场，使其获得正式实例、可被 /hilltop start 使用
@@ -895,19 +1050,102 @@ public class SetupWizard implements Listener {
         }
     }
 
+    /**
+     * P2-1：完成前的四项必填复核（与 preview / 预览 GUI [确认保存] 的校验口径一致）。
+     *
+     * <p>{@code showStepDone} 是完成收尾的唯一收口，但存在两条不经 preview 校验的入口：
+     * {@code goto 8} 与 step=8 的恢复路径（P2-7 放宽恢复条件后）。本方法把校验收敛进收尾本身，
+     * 不通过时发送对应 required 提示、把会话跳回缺项所在步骤并重绘该步，返回 false。</p>
+     *
+     * @return true = 四项齐备，可继续收尾；false = 已在缺项步骤就地拦截
+     */
+    private boolean validateCompletion(Player player, SetupSession s) {
+        AdminDeployManager d = deploy(player);
+        if (d == null) return true;  // 解析不出部署管理器（世界被卸载等极端情况）不额外拦截
+        int bounceTo;
+        String requiredKey;
+        if (d.getSpawnPoints().isEmpty()) {
+            bounceTo = 3;
+            requiredKey = "setup.spawns-required";
+        } else if (d.getMobSpawnPoints().isEmpty()) {
+            bounceTo = 3;
+            requiredKey = "setup.mobspawns-required";
+        } else if (isNodeSystemEmpty(player)) {
+            // C1-01：节点 ≥1 也在本复核内（confirm-nodes 与 GUI 两个入口已有校验，
+            // 但 goto 8 / step=8 恢复两条旁路不经过它们——0 节点开局首死即全队判负且无法复活）
+            bounceTo = 4;
+            requiredKey = "setup.nodes-required";
+        } else if (d.getVillagers().isEmpty()) {
+            bounceTo = 5;
+            requiredKey = "setup.villagers-required";
+        } else if (d.getShopNpcLocation() == null) {
+            bounceTo = 6;
+            requiredKey = "setup.shop-required";
+        } else {
+            return true;
+        }
+        player.sendMessage(lang.getFor(player, requiredKey));
+        s.step = bounceTo;
+        // 把弹回后的步骤同步落盘：否则 config.yml 里可能残留 step=8 的旧值（goto 8 刚写过），
+        // 此刻重启会再次落到 8 再被弹回（自愈但多余）
+        plugin.getConfig().set("wizard.step." + player.getUniqueId(), s.step);
+        plugin.saveConfig();
+        showStep(player, s);
+        return false;
+    }
+
+    /**
+     * 完成复核用：目标竞技场的节点系统是否为空（与 confirm-nodes / GUI 入口同一口径）。
+     * 取不到 GameManager（理论极端情况）按"不额外拦截"处理，与校验主流程一致。
+     */
+    private boolean isNodeSystemEmpty(Player player) {
+        GameManager gm = gameManager(player);
+        return gm != null && gm.getNodeSystem().getTotalCount() < 1;
+    }
+
     // === Command Handler (called from onCommand) ===
     public boolean handle(Player player, String sub) {
         SetupSession s = sessions.get(player.getUniqueId());
         if (s == null) return false;
 
-        switch (sub.toLowerCase()) {
+        // M-01：sub 现为完整余下参数串（分发层已拼接），按第一段分发、其余作为参数 ——
+        // goto 是唯一双 token 子命令（goto <N>），此前数字在分发层被丢弃、此处永远拿不到
+        String token = sub;
+        String rest = "";
+        int spaceIdx = sub.indexOf(' ');
+        if (spaceIdx >= 0) {
+            token = sub.substring(0, spaceIdx);
+            rest = sub.substring(spaceIdx + 1).trim();
+        }
+
+        switch (token.toLowerCase()) {
             case "confirm-world":
-                deploy(player).setCoreLocation(null); // ensure clean, saves world implicitly
+                // P2-1：步骤守卫（此前任意步骤可执行：聊天历史里点旧的 [确认] 就清核心并推进一步）
+                if (s.step != 1) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                // M-02：世界守卫（确认世界本身也要求身处竞技场世界）
+                if (blockedByWorldGuard(player, s)) break;
+                // P2-4：仅当核心本就为空（未部署场）时才置空；已部署场重设向导时保留 core 到第 2 步
+                // 真正重设 —— 避免只改商店的场在第 1 步就被物理删除 arenas.yml 的 core 三键
+                AdminDeployManager cwDeploy = deploy(player);
+                if (cwDeploy != null && cwDeploy.getCoreLocation() == null) {
+                    cwDeploy.setCoreLocation(null); // ensure clean, saves world implicitly
+                }
                 s.advance();
                 autoSave(player);
                 showStep(player, s);
                 break;
             case "confirm-core":
+                // P2-1：步骤守卫
+                if (s.step != 2) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                // M-02：世界守卫（防在非竞技场世界把别世界坐标写为核心 → 开局/复活跨世界传送）
+                if (blockedByWorldGuard(player, s)) break;
+                // P2-10：写盘失败由随后的 autoSave 经 consumeSaveFailure 统一播报 setup.save-failed
                 deploy(player).setCoreLocation(player.getLocation());
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
@@ -921,17 +1159,33 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
+                // M-02：世界守卫（商店坐标同样取自 player.getLocation()）
+                if (blockedByWorldGuard(player, s)) break;
+                // 对局进行中拒绝（P2-23）：set 会先 despawn 旧实体再生成新实体，对局中移动
+                // 会当场把场内玩家正在使用的商店撤掉、换到管理员脚下 —— 与清除入口的保护同一口径。
+                // 判定读 live 实例状态（与 clear-shop 同源）；无实例 = 未开打，放行。
+                if (isTargetArenaInGame(player)) {
+                    player.sendMessage(lang.getFor(player, "setup.shop-set-in-game"));
+                    sendShopButtons(player);
+                    break;
+                }
                 // 只复制玩家的水平朝向（yaw），pitch 归零：村民不低头/抬头（F-4）。
                 // 存盘与生成都用这份已归零的坐标，避免低头状态被写进 arenas.yml 后连重启也保留。
                 Location shopNpcLocation = player.getLocation().clone();
                 shopNpcLocation.setPitch(0f);
+                // 先生成后存盘：spawnNpc 返回 false（旧 NPC 在别世界且那场正在对局，跨世界抽走被拒）
+                // 时不写配置、整次操作原样拒绝 —— 避免「配置指向新位置、实体留在旧世界」的分叉状态
+                if (!plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLocation)) {
+                    player.sendMessage(lang.getFor(player, "setup.shop-set-in-game"));
+                    sendShopButtons(player);
+                    break;
+                }
+                // P2-10：写盘失败由随后的 autoSaveSilent 经 consumeSaveFailure 统一播报
                 deploy(player).setShopNpcLocation(shopNpcLocation);
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
                 // 静默保存：粒子/音效已给反馈，避免 setup.saved 刷屏
                 autoSaveSilent(player);
-                // 立即生成 NPC（spawnNpc 内部先 despawn，幂等可重复设置）
-                plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLocation);
                 // 刻意不 advance：停留第 6 步允许原地重设 / 清除，避免「设置完立刻跳走、想改只能 goto 6」；
                 // 进入第 7 步改由 [继续]（preview 子命令）负责，其校验与本步一致
                 player.sendMessage(LegacyComponentSerializer.legacySection()
@@ -952,9 +1206,11 @@ public class SetupWizard implements Listener {
                 }
                 // 对局进行中拒绝：商店 NPC 是插件级单例，清除会当场撤掉场内玩家正在使用的商店
                 // （与管理 GUI 的清除口径一致，见 ArenaAdminService.deleteShopNpc）
-                GameState state = gameManager(player).getState();
-                if (state == GameState.STARTING || state == GameState.RUNNING
-                        || state == GameState.WAVE_INTERMISSION) {
+                // M-05/L4-01：必须读 live 实例状态 —— GameManager 的 STARTING 是同步方法体内的
+                // 瞬时帧、外部永不可观测，用它判定会让开局倒计时期间的守卫成为死代码。
+                // 拒绝口径含结算倒计时（VICTORY/DEFEAT）：玩家仍在场内，清除同样会立刻撤走商店。
+                ArenaInstance live = liveInstance(resolveArenaId(player));
+                if (live != null && NpcManager.isGameInProgress(live.getState())) {
                     player.sendMessage(lang.getFor(player, "setup.shop-clear-in-game"));
                     sendShopButtons(player);
                     break;
@@ -989,6 +1245,8 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
+                // M-02：世界守卫（saveexit 回大厅后聊天历史按钮仍可点，大厅坐标不得写入竞技场配置）
+                if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
@@ -1007,6 +1265,8 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
+                // M-02：世界守卫（防别世界重生锚注册进本竞技场 NodeSystem）
+                if (blockedByWorldGuard(player, s)) break;
                 int result = gameManager(player).getNodeSystem().addNode(player.getLocation());
                 if (result == 0) {
                     int count = gameManager(player).getNodeSystem().getTotalCount();
@@ -1043,7 +1303,13 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
-                HandlerList.unregisterAll(this);
+                // P2-3：节点 ≥1 校验 —— 0 节点的场任意玩家阵亡会立即判全队失败且无法复活
+                // （复活依赖修复活跃节点，0 节点时这句指引是死路），必须拦截
+                if (gameManager(player).getNodeSystem().getTotalCount() < 1) {
+                    player.sendMessage(lang.getFor(player, "setup.nodes-required"));
+                    sendNodeButtons(player);
+                    break;
+                }
                 player.closeInventory();
                 int nodeCount = gameManager(player).getNodeSystem().getTotalCount();
                 player.sendMessage(LegacyComponentSerializer.legacySection()
@@ -1107,6 +1373,8 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
+                // M-02：世界守卫
+                if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addMobSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
@@ -1145,6 +1413,8 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.unknown"));
                     break;
                 }
+                // M-02：世界守卫（村民生成到大厅是 L02-01 的后果之一）
+                if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addVillager(player.getLocation());
                 // 在该位置生成/刷新预览村民（编号 = 列表下标 + 1）
                 syncVillagerPreviews(player);
@@ -1191,13 +1461,14 @@ public class SetupWizard implements Listener {
                 break;
             case "saveexit":
                 // 保存进度并返回大厅（向导进度已按步骤持久化，稍后可在竞技场世界内 /hilltop setup 继续）
+                // P2-5：先取目标竞技场信息（随后传送走，仍可按会话 arenaId 反查世界名）
+                String exitWorld = arenaWorldName(s);
                 autoSave(player);
                 // 会话结束：清掉第 5 步的村民预览实体（玩家此刻还在竞技场世界，可正常解析世界）
                 clearVillagerPreviews(player);
                 if (player.getOpenInventory().getTitle() != null) {
                     player.closeInventory();
                 }
-                HandlerList.unregisterAll(this);
                 // 必须走「离开竞技场」流程：否则玩家人在大厅、插件仍认为他在竞技场中，
                 // 后续 /hilltop join 会被 already-in-arena 拦住
                 if (plugin.getMultiArenaManager().isInArena(player)) {
@@ -1205,19 +1476,20 @@ public class SetupWizard implements Listener {
                 } else {
                     plugin.getMultiArenaManager().sendToLobby(player);
                 }
-                player.sendMessage(lang.getFor(player, "setup.saved-exit"));
+                // P2-5：两行提示都带上目标世界名，服主无需凭记忆反推该回到哪个世界继续
+                player.sendMessage(lang.getFor(player, "setup.saved-exit", exitWorld));
                 // F-3：提前说明「部署走完后如何让玩家进场」，避免服主卡在最后一步不知要 enable
                 player.sendMessage(LegacyComponentSerializer.legacySection()
-                        .deserialize(lang.getFor(player, "setup.enable-hint")));
+                        .deserialize(lang.getFor(player, "setup.enable-hint", exitWorld)));
                 break;
             case "goto":
-                String[] args = sub.split(" ", 2);
-                if (args.length < 2) {
+                // M-01：数字参数来自分发层拼接的完整参数串（rest）
+                if (rest.isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.goto-usage"));
                     return true;
                 }
                 try {
-                    int targetStep = Integer.parseInt(args[1]);
+                    int targetStep = Integer.parseInt(rest);
                     if (targetStep < 1 || targetStep > TOTAL_STEPS) {
                         player.sendMessage(lang.getFor(player, "setup.goto-invalid-step",
                                 String.valueOf(TOTAL_STEPS)));
@@ -1240,7 +1512,9 @@ public class SetupWizard implements Listener {
                         case 5: sendVillagerButtons(player); break;
                         case 6: sendStepShopMessage(player, s); break;
                         case 7: showStepPreview(player, s); break;
-                        case 8: player.sendMessage(lang.getFor(player, "setup.already-done")); break;
+                        // P2-7：goto 8 此前只发提示不触发收尾（step=8 落盘但恢复守卫拒绝 →
+                        // 重进从 1/8 重启）。现改为复用 showStepDone（幂等收尾 + 四项复核收口）
+                        case 8: showStepDone(player); break;
                     }
                 } catch (NumberFormatException e) {
                     player.sendMessage(lang.getFor(player, "setup.goto-invalid-number"));
@@ -1258,8 +1532,12 @@ public class SetupWizard implements Listener {
         SetupSession s = sessions.get(player.getUniqueId());
         if (s != null) {
             plugin.getConfig().set("wizard.step." + player.getUniqueId(), s.step);
+            // P2-2：步骤与竞技场绑定持久化，恢复时用于识别「换了场」的错位
+            plugin.getConfig().set("wizard.arena." + player.getUniqueId(), s.arenaId);
             plugin.saveConfig();
         }
+        // P2-10：arenas.yml 写盘失败如实播报（此前全程静默、向导照报「已保存」）
+        if (reportSaveFailureIfAny(player)) return;
         player.sendMessage(LegacyComponentSerializer.legacySection()
                 .deserialize(lang.getFor(player, "setup.saved")));
     }
@@ -1270,8 +1548,24 @@ public class SetupWizard implements Listener {
         SetupSession s = sessions.get(player.getUniqueId());
         if (s != null) {
             plugin.getConfig().set("wizard.step." + player.getUniqueId(), s.step);
+            plugin.getConfig().set("wizard.arena." + player.getUniqueId(), s.arenaId);
             plugin.saveConfig();
         }
+        // P2-10：写盘失败必须播报（静默仅针对成功场景防刷屏）
+        reportSaveFailureIfAny(player);
+    }
+
+    /**
+     * P2-10：消费 AdminDeployManager 的写盘失败标记并向管理员播报（有失败时返回 true）。
+     */
+    private boolean reportSaveFailureIfAny(Player player) {
+        AdminDeployManager d = deploy(player);
+        if (d != null && d.consumeSaveFailure()) {
+            player.sendMessage(LegacyComponentSerializer.legacySection()
+                    .deserialize(lang.getFor(player, "setup.save-failed")));
+            return true;
+        }
+        return false;
     }
 
     // === GUI Click Handler ===
@@ -1377,7 +1671,8 @@ public class SetupWizard implements Listener {
                 refreshVillagerGuiOrResend(player, s);
                 break;
             case "setup-add-villager-item":
-                // GUI 内添加：音效 + 粒子 + 刷新
+                // GUI 内添加：音效 + 粒子 + 刷新（M-02：世界守卫兜底，防止开着 GUI 被传送后误点）
+                if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addVillager(player.getLocation());
                 syncVillagerPreviews(player);
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
@@ -1391,7 +1686,6 @@ public class SetupWizard implements Listener {
                     player.sendMessage(lang.getFor(player, "setup.villagers-required"));
                     break;
                 }
-                HandlerList.unregisterAll(this);
                 player.closeInventory();
                 s.advance();
                 autoSave(player);
@@ -1404,7 +1698,15 @@ public class SetupWizard implements Listener {
                         int index = Integer.parseInt(tag.substring("villager-".length()));
                         if (deploy(player).removeVillager(index)) {
                             player.playSound(player.getLocation(), Sound.ENTITY_ITEM_BREAK, 0.8f, 1f);
-                            s.villagerPage = 0;
+                            // P2-9：仅当删除后当前页超界才回退（对齐生成点 GUI 的做法，:1477-1479），
+                            // 不再无条件强制跳回第 1 页
+                            int totalAfter = deploy(player).getVillagers().size();
+                            int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
+                            if (s.villagerPage > maxPageAfter) s.villagerPage = maxPageAfter;
+                            // P2-9：补一条聊天反馈（生成点/刷怪点删除均有，村民此前只有音效）
+                            player.sendMessage(LegacyComponentSerializer.legacySection()
+                                    .deserialize(lang.getFor(player, "setup.villager-removed",
+                                            String.valueOf(index + 1))));
                             // 删除该村民后同步预览：移除对应实体，后续村民序号整体前移
                             syncVillagerPreviews(player);
                             refreshVillagersGui(event.getInventory(), player, s.villagerPage);
@@ -1443,6 +1745,8 @@ public class SetupWizard implements Listener {
                 break;
             case "setup-add-spawn":
                 // GUI 内添加：音效+粒子+刷新+重发按钮行（让按钮永远在聊天栏底部，方便关闭GUI后继续添加）
+                // M-02：世界守卫兜底（防止开着 GUI 被传送后误点，坐标写入错误世界）
+                if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
@@ -1513,6 +1817,8 @@ public class SetupWizard implements Listener {
                 }
                 break;
             case "setup-add-mobspawn":
+                // M-02：世界守卫兜底（防止开着 GUI 被传送后误点）
+                if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addMobSpawnPoint(player.getLocation());
                 player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1f);
@@ -1564,7 +1870,8 @@ public class SetupWizard implements Listener {
             case "setup-noop":
                 break;
             case "setup-add-node-item":
-                // GUI 内添加节点：检查脚下方块并注册
+                // GUI 内添加节点：检查脚下方块并注册（M-02：世界守卫兜底，防止开着 GUI 被传送后误点）
+                if (blockedByWorldGuard(player, s)) break;
                 int addResult = gameManager(player).getNodeSystem().addNode(player.getLocation());
                 if (addResult == 0) {
                     player.getWorld().spawnParticle(Particle.ELECTRIC_SPARK, player.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
@@ -1590,7 +1897,12 @@ public class SetupWizard implements Listener {
                 sendNodeButtons(player);
                 break;
             case "setup-nodes-done":
-                HandlerList.unregisterAll(this);
+                // P2-3：与 confirm-nodes 同口径的节点 ≥1 校验（0 节点场阵亡即全队判负且无法复活）
+                if (gameManager(player).getNodeSystem().getTotalCount() < 1) {
+                    player.sendMessage(lang.getFor(player, "setup.nodes-required"));
+                    sendNodeButtons(player);
+                    break;
+                }
                 player.closeInventory();
                 int nodeCount = gameManager(player).getNodeSystem().getTotalCount();
                 player.sendMessage(LegacyComponentSerializer.legacySection()
@@ -1681,14 +1993,12 @@ public class SetupWizard implements Listener {
                     showStep(player, s);
                     break;
                 }
-                HandlerList.unregisterAll(this);
                 player.closeInventory();
                 s.advance();
                 autoSave(player);
                 showStep(player, s);
                 break;
             case "setup-reset":
-                HandlerList.unregisterAll(this);
                 player.closeInventory();
                 s.step = 1;
                 showStep(player, s);
@@ -1699,31 +2009,20 @@ public class SetupWizard implements Listener {
     @EventHandler
     public void onQuit(PlayerQuitEvent event) {
         Player quitting = event.getPlayer();
-        // 会话结束：清掉该玩家第 5 步留下的村民预览实体。必须在移除 session 之前清理，
-        // 否则按会话 arenaId 解析目标世界会退化成按「所在世界」解析（离服瞬间仍可用，但越早越稳）。
-        clearVillagerPreviews(quitting);
-        SetupSession s = sessions.remove(quitting.getUniqueId());
+        // M-03 常驻化后本事件对所有玩家触发：必须先判会话，只有离开的玩家确实有部署会话时
+        // 才清理预览 —— 否则任意玩家在竞技场世界退出都会波及另一名管理员进行中的第 5 步预览
+        SetupSession s = sessions.get(quitting.getUniqueId());
         if (s != null) {
-            HandlerList.unregisterAll(this);
+            // 会话结束：清掉该玩家第 5 步留下的村民预览实体。必须在移除 session 之前清理，
+            // 否则按会话 arenaId 解析目标世界会退化成按「所在世界」解析（离服瞬间仍可用，但越早越稳）。
+            clearVillagerPreviews(quitting);
         }
+        sessions.remove(quitting.getUniqueId());
     }
 
-    // ESC 关闭 inventory 时 unregister，但不清除 session，允许玩家重新打开喵。
-    // F-9 注：总览 ↔ 子管理界面互切时 OpenEvent 会先触发旧界面的本条 CloseEvent，
-    // 但 openWizardGui 是「先打开、后重注册」，因此切换结束后监听器必然在位。
-    @EventHandler
-    public void onSetupInventoryClose(InventoryCloseEvent event) {
-        if (!(event.getPlayer() instanceof Player player)) return;
-        SetupSession s = sessions.get(player.getUniqueId());
-        if (s == null) return;
-        String title = event.getView().getTitle();
-        String overviewTitle = lang.getFor(player, "setup.gui-spawns-overview-title");
-        String spawnsTitle = lang.getFor(player, "setup.gui-spawns-title");
-        String mobSpawnsTitle = lang.getFor(player, "setup.gui-mobspawns-title");
-        if (title.equals(overviewTitle) || title.equals(spawnsTitle) || title.equals(mobSpawnsTitle)) {
-            HandlerList.unregisterAll(this);
-        }
-    }
+    // M-03 注：原 onSetupInventoryClose（ESC 关闭界面时 unregisterAll）已删除 —— 监听器常驻化后
+    // 无需注销；该方法的唯一作用就是 unregister，且会连带注销其它管理员正开界面的监听（互踢根因）。
+    // 关闭界面不清除 session，玩家可重新打开任意入口继续喵。
 
     public boolean hasSession(Player player) {
         return sessions.containsKey(player.getUniqueId());

@@ -2,6 +2,7 @@ package com.hilltopvillage.mechanics;
 
 import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
+import com.hilltopvillage.core.PlayerData;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.*;
 import org.bukkit.block.Block;
@@ -532,7 +533,12 @@ public class NodeSystem {
             if (!node.isActive()) return false;
             activeNodes.add(node);
 
-            gameManager.getPlayerData(player).addNodeRepaired();
+            // P2-20（M-19 同族防御）：非参赛玩家（playerDataMap 无此人）理论上已被
+            // NodeListener 的入口判空拦下，这里再做一层判空，杜绝跨入口的 NPE。
+            PlayerData data = gameManager.getPlayerData(player);
+            if (data != null) {
+                data.addNodeRepaired();
+            }
             LanguageManager lang = gameManager.getPlugin().getLanguageManager();
             for (UUID pid : gameManager.getPlayers()) {
                 Player p = Bukkit.getPlayer(pid);
@@ -545,9 +551,24 @@ public class NodeSystem {
             return true;
         }
 
+        // P2-20：满血节点不再「修复」——返回 false，调用方（NodeListener）据此不消耗修复物品。
+        // 原实现无条件 repair() 并返回 true，导致满血右键静默吞掉材料。
+        if (isNodeFull(node)) {
+            return false;
+        }
+
         node.repair(repairAmount);
         node.getLocation().getWorld().playSound(node.getLocation(), Sound.BLOCK_ENCHANTMENT_TABLE_USE, 0.5f, 1.2f);
         return true;
+    }
+
+    /**
+     * 节点是否已满血（P2-20）。
+     *
+     * <p>供修复入口在扣除材料前查询：满血时不再消耗修复物品、不播修复音效。</p>
+     */
+    public boolean isNodeFull(NodeData node) {
+        return node != null && node.getCurrentHealth() >= node.getMaxHealth();
     }
 
     public void applyAllBuffs() {

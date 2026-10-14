@@ -35,7 +35,7 @@ public class GameRulesMenu extends AbstractConfigMenu {
 
         addAdjustableItem(10, Material.PLAYER_HEAD, lang.getFor(admin, "config.menu.rules.min-players"),
                 cfg.getMinPlayers(), 1, 20, 1,
-                () -> cfg.getMinPlayers(), v -> cfg.setMinPlayers(v),
+                () -> cfg.getMinPlayers(), v -> cfg.setMinPlayers(Math.min(20, Math.max(1, v))),
                 lang.getFor(admin, "config.menu.rules.min-players-desc"));
 
         addAdjustableItem(12, Material.PLAYER_HEAD, lang.getFor(admin, "config.menu.rules.max-players"),

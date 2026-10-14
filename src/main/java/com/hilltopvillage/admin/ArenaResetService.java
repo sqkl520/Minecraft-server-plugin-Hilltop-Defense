@@ -305,6 +305,12 @@ public final class ArenaResetService {
         // 9. 让其它竞技场的 AdminDeployManager 重读最新 arenas.yml：
         //    否则它们下次 saveSpawnPoints 会用构造时的整份旧副本回写，把刚删的键全部「复活」
         multi.reloadAllDeploymentData();
+        // 9b. M-16：本竞技场的向导「部署期上下文」缓存同样必须失效。
+        //     reloadAllDeploymentData 只覆盖活动实例与定义侧的 AdminDeployManager，不触达
+        //     SetupWizard.deploymentContexts —— 那个缓存的 GameManager 里有一份重置前的
+        //     内存版 NodeSystem；同会话再走 /hilltop setup 第 4 步增删节点时，它以内存为准
+        //     整份写回 nodes.yml，把刚被重置清空的节点全部「复活」。丢弃缓存后下次取用重建。
+        plugin.getSetupWizard().invalidateDeploymentContext(arenaId);
 
         // 10. 地图回滚
         int pending = pendingFor(world);

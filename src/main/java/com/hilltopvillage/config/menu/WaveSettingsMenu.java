@@ -78,7 +78,9 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
                             if (waveNums.size() <= 1) {
                                 admin.sendMessage(lang.getFor(admin, "config.menu.waves.must-keep-one"));
                             } else {
-                                cfg.getWaves().remove(wnum);
+                                // P2-33：走 ConfigManager.removeWave 记账——保存时磁盘上的旧键
+                                // 会被一并清掉，重启后不会复活（直接改 cfg.getWaves() 只删内存）
+                                configManager.removeWave(wnum);
                                 admin.sendMessage(lang.getFor(admin, "config.menu.waves.deleted", wnum));
                                 reopen();
                             }

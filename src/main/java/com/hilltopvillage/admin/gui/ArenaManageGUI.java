@@ -365,6 +365,10 @@ public class ArenaManageGUI extends AbstractAdminMenu {
      *
      * <p>置灰的两种情形：{@code hasCore == false}（{@code enableArena} 会因 core 缺失直接拒绝）、
      * {@code enabled: false}（{@code enableArena} 同样拒绝，见 {@code MultiArenaManager#enableArena}）。</p>
+     *
+     * <p>两个按钮都消费返回值并对管理员播报结果（与命令路径 {@code handleDisableArena} /
+     * {@code handleEnableArena} 同一映射）：旧实现丢弃返回值，对局中点「禁用」被拒却毫无提示，
+     * 管理员会以为按钮坏了。</p>
      */
     private void renderToggleItem(ArenaView arena) {
         String arenaId = arena.arenaId();
@@ -372,7 +376,13 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         if (arena.status() != ArenaStatus.DISABLED) {
             setClickableItem(23, Material.REDSTONE_BLOCK, lang.getFor(admin, "manage.detail.disable"),
                     clickType -> {
-                        multiArenaManager().disableArena(arenaId);
+                        // 与 /hilltop disable 同一结果映射（deploy.ok / already-disabled / in-progress / not-found）
+                        switch (multiArenaManager().disableArena(arenaId)) {
+                            case "deploy.ok" -> lang.send(admin, "arena-disabled-ok", arenaId);
+                            case "arena-already-disabled" -> lang.send(admin, "arena-already-disabled", arenaId);
+                            case "arena-disable-in-progress" -> lang.send(admin, "arena-disable-in-progress", arenaId);
+                            default -> lang.send(admin, "arena-not-found", arenaId);
+                        }
                         reopen();
                     });
             return;
@@ -381,15 +391,28 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         if (arena.hasCore() && arena.configuredEnabled()) {
             setClickableItem(23, Material.EMERALD_BLOCK, lang.getFor(admin, "manage.detail.enable"),
                     clickType -> {
-                        multiArenaManager().enableArena(arenaId);
+                        // 与 /hilltop enable 同一判定顺序与文案（状态可能在渲染后被外部改变）
+                        ArenaStatus before = multiArenaManager().getStatus(arenaId);
+                        if (before == ArenaStatus.READY) {
+                            lang.send(admin, "arena-enable-already-ready", arenaId);
+                        } else if (before.isPending()) {
+                            lang.send(admin, "arena-enable-already-queued", arenaId);
+                        } else if (multiArenaManager().enableArena(arenaId)) {
+                            lang.send(admin, "arena-enable-queued", arenaId);
+                        } else {
+                            lang.send(admin, "arena-enable-failed", arenaId);
+                        }
                         reopen();
                     });
             return;
         }
 
-        setItemWithData(23, Material.GRAY_DYE, lang.getFor(admin, "manage.detail.enable"),
-                List.of(lang.getFor(admin, arena.hasCore()
-                        ? "manage.list.entry-disabled" : "manage.reset.blocked-missing-core")));
+        // 置灰：未部署（缺 core）时给「先运行 /hilltop setup」的指引；enabled: false 情形保持原 lore
+        List<String> grayLore = arena.hasCore()
+                ? List.of(lang.getFor(admin, "manage.list.entry-disabled"))
+                : List.of(lang.getFor(admin, "manage.detail.enable-not-deployed"),
+                        lang.getFor(admin, "manage.detail.enable-setup-hint"));
+        setItemWithData(23, Material.GRAY_DYE, lang.getFor(admin, "manage.detail.enable"), grayLore);
     }
 
     /* ========== 三个坐标列表（45/页） ========== */

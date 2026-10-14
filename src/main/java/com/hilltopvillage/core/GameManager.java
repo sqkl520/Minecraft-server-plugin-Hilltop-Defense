@@ -2,6 +2,7 @@ package com.hilltopvillage.core;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.admin.AdminDeployManager;
+import com.hilltopvillage.arena.ArenaDefinition;
 import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.arena.MultiArenaManager;
 import com.hilltopvillage.config.ConfigManager;
@@ -34,6 +35,19 @@ public class GameManager {
     private static final int WAVE_STUCK_PURGE_GRACE_SECONDS = 15;
     private final ConcurrentHashMap<UUID, PlayerData> playerDataMap;
     private final Set<UUID> players;
+    /**
+     * 结算期标志（P2-13）：{@link #haltGame()} 已调用（结算倒计时窗口）但状态尚未切换。
+     *
+     * <p>{@code haltGame()} 刻意不改变 {@link GameState}（结算期间玩家留在场上查看战报），
+     * 于是 {@link #isGameRunning()} 在结算窗口内仍返回 true，锤/修节点等门控因此放行。
+     * 本标志把「停止波次调度但仍在结算倒计时」这一段单独标出来，供
+     * {@link #isGameActive()} / {@link #isSettlementPhase()} 做统一口径的门控。</p>
+     *
+     * <p>置位：{@link #haltGame()}；复位：{@link #endGame(boolean)} / {@link #stopGame()} /
+     * {@link #startGame()}（新局开始）。若全部收尾路径都未走到（异常），保持 true 是保守方向
+     * ——门控继续拒绝玩法动作，而不是放行。volatile：门控发生在事件线程，置位在结算调度路径。</p>
+     */
+    private volatile boolean settlementPhase = false;
     private final WaveManager waveManager;
     private final NodeSystem nodeSystem;
     private final DisplayEntityManager displayEntityManager;
@@ -169,6 +183,60 @@ public class GameManager {
         return multiArenaManager == null ? null : multiArenaManager.getArena(arenaId);
     }
 
+    /**
+     * 本竞技场生效的节点搜索半径（M-14 死配置接线，作者决策 D-1「per-arena 优先、全局兜底」）。
+     *
+     * <p>{@code arenas.<id>.node-search-radius} 大于 0 时以它为准；未配置（读入 0，即
+     * 旧存档缺键或出厂模板未填）时回退全局 {@code game-settings.yml} 的 {@code nodes.search-radius}。
+     * 值 {@code <=0} 按既有语义表示禁用节点寻路，两个 AI Goal 各自处理。</p>
+     *
+     * <p>与 {@link #getArenaMinPlayers()} 同范式：实时查询不缓存（构造期实例还没注册进
+     * MultiArenaManager，缓存会把兜底值固化）；调用点是 30-tick 节流的 retarget 非热路径。</p>
+     */
+    public int getNodeSearchRadius() {
+        ArenaInstance arena = liveArena();
+        ArenaDefinition definition = arena != null ? arena.getDefinition() : null;
+        if (definition != null && definition.getNodeSearchRadius() > 0) {
+            return definition.getNodeSearchRadius();
+        }
+        return configManager.getActiveConfig().getNodeSearchRadius();
+    }
+
+    /** 本竞技场生效的刷怪半径下限；per-arena {@code spawn-radius-min} 大于 0 时优先，否则全局兜底（M-14）。 */
+    public int getSpawnRadiusMin() {
+        ArenaInstance arena = liveArena();
+        ArenaDefinition definition = arena != null ? arena.getDefinition() : null;
+        if (definition != null && definition.getSpawnRadiusMin() > 0) {
+            return definition.getSpawnRadiusMin();
+        }
+        return configManager.getActiveConfig().getSpawnRadiusMin();
+    }
+
+    /** 本竞技场生效的刷怪半径上限；per-arena {@code spawn-radius-max} 大于 0 时优先，否则全局兜底（M-14）。 */
+    public int getSpawnRadiusMax() {
+        ArenaInstance arena = liveArena();
+        ArenaDefinition definition = arena != null ? arena.getDefinition() : null;
+        if (definition != null && definition.getSpawnRadiusMax() > 0) {
+            return definition.getSpawnRadiusMax();
+        }
+        return configManager.getActiveConfig().getSpawnRadiusMax();
+    }
+
+    /**
+     * 本竞技场生效的刷怪 Y 偏移；per-arena {@code spawn-y-offset} 配置过（非 0）时优先，
+     * 否则全局 {@code spawning.spawn-y-offset} 兜底（M-14）。
+     *
+     * <p>0 是两层的合法值（= 不偏移），因此判定用「!= 0」而非「> 0」——负数偏移（生成点下方）同样合法。</p>
+     */
+    public int getSpawnYOffset() {
+        ArenaInstance arena = liveArena();
+        ArenaDefinition definition = arena != null ? arena.getDefinition() : null;
+        if (definition != null && definition.getSpawnYOffset() != 0) {
+            return definition.getSpawnYOffset();
+        }
+        return configManager.getActiveConfig().getSpawnYOffset();
+    }
+
     public void startGame() {
         if (state != GameState.WAITING) return;
         if (players.size() < getArenaMinPlayers()) return;
@@ -188,6 +256,9 @@ public class GameManager {
             broadcastI18n("arena-no-mob-spawns");
             return;
         }
+
+        // P2-13：新一局开始，清除结算期标志（上一局异常路径未复位的兜底）
+        settlementPhase = false;
 
         // 旧存档双用告警（每局一次）：spawn-points 非空但 mob-spawn-points 为空时，
         // 怪物与玩家将共用同一套坐标 —— 提醒服主补部署怪物刷怪点
@@ -272,6 +343,13 @@ public class GameManager {
 
             Player player = Bukkit.getPlayer(uuid);
             if (player == null || !player.isOnline()) continue;
+
+            // M-07①：玩家还停在死亡画面（未点复活）时不能刷新复活——teleport/加血对
+            // 死者不生效，却会把 PlayerData.alive 置回 true；此后玩家点复活会被置为
+            // 旁观，形成「alive=true + 旁观」的幽灵态：respawnDeadPlayers 因 alive 恒真
+            // 永远跳过，玩家永久旁观，且 hasAlivePlayer() 恒真抑制全灭判负。
+            // 跳过这类玩家：他们点复活时正常进旁观，下一波刷新再复活，语义自洽。
+            if (player.isDead()) continue;
 
             if (!hasActiveNode) {
                 plugin.getLanguageManager().send(player, "respawn-blocked-no-node");
@@ -443,6 +521,7 @@ public class GameManager {
 
     public void endGame(boolean victory) {
         state = victory ? GameState.VICTORY : GameState.DEFEAT;
+        settlementPhase = false;
         broadcastI18n(victory ? "game-victory" : "game-defeat");
 
         if (waveCheckTask != null) {
@@ -465,7 +544,9 @@ public class GameManager {
 
     public void stopGame() {
         state = GameState.WAITING;
+        settlementPhase = false;
         currentWave = 0;
+        settlementPhase = false;
         if (waveCheckTask != null) {
             waveCheckTask.cancel();
             waveCheckTask = null;
@@ -499,6 +580,8 @@ public class GameManager {
      * 供失败/胜利结算使用（玩家需要留在场上查看统计）。
      */
     public void haltGame() {
+        // P2-13：进入结算期窗口（状态刻意不变，见字段注释）。重复调用幂等。
+        settlementPhase = true;
         if (waveCheckTask != null) {
             waveCheckTask.cancel();
             waveCheckTask = null;
@@ -616,6 +699,32 @@ public class GameManager {
 
     public boolean isGameRunning() {
         return state == GameState.RUNNING || state == GameState.WAVE_INTERMISSION;
+    }
+
+    /**
+     * 是否处于「结算窗口」：{@link #haltGame()} 已调用（停止刷怪与波次调度），
+     * 但 {@link GameState} 尚未切到 VICTORY/DEFEAT（故意保持原状态让玩家留在场上看战报）。
+     *
+     * <p>此窗口内 {@link #isGameRunning()} 仍可能返回 true，但一切玩法动作
+     * （开锤 / 修节点 / 投掷等）都应被拒绝——结算已定，操作只会虚增战报或产生幽灵效果。</p>
+     *
+     * <p>P2-13 统一门控口径：技能 / 修节点门控应写「{@code !isGameActive()} 拒绝」
+     * （或等价的 {@code !isGameRunning() || isSettlementPhase()}）。</p>
+     */
+    public boolean isSettlementPhase() {
+        return settlementPhase;
+    }
+
+    /**
+     * 对局玩法是否仍可交互：RUNNING / WAVE_INTERMISSION 且<b>未进入结算窗口</b>。
+     *
+     * <p>与 {@link #isGameRunning()} 的区别只在于结算窗口：{@code triggerDefeat()} 先调
+     * {@link #haltGame()}（状态不变）再切竞技场状态，期间 {@code isGameRunning()} 仍为 true。
+     * 需要「进行中且非结算」语义的门控（技能 / 修节点 / 掉落 / 统计）应统一用本方法，
+     * 口径 = {@link #isGameRunning()} 且非 {@link #isSettlementPhase()}。</p>
+     */
+    public boolean isGameActive() {
+        return isGameRunning() && !settlementPhase;
     }
 
     /**

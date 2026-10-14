@@ -104,7 +104,8 @@ public class NodeAttackGoal implements Goal<Mob> {
         if (currentTick < nextRetargetTick) return false;
 
         NodeSystem.NodeData previousTarget = targetNode;
-        double radius = gameManager.getConfigManager().getActiveConfig().getNodeSearchRadius();
+        // M-14 死配置接线（决策 D-1）：per-arena node-search-radius 优先、全局 nodes.search-radius 兜底
+        double radius = gameManager.getNodeSearchRadius();
         searchRadiusSq = radius > 0 ? radius * radius : 0;
 
         NodeSystem.NodeData nearest = null;

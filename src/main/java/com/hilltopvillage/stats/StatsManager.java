@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.logging.Level;
 
 /**
@@ -245,7 +246,26 @@ public class StatsManager {
             return;
         }
 
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(statsFile);
+        // P2-34 文件级容错：半截/损坏的 YAML 若从 StatsManager 构造函数逃逸到 onEnable
+        // 会让整个插件加载失败 —— 比丢一份统计严重得多（该文件在真实部署目录中曾被实测
+        // 为 0 字节形态）。损坏文件重命名为 .corrupt 保留现场，本次以空数据启动
+        //（仿 ArenaManager.load() 的兜底姿势）。
+        //
+        // 刻意不用 YamlConfiguration.loadConfiguration(File)：1.21.4 的该静态方法内部
+        // 自带 catch（已反编译核实）—— 解析失败时只打一条 "Cannot load" 日志并返回空配置，
+        // 异常根本传不出来，下面的 quarantine 分支永远不可达。改为显式读取文件内容 +
+        // loadFromString：解析错误直接抛 InvalidConfigurationException，兜底才真正生效。
+        //（charset 与 loadConfiguration 内部一致，均为 UTF-8，已反编译核实。）
+        YamlConfiguration yaml = new YamlConfiguration();
+        try {
+            yaml.loadFromString(Files.readString(statsFile.toPath(), StandardCharsets.UTF_8));
+        } catch (Exception exception) {
+            plugin.getLogger().log(Level.SEVERE, FILE_NAME + " 解析失败，"
+                    + "已重命名为 " + FILE_NAME + ".corrupt 并跳过加载（本次以空统计启动）", exception);
+            quarantineCorruptFile();
+            dirty = false;
+            return;
+        }
         ConfigurationSection root = yaml.getConfigurationSection("players");
         if (root == null) {
             dirty = false;
@@ -282,6 +302,22 @@ public class StatsManager {
         dirty = false;
         if (loaded > 0) {
             plugin.getLogger().info("已加载 " + loaded + " 条玩家统计记录");
+        }
+    }
+
+    /**
+     * 把损坏的存档文件重命名为 {@code *.corrupt} 保留现场（P2-34）。
+     *
+     * <p>重命名失败时退化为「不删除、直接留原文件」：下一次写盘会原子替换它，
+     * 至少本次启动不会因为旧文件反复解析失败而卡死。</p>
+     */
+    private void quarantineCorruptFile() {
+        File corrupt = new File(statsFile.getParentFile(), statsFile.getName() + ".corrupt");
+        if (statsFile.renameTo(corrupt)) {
+            plugin.getLogger().warning("损坏的 " + FILE_NAME + " 已重命名为 " + corrupt.getName());
+        } else {
+            plugin.getLogger().warning("无法重命名损坏的 " + FILE_NAME + "（文件被占用？），"
+                    + "本次跳过加载；下次写盘会原子替换该文件");
         }
     }
 
@@ -331,7 +367,8 @@ public class StatsManager {
         // 先清脏标记（仍在主线程）：此后任何 record() 都会重新把它置位。
         // 写失败时 writeAtomically() 会把脏标记置回，让下一轮定时刷盘重试。
         dirty = false;
-        writeAtomically(buildSnapshot());
+        // 序号在主线程分配（本方法只在主线程调用），让这次写压过任何更早发起的在途异步写
+        writeAtomically(buildSnapshot(), nextWriteSeq());
     }
 
     /**
@@ -343,6 +380,23 @@ public class StatsManager {
     private final Object writeLock = new Object();
 
     /**
+     * 单调递增的写序号：让「后发起的写」能压过「先发起但尚未落盘的在途写」。
+     *
+     * <p>解决的问题（fix3 M-10，与 PlayerGoodsManager 同款）：{@link #flushAsync()} 派发的
+     * 异步写可能持有「上一轮快照」，若它比 {@link #saveNow()} 的同步写<b>后</b>拿到锁，
+     * 就会把关服写对的内容覆盖成陈旧内容，关服前 60 秒内的统计（含刚结算的本局战绩）丢失。
+     * 每次写请求在<b>主线程</b>分配一个递增序号，锁内比对 —— 发现自己不是最新就放弃写入。</p>
+     * <p>用 {@link AtomicLong} 而非普通 long：序号在主线程分配、在异步线程读取，
+     * 需要跨线程可见性。</p>
+     */
+    private final AtomicLong writeSeq = new AtomicLong();
+
+    /** 分配下一个写序号（只在主线程调用，保证序号顺序与主线程的调用顺序一致）。 */
+    private long nextWriteSeq() {
+        return writeSeq.incrementAndGet();
+    }
+
+    /**
      * 临时文件 + 原子替换：避免写入中途被中断时留下半截 YAML。
      *
      * <p><b>临时文件名必须带唯一后缀：</b>{@link #flushAsync()} 派发的异步写与关服时的
@@ -351,12 +405,22 @@ public class StatsManager {
      * 而损坏的 {@code player-stats.yml} 会让下次启动 {@link #load()} 解析失败、丢掉全部统计。
      * 用 {@link System#nanoTime()} 做后缀让每次写的临时文件互不相干，
      * 再由 {@link #writeLock} 把整段串行化。</p>
+     *
+     * <p><b>为什么要校验 {@code seq}：</b>在途异步写手里拿的可能是「上一轮快照」，
+     * 而 {@link #saveNow()} 拿的是「当前快照」。若异步写<b>后</b>拿到锁，它会把已经写对的
+     * 关服内容覆盖成陈旧内容 —— 关服屏障被破坏，刚结算的本局战绩丢失。
+     * 因此每次写都带一个单调递增序号，锁内发现已有更新的写请求时直接放弃本次写入。</p>
+     *
+     * @param content 已序列化的 YAML 内容
+     * @param seq     本次写请求的序号（由 {@link #nextWriteSeq()} 分配）
      */
-    private void writeAtomically(String content) {
+    private void writeAtomically(String content, long seq) {
         File tmp = new File(statsFile.getParentFile(),
                 FILE_NAME + "." + System.nanoTime() + ".tmp");
         try {
             synchronized (writeLock) {
+                // 已有更新的写请求（例如关服的 saveNow）→ 放弃本次，让新请求写正确内容
+                if (seq != writeSeq.get()) return;
                 Files.write(tmp.toPath(), content.getBytes(StandardCharsets.UTF_8));
                 Files.move(tmp.toPath(), statsFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
@@ -417,7 +481,10 @@ public class StatsManager {
             // 下一轮 flushAsync() 又因 dirty == false 直接 return，那批数据永远不落盘。
             dirty = false;
             final String content = buildSnapshot();
-            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> writeAtomically(content));
+            // 序号在主线程分配：这次异步写被此后任何 save()/saveNow() 的更高序号压过，
+            // 即使它在之后才拿到锁也不会覆盖更新的内容（M-10）
+            final long seq = nextWriteSeq();
+            Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> writeAtomically(content, seq));
         });
     }
 

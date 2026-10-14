@@ -78,12 +78,9 @@ public class ArenaCommand implements CommandExecutor {
             }
         } else {
             // Join specific arena
-            String arenaId = args[1];
-            if (arenaManager.joinArena(player, arenaId)) {
-                // Success message sent by arena
-            } else {
-                languageManager.send(player, "join-failed", arenaId);
-            }
+            // C3-02：joinArena 全失败路径均已在内部发送精确原因（arena-not-found / arena-full /
+            // game-in-progress / arena-not-deployed …），此处不再补发泛化 join-failed（避免双消息叠报）
+            arenaManager.joinArena(player, args[1]);
         }
     }
 

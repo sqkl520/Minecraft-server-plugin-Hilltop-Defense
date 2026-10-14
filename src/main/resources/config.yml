@@ -20,3 +20,4 @@ language: zh
 # 部署向导进度（插件自动维护，请勿手改）
 wizard:
   step: {}
+  arena: {}

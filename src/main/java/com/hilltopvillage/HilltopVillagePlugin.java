@@ -27,9 +27,11 @@ import com.hilltopvillage.command.HilltopTabCompleter;
 import com.hilltopvillage.command.SetupWizard;
 import com.hilltopvillage.config.ConfigManager;
 import com.hilltopvillage.config.menu.NumericInputHandler;
+import com.hilltopvillage.core.PlayerData;
 import com.hilltopvillage.core.PlayerGoodsManager;
 import com.hilltopvillage.doc.CommandsDocumentGenerator;
 import com.hilltopvillage.gui.ArenaSelectionGUI;
+import com.hilltopvillage.mechanics.ArenaAccessListener;
 import com.hilltopvillage.mechanics.FireballListener;
 import com.hilltopvillage.mechanics.HammerListener;
 import com.hilltopvillage.mechanics.LobbyProtectionListener;
@@ -89,8 +91,22 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         // Initialize shared managers
         this.languageManager = new LanguageManager(this);
         this.configManager = new ConfigManager(this);
-        this.playerGoodsManager = new PlayerGoodsManager(this);
-        this.statsManager = new StatsManager(this);
+        // P2-34 外层兜底：两个数据管理器已各自做文件级容错（损坏文件重命名 .corrupt + 空数据启动），
+        // 此处再包一层防御，确保任何未预期的异常（如 dataFolder 无权限）不会让整个插件被禁用。
+        // 失败时保持字段为 null —— 所有消费方（ArenaInstance 的 save/restore、record、命令）
+        // 都在运行时经 getter 取用，null 优雅降级为「无物品快照 / 无统计」，不阻断对局本体。
+        try {
+            this.playerGoodsManager = new PlayerGoodsManager(this);
+        } catch (Throwable t) {
+            getLogger().log(Level.SEVERE, "PlayerGoodsManager 初始化失败（物品快照功能将被禁用）", t);
+            this.playerGoodsManager = null;
+        }
+        try {
+            this.statsManager = new StatsManager(this);
+        } catch (Throwable t) {
+            getLogger().log(Level.SEVERE, "StatsManager 初始化失败（统计功能将被禁用）", t);
+            this.statsManager = null;
+        }
         this.mapRestoreManager = new MapRestoreManager(this);
         this.villagerPreviewManager = new VillagerPreviewManager(this);
         this.shopManager = new ShopManager(this, languageManager);
@@ -123,10 +139,18 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         this.lobbyProtectionListener = new LobbyProtectionListener(this);
 
         // Shop listeners
-        this.shopManager.getNpcManager().cleanupOrphans();
+        // 次序（P2-25）：先按配置生成新 NPC（spawnEntity 会强制加载商店坐标所在区块），
+        // 再清孤儿——否则硬崩后商店区块未加载时，孤儿实体在清理阶段不可见，随后被生成
+        // 过程强制加载并与新 NPC 并存。cleanupOrphans 内部跳过 entity == npc，不会误删新实体。
         this.shopManager.getNpcManager().respawnFromConfig();
+        this.shopManager.getNpcManager().cleanupOrphans();
         // 村民预览实体：清掉上次部署会话崩溃残留（按 PDC 标记识别，启动阶段一次）
         this.villagerPreviewManager.cleanupOrphans();
+        // P2-12：波次怪启动清扫 —— 崩溃/强杀重启后上一局的 persistent 残怪随世界存盘，
+        // 按 hilltopvillage:wave-mob PDC 标记全服清掉（模式与上面两个 cleanupOrphans 一致）。
+        // 此刻任何对局都未开始（竞技场走启用队列串行加载），无误删活怪风险；
+        // 竞技场世界通常尚未加载，主场景由 ArenaInstance 构造期的实例级清扫兜底。
+        com.hilltopvillage.core.WaveManager.cleanupAllOrphans(this);
         this.shopListener = new ShopListener(shopManager, languageManager);
         Bukkit.getPluginManager().registerEvents(shopListener, this);
 
@@ -143,11 +167,17 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
 
         // Register listeners
         Bukkit.getPluginManager().registerEvents(this, this);
+        // SetupWizard 监听器常驻注册（M-03）：向导 GUI 的事件处理器内部已有标题匹配 +
+        // 会话 null 判断，常驻安全；不再按打开/关闭界面反复 unregister/register，
+        // 避免任一管理员关闭界面 / saveexit / 掉线时把另一名管理员正开界面的监听一并注销
+        Bukkit.getPluginManager().registerEvents(setupWizard, this);
         Bukkit.getPluginManager().registerEvents(hammerListener, this);
         Bukkit.getPluginManager().registerEvents(nodeListener, this);
         Bukkit.getPluginManager().registerEvents(fireballListener, this);
         Bukkit.getPluginManager().registerEvents(playerLifecycleListener, this);
         Bukkit.getPluginManager().registerEvents(lobbyProtectionListener, this);
+        // 竞技场世界准入防护（P2-41 / D-4）：非成员（管理员豁免）传送进竞技场世界被拦
+        Bukkit.getPluginManager().registerEvents(new ArenaAccessListener(this), this);
         Bukkit.getPluginManager().registerEvents(mapRestoreManager, this);
         Bukkit.getPluginManager().registerEvents(new NumericInputHandler(), this);
 
@@ -396,7 +426,12 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
 
             Player killer = event.getEntity().getKiller();
             if (killer != null) {
-                gameManager.getPlayerData(killer).addKill();
+                // 非参赛玩家（外部 /tp 进入竞技场世界等）击杀波次怪时 getPlayerData 返回 null，
+                // 直接解引用会在事件循环内 NPE。判空后跳过记分即可（世界准入防护见 ArenaAccessListener）。
+                PlayerData data = gameManager.getPlayerData(killer);
+                if (data != null) {
+                    data.addKill();
+                }
             }
         }
     }
@@ -406,7 +441,9 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         Player player = event.getPlayer();
 
         // 崩溃恢复：玩家离线期间若存在未归还的物品快照，登录时归还（不在竞技场时）
-        if (playerGoodsManager.has(player) && !multiArenaManager.isInArena(player)) {
+        // P2-34：管理器初始化失败时为 null → 跳过恢复（不阻断登录流程）
+        if (playerGoodsManager != null
+                && playerGoodsManager.has(player) && !multiArenaManager.isInArena(player)) {
             if (playerGoodsManager.restore(player)) {
                 languageManager.send(player, "goods-restored");
             }

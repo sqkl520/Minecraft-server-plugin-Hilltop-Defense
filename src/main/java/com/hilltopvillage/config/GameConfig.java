@@ -5,6 +5,7 @@ import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import org.bukkit.Material;
 import org.bukkit.entity.EntityType;
@@ -330,6 +331,44 @@ public class GameConfig {
             c.entityExplosion = this.entityExplosion;
             return c;
         }
+
+        /** 值语义比较（P2-31 快照比较用）；字段集与 {@link #copy()} 一致。 */
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof MonsterConfig other)) return false;
+            return displayEgg == other.displayEgg
+                    && Double.compare(health, other.health) == 0
+                    && Double.compare(speed, other.speed) == 0
+                    && Double.compare(hookVelocity, other.hookVelocity) == 0
+                    && Double.compare(explodeDamageMultiplier, other.explodeDamageMultiplier) == 0
+                    && cooldownTicks == other.cooldownTicks
+                    && stunDurationTicks == other.stunDurationTicks
+                    && airdropMobCount == other.airdropMobCount
+                    && entityType == other.entityType
+                    && Double.compare(baseDamage, other.baseDamage) == 0
+                    && customModelData == other.customModelData
+                    && mainHandItem == other.mainHandItem
+                    && offHandItem == other.offHandItem
+                    && helmet == other.helmet
+                    && chestplate == other.chestplate
+                    && leggings == other.leggings
+                    && boots == other.boots
+                    && entityExplosion == other.entityExplosion
+                    && airdropIntervalTicks == other.airdropIntervalTicks
+                    && Objects.equals(displayName, other.displayName)
+                    && Objects.equals(itemsAdderId, other.itemsAdderId)
+                    && Objects.equals(airdropMobType, other.airdropMobType);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(displayEgg, health, speed, hookVelocity, displayName,
+                    explodeDamageMultiplier, cooldownTicks, stunDurationTicks, airdropMobCount,
+                    entityType, baseDamage, itemsAdderId, customModelData, mainHandItem, offHandItem,
+                    helmet, chestplate, leggings, boots, entityExplosion, airdropMobType,
+                    airdropIntervalTicks);
+        }
     }
 
     public static class WaveConfig {
@@ -368,6 +407,20 @@ public class GameConfig {
             }
             return new WaveConfig(this.totalMobs, compositionsCopy);
         }
+
+        /** 值语义比较（P2-31 快照比较用）；composition 依赖 {@link MobComposition#equals}。 */
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof WaveConfig other)) return false;
+            return totalMobs == other.totalMobs
+                    && Objects.equals(compositions, other.compositions);
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(totalMobs, compositions);
+        }
     }
 
     public static class MobComposition {
@@ -389,6 +442,18 @@ public class GameConfig {
         /** 返回当前实例的深拷贝。 */
         public MobComposition copy() {
             return new MobComposition(this.count, this.weight);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof MobComposition other)) return false;
+            return count == other.count && weight == other.weight;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(count, weight);
         }
     }
 
@@ -413,6 +478,18 @@ public class GameConfig {
         /** 返回当前实例的深拷贝（Material 不可变，直接赋值即满足深拷贝语义）。 */
         public StarterKitItem copy() {
             return new StarterKitItem(this.material, this.amount);
+        }
+
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof StarterKitItem other)) return false;
+            return material == other.material && amount == other.amount;
+        }
+
+        @Override
+        public int hashCode() {
+            return Objects.hash(material, amount);
         }
     }
 
@@ -469,6 +546,9 @@ public class GameConfig {
         }
         snap.defaultWave = this.defaultWave.copy();
         snap.spawnRadiusMin = this.spawnRadiusMin; snap.spawnRadiusMax = this.spawnRadiusMax;
+        // P2-31：spawnRadiusSpread 此前漏拷——两边都恒为默认 3.0，equals 本无影响，
+        // 但快照应忠实反映字段（也是 equals 包含该字段的前提）
+        snap.spawnRadiusSpread = this.spawnRadiusSpread;
         snap.globalMobCap = this.globalMobCap; snap.mobCapPerPlayer = this.mobCapPerPlayer;
         snap.spawnYOffset = this.spawnYOffset;
         snap.airdropMaxPerDropper = this.airdropMaxPerDropper;
@@ -644,5 +724,120 @@ public class GameConfig {
 
     public WaveConfig getWaveConfig(int waveNumber) {
         return waves.getOrDefault(waveNumber, defaultWave);
+    }
+
+    // ============================================================
+    //  值语义 equals/hashCode（P2-31）
+    //
+    //  ConfigManager.hasUnsavedChanges() 靠 `activeConfig.snapshot().equals(lastSavedSnapshot)`
+    //  判断是否有未保存修改。此前全类无 equals → Object 引用比较 → 恒为 false 取反恒 true，
+    //  主菜单永远显示「待保存」。以下逐字段展开（与 snapshot() 拷贝的字段集一一对应）。
+    //
+    //  维护约定：新增配置字段时，必须同时更新 snapshot() 拷贝、saveToFile 写盘【和这里】，
+    //  否则「改了新字段但菜单不显示待保存」。
+    // ============================================================
+
+    @Override
+    public boolean equals(Object o) {
+        if (this == o) return true;
+        if (!(o instanceof GameConfig other)) return false;
+        return Objects.equals(worldName, other.worldName)
+                && Double.compare(coreX, other.coreX) == 0
+                && Double.compare(coreY, other.coreY) == 0
+                && Double.compare(coreZ, other.coreZ) == 0
+                && minPlayers == other.minPlayers
+                && maxPlayers == other.maxPlayers
+                && victoryWaves == other.victoryWaves
+                && waveIntervalSeconds == other.waveIntervalSeconds
+                && waveTimeoutSeconds == other.waveTimeoutSeconds
+                && defeatCountdownSeconds == other.defeatCountdownSeconds
+                && Double.compare(villagerHealth, other.villagerHealth) == 0
+                && rejoinTimeoutSeconds == other.rejoinTimeoutSeconds
+                && mapRestoreEnabled == other.mapRestoreEnabled
+                && scoreboardEnabled == other.scoreboardEnabled
+                && hammerMaterial == other.hammerMaterial
+                && Objects.equals(hammerItemsAdderId, other.hammerItemsAdderId)
+                && hammerCustomModelData == other.hammerCustomModelData
+                && hammerUseItemsAdder == other.hammerUseItemsAdder
+                && Double.compare(hammerBaseDamage, other.hammerBaseDamage) == 0
+                && Double.compare(hammerEffectRadius, other.hammerEffectRadius) == 0
+                && hammerAftershockTicks == other.hammerAftershockTicks
+                && hammerSmashTimeoutTicks == other.hammerSmashTimeoutTicks
+                && hammerVisualDisplayTicks == other.hammerVisualDisplayTicks
+                && Double.compare(hammerDamageLowThreshold, other.hammerDamageLowThreshold) == 0
+                && Double.compare(hammerDamageMediumThreshold, other.hammerDamageMediumThreshold) == 0
+                && Double.compare(hammerDamageLowMultiplier, other.hammerDamageLowMultiplier) == 0
+                && Double.compare(hammerDamageMediumMultiplier, other.hammerDamageMediumMultiplier) == 0
+                && Double.compare(hammerDamageHighMultiplier, other.hammerDamageHighMultiplier) == 0
+                && Double.compare(hammerLowDamage, other.hammerLowDamage) == 0
+                && Double.compare(hammerMediumDamage, other.hammerMediumDamage) == 0
+                && Double.compare(hammerHighDamage, other.hammerHighDamage) == 0
+                && Double.compare(hammerLowRadius, other.hammerLowRadius) == 0
+                && Double.compare(hammerMediumRadius, other.hammerMediumRadius) == 0
+                && Double.compare(hammerHighRadius, other.hammerHighRadius) == 0
+                && Double.compare(hammerMediumCharge, other.hammerMediumCharge) == 0
+                && Double.compare(hammerHighCharge, other.hammerHighCharge) == 0
+                && Double.compare(hammerCooldownSeconds, other.hammerCooldownSeconds) == 0
+                && hammerMaxUses == other.hammerMaxUses
+                && Objects.equals(hammerItemName, other.hammerItemName)
+                && Objects.equals(nodeBlockTypes, other.nodeBlockTypes)
+                && Double.compare(nodeBaseHealth, other.nodeBaseHealth) == 0
+                && Double.compare(nodeBuffRadius, other.nodeBuffRadius) == 0
+                && Double.compare(nodeSelfDestructMultiplier, other.nodeSelfDestructMultiplier) == 0
+                && nodeSearchRadius == other.nodeSearchRadius
+                && Objects.equals(repairCostName, other.repairCostName)
+                && repairCostItem == other.repairCostItem
+                && repairCostAmount == other.repairCostAmount
+                && Double.compare(repairAmountPerCost, other.repairAmountPerCost) == 0
+                && Objects.equals(nodeBuffEffects, other.nodeBuffEffects)
+                && nodeBuffRefreshTicks == other.nodeBuffRefreshTicks
+                && nodeBuffStackCap == other.nodeBuffStackCap
+                && nodeBuffDurationTicks == other.nodeBuffDurationTicks
+                && Objects.equals(monsters, other.monsters)
+                && Objects.equals(waves, other.waves)
+                && Objects.equals(defaultWave, other.defaultWave)
+                && spawnRadiusMin == other.spawnRadiusMin
+                && spawnRadiusMax == other.spawnRadiusMax
+                && Double.compare(spawnRadiusSpread, other.spawnRadiusSpread) == 0
+                && globalMobCap == other.globalMobCap
+                && mobCapPerPlayer == other.mobCapPerPlayer
+                && spawnYOffset == other.spawnYOffset
+                && airdropMaxPerDropper == other.airdropMaxPerDropper
+                && Double.compare(currencyDropChance, other.currencyDropChance) == 0
+                && currencyDropAmount == other.currencyDropAmount
+                && starterKitEnabled == other.starterKitEnabled
+                && Objects.equals(starterKitItems, other.starterKitItems)
+                && fireballMaterial == other.fireballMaterial
+                && Double.compare(fireballSpeed, other.fireballSpeed) == 0
+                && Double.compare(fireballDamage, other.fireballDamage) == 0
+                && Double.compare(fireballExplosionRadius, other.fireballExplosionRadius) == 0
+                && fireballCooldownTicks == other.fireballCooldownTicks
+                && fireballMaxTravelTicks == other.fireballMaxTravelTicks
+                && Double.compare(fireballKnockback, other.fireballKnockback) == 0
+                && Double.compare(fireballProximityFuse, other.fireballProximityFuse) == 0
+                && Objects.equals(fireballItemName, other.fireballItemName);
+    }
+
+    @Override
+    public int hashCode() {
+        return Objects.hash(worldName, coreX, coreY, coreZ, minPlayers, maxPlayers,
+                victoryWaves, waveIntervalSeconds, waveTimeoutSeconds, defeatCountdownSeconds,
+                villagerHealth, rejoinTimeoutSeconds, mapRestoreEnabled, scoreboardEnabled,
+                hammerMaterial, hammerItemsAdderId, hammerCustomModelData, hammerUseItemsAdder,
+                hammerBaseDamage, hammerEffectRadius, hammerAftershockTicks, hammerSmashTimeoutTicks,
+                hammerVisualDisplayTicks, hammerDamageLowThreshold, hammerDamageMediumThreshold,
+                hammerDamageLowMultiplier, hammerDamageMediumMultiplier, hammerDamageHighMultiplier,
+                hammerLowDamage, hammerMediumDamage, hammerHighDamage,
+                hammerLowRadius, hammerMediumRadius, hammerHighRadius,
+                hammerMediumCharge, hammerHighCharge, hammerCooldownSeconds, hammerMaxUses,
+                hammerItemName, nodeBlockTypes, nodeBaseHealth, nodeBuffRadius,
+                nodeSelfDestructMultiplier, nodeSearchRadius, repairCostName, repairCostItem,
+                repairCostAmount, repairAmountPerCost, nodeBuffEffects, nodeBuffRefreshTicks,
+                nodeBuffStackCap, nodeBuffDurationTicks, monsters, waves, defaultWave,
+                spawnRadiusMin, spawnRadiusMax, spawnRadiusSpread, globalMobCap, mobCapPerPlayer,
+                spawnYOffset, airdropMaxPerDropper, currencyDropChance, currencyDropAmount,
+                starterKitEnabled, starterKitItems, fireballMaterial, fireballSpeed, fireballDamage,
+                fireballExplosionRadius, fireballCooldownTicks, fireballMaxTravelTicks,
+                fireballKnockback, fireballProximityFuse, fireballItemName);
     }
 }

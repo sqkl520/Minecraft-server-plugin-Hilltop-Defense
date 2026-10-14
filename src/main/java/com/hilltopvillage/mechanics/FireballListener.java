@@ -17,6 +17,7 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.metadata.FixedMetadataValue;
 import org.bukkit.metadata.MetadataValue;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.scheduler.BukkitRunnable;
 import org.bukkit.util.Vector;
 
@@ -37,6 +38,11 @@ public class FireballListener implements Listener {
     private static final double KB_Y_COMPENSATION = 1.5;
     private static final double KB_VERTICAL_SCALE = 0.45;
 
+    /** 统一道具类型 PDC 键（D-3 PDC 防伪）：STRING 类型，值与 {@link #KIND_FIREBALL} 等对应。 */
+    private static final String ITEM_KIND_KEY = "item-kind";
+    /** item-kind 取值：烈焰蛋 */
+    private static final String KIND_FIREBALL = "fireball";
+
     /** 全局唯一飞行 ticker：恢复原实现每 2 tick 一次的近炸检测语义。 */
     private static final int TRAIL_PERIOD_TICKS = 2;
     /** 高频火焰/烟雾粒子每 4 tick 输出一次，避免随检测频率一起增量。 */
@@ -48,7 +54,8 @@ public class FireballListener implements Listener {
 
     private final HilltopVillagePlugin plugin;
     private final LanguageManager lang;
-    private final String cachedFireballName;
+    /** 统一道具类型键（构造期建好复用，同 WaveManager.airdropKey 模式） */
+    private final NamespacedKey itemKindKey;
     private final Map<UUID, Integer> cooldowns;
     private BukkitRunnable cooldownTicker;
     private volatile boolean cooldownTickerRunning;
@@ -107,11 +114,7 @@ public class FireballListener implements Listener {
     public FireballListener(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
         this.lang = plugin.getLanguageManager();
-        String configuredName = plugin.getConfigManager().getActiveConfig().getFireballItemName();
-        this.cachedFireballName = ChatColor.translateAlternateColorCodes('&',
-                (configuredName == null || configuredName.isEmpty())
-                        ? lang.get("item.fireball-name")
-                        : configuredName);
+        this.itemKindKey = new NamespacedKey(plugin, ITEM_KIND_KEY);
         this.cooldowns = new ConcurrentHashMap<>();
         this.cooldownTickerRunning = false;
         this.activeTrails = new ConcurrentHashMap<>();
@@ -146,12 +149,27 @@ public class FireballListener implements Listener {
 
     /* ========== 创建烈焰蛋物品 ========== */
 
+    /**
+     * 烈焰蛋显示名：实时从 activeConfig 读取（P2-17），命令 / GUI 改名后无需重启即生效。
+     * 配置留空则回退 messages.yml 的 {@code item.fireball-name}。
+     */
+    private String fireballName() {
+        String configuredName = plugin.getConfigManager().getActiveConfig().getFireballItemName();
+        return ChatColor.translateAlternateColorCodes('&',
+                (configuredName == null || configuredName.isEmpty())
+                        ? lang.get("item.fireball-name")
+                        : configuredName);
+    }
+
     public ItemStack createFireball() {
         GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         ItemStack item = new ItemStack(cfg.getFireballMaterial());
 
         ItemMeta meta = item.getItemMeta();
-        meta.setDisplayName(cachedFireballName);
+        meta.setDisplayName(fireballName());
+        // D-3：PDC 防伪标记（识别器以 PDC 为准；显示名仅作旧道具迁移兼容）。必须写在任何
+        // 提前 return（如后续新增分支）之前，保证所有工厂产物都带标记。
+        meta.getPersistentDataContainer().set(itemKindKey, PersistentDataType.STRING, KIND_FIREBALL);
         List<String> lore = new ArrayList<>();
         lore.add(ChatColor.GRAY + lang.get("fireball.lore-use"));
         lore.add(ChatColor.RED + lang.get("fireball.lore-damage"));
@@ -166,10 +184,18 @@ public class FireballListener implements Listener {
         return item;
     }
 
+    /**
+     * 是否烈焰蛋：PDC {@code hilltopvillage:item-kind = fireball} 命中 → true；
+     * 否则回退显示名比较（迁移兼容：fix3 之前发放的旧蛋无 PDC，下个大版本可删此分支）。
+     */
     public boolean isFireball(ItemStack item) {
         if (item == null || !item.hasItemMeta()) return false;
         ItemMeta meta = item.getItemMeta();
-        return meta.hasDisplayName() && meta.getDisplayName().equals(cachedFireballName);
+        // D-3：PDC 为准
+        String kind = meta.getPersistentDataContainer().get(itemKindKey, PersistentDataType.STRING);
+        if (KIND_FIREBALL.equals(kind)) return true;
+        // 迁移兼容（旧道具无 PDC，仅按精确显示名识别）
+        return meta.hasDisplayName() && meta.getDisplayName().equals(fireballName());
     }
 
     /* ========== 右键投掷 ========== */
@@ -202,6 +228,17 @@ public class FireballListener implements Listener {
         boolean isOffhand = event.getHand() == org.bukkit.inventory.EquipmentSlot.OFF_HAND;
         ItemStack item = isOffhand ? player.getInventory().getItemInOffHand() : player.getInventory().getItemInMainHand();
         if (!isFireball(item)) return;
+
+        // P2-14：旁观者不可投弹（静默拒绝：不消耗、无提示）。锤子的门控已有 isAlive 判定可对照。
+        // 置于 isFireball 之后：非弹药右键（高频事件）不付出竞技场查找开销。
+        if (player.getGameMode() == GameMode.SPECTATOR) return;
+        // 与锤子对齐的存活双保险（死亡→旁观的过渡帧等边缘状态）
+        var aliveArena = plugin.getMultiArenaManager().getPlayerArena(player);
+        if (aliveArena != null) {
+            var aliveData = aliveArena.getGameManager().getPlayerData(player);
+            if (aliveData != null && !aliveData.isAlive()) return;
+        }
+
         if (!isPlayerInRunningArena(player)) return;
 
         event.setCancelled(true);
@@ -369,9 +406,14 @@ public class FireballListener implements Listener {
                 loc, fuse, fuse, fuse, FireballListener::isValidTarget).isEmpty();
     }
 
-    /** 目标筛选条件：存活中的非玩家 LivingEntity，且剔除待保护村民（STORY-1.6：蛋飞过村民头顶不再空爆）。 */
+    /**
+     * 目标筛选条件：存活中的非玩家 LivingEntity，且剔除待保护村民（STORY-1.6：蛋飞过村民头顶不再空爆）。
+     * P2-18 延伸：invulnerable 实体（商店 NPC / 预览村民）不是战斗目标，同样不触发近炸空爆
+     * （与村民豁免同族；爆炸波及过滤另有同一排除）。
+     */
     private static boolean isValidTarget(LivingEntity entity) {
         return entity != null && entity.isValid() && !entity.isDead() && !(entity instanceof Player)
+                && !entity.isInvulnerable()
                 && !VillagerSystem.isVillageVillager(entity);
     }
 
@@ -381,8 +423,15 @@ public class FireballListener implements Listener {
         projectile.remove();
     }
 
-    /** 冷却查询：玩家退出时清理（在飞的烈焰蛋由全局 ticker 按失效/超时自行出列） */
+    /**
+     * 冷却查询清理（跨 lane 接口，F2 调用方注意）。
+     *
+     * <p><b>契约：幂等</b>——重复调用安全；玩家离线安全（仅 UUID 键控的 map 操作，
+     * 不访问玩家实体状态）。供既有 quit 路径与 F2 的 onDeath / rejoin / removePlayer 挂接。
+     * 在飞烈焰蛋不在此清理（由全局 ticker 按失效/超时自行出列）。</p>
+     */
     public void cleanupPlayer(Player player) {
+        if (player == null) return;
         cooldowns.remove(player.getUniqueId());
     }
 
@@ -464,6 +513,10 @@ public class FireballListener implements Listener {
         }
         projectile.removeMetadata("hilltop_fireball", plugin);
 
+        // M-17：解析投掷玩家实体实例作为伤害来源（投掷者离线 / 发射器 → null，退回无来源伤害）。
+        // 带上来源后 EntityDeathEvent.getKiller() 能解析到投掷者，技能击杀正常计入统计。
+        Player attacker = throwerUuid != null ? Bukkit.getPlayer(throwerUuid) : null;
+
         // 爆炸音效
         world.playSound(impact, Sound.ENTITY_GENERIC_EXPLODE, 1.2f, 0.8f);
         world.playSound(impact, Sound.ENTITY_BLAZE_DEATH, 0.8f, 1.0f);
@@ -487,8 +540,10 @@ public class FireballListener implements Listener {
         double radius = cfg.explosionRadius();
         double damage = cfg.damage();
         double knockback = cfg.knockback();
+        // P2-18：排除 invulnerable 实体（商店 NPC / 预览村民均设了 invulnerable）——
+        // 既不受伤害/点燃/击退，也不被 setVelocity 推离原位。怪物不无敌，伤害路径不受影响。
         Collection<LivingEntity> nearby = world.getNearbyLivingEntities(impact, radius, radius, radius,
-                entity -> entity != null && entity.isValid()
+                entity -> entity != null && entity.isValid() && !entity.isInvulnerable()
                         && !VillagerSystem.isVillageVillager(entity));
 
         for (LivingEntity entity : nearby) {
@@ -502,8 +557,16 @@ public class FireballListener implements Listener {
 
             // STORY-1.8：零友伤 —— 玩家分支只弹飞不伤、去点燃（弹飞在循环尾统一处理）；
             // 怪物分支伤害/点燃不变。
+            // M-17：带来源重载 damage(double, Entity)（Paper 1.21.4 的 source 参数为 @Nullable）——
+            // attacker 为投掷玩家时 getKiller() 可取到，技能击杀计入统计。保留 null 分支走旧重载，
+            // 与修改前的「发射器 / 投掷者离线」路径行为严格一致。（附注：带来源后怪物会正常
+            // 记录仇恨来源 = 投掷者，属预期语义。）
             if (!(entity instanceof Player)) {
-                entity.damage(damage * falloff);
+                if (attacker != null) {
+                    entity.damage(damage * falloff, attacker);
+                } else {
+                    entity.damage(damage * falloff);
+                }
                 entity.setFireTicks(40);
             }
 
@@ -549,6 +612,12 @@ public class FireballListener implements Listener {
     /**
      * BedWars1058 风格击退公式。
      * 水平方向：推离爆炸中心；垂直方向：动态 Y 轴处理（补偿脚下爆炸、跳跃增强）。
+     *
+     * <p><b>P2-16 注释修正（不改数值行为，火箭跳是 feature）：</b>下方 {@code y += KB_Y_COMPENSATION}
+     * 的 1.5 是<b>归一化域</b>补偿（{@code normalizedVector.getY() ∈ [-1,1]}），不是格单位；
+     * 分支阈值 0.5 同样在归一化域。补偿后 y 几乎恒 &gt; 0.5，因此三分支的实际选择由
+     * 「爆点相对实体的几何比例」主导而非距离 —— 与直觉的「越近越平推」相反。此为已定稿手感
+     * （作者已知悉，见 CHANGELOG 火箭跳调优锚点）；如需精调，建议实机标定后另开调整。</p>
      */
     private void applyBwKnockback(LivingEntity entity, Location impact, double knockback, double falloff) {
         Vector entityVector = entity.getLocation().toVector();

@@ -1,5 +1,6 @@
 package com.hilltopvillage.core;
 
+import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.ai.ExplodeBeetleGoal;
 import com.hilltopvillage.ai.HookClawHunterGoal;
 import com.hilltopvillage.ai.AirdropSpawnGoal;
@@ -43,6 +44,16 @@ public class WaveManager {
     private final Set<BukkitTask> airdropTasks;
     /** PDC 标记：空投小怪（dropCurrency 据此跳过，避免挂机刷钱；见 {@link #markAirdropMob}） */
     private final NamespacedKey airdropKey;
+    /**
+     * 「两套刷怪点均空 → 以核心为中心环形刷怪」（M-14 回退路径）的提示是否已记过。
+     * 每波重置一次（{@link #spawnWave(int, Runnable)} 入口），使误配置可见但不会
+     * 按 mob 数量刷屏（旧实现在该状态按 mob 打 severe，一波 80 只 = 80 行）。
+     */
+    private boolean ringSpawnWarningLogged;
+    /** 波次怪统一 PDC 标记键名（P2-12）：崩溃/强杀重启后启动清扫按此识别残留实体 */
+    public static final String WAVE_MOB_KEY_NAME = "wave-mob";
+    /** PDC 标记：全部波次怪（普通/三特殊/空投小怪/抛投者，见 {@link #markWaveMobPersistent}） */
+    private final NamespacedKey waveMobKey;
     private static final int SPAWN_BATCH_SIZE = 2;
     private static final int DEFAULT_WAVE_BASE_COUNT = 5;
     private static final int DEFAULT_WAVE_COUNT_PER_WAVE = 2;
@@ -58,6 +69,7 @@ public class WaveManager {
         this.activeMobs = ConcurrentHashMap.newKeySet();
         this.airdropTasks = ConcurrentHashMap.newKeySet();
         this.airdropKey = new NamespacedKey(gameManager.getPlugin(), "airdrop-mob");
+        this.waveMobKey = new NamespacedKey(gameManager.getPlugin(), WAVE_MOB_KEY_NAME);
         this.random = new Random();
     }
 
@@ -69,6 +81,8 @@ public class WaveManager {
         // 幂等：上一波的刷怪任务可能尚未结束（波次判定提前完成、上一局未收尾等），
         // 先取消旧任务再启动新任务，避免两批任务并存、用上一波的 waveConfig 继续刷怪。
         cancelSpawnTask();
+        // M-14 回退路径提示每波重置一次：误配置可见，但不会按 mob 数量刷屏
+        ringSpawnWarningLogged = false;
 
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
         GameConfig.WaveConfig waveConfig = cfg.getWaveConfig(waveNumber);
@@ -110,7 +124,11 @@ public class WaveManager {
             public void run() {
                 // 游戏已结束/已停止时立刻自我终止：任务是在 3 tick 周期上异步推进的，
                 // 若不守卫，失败结算 / 停止 / 关闭服务器之后仍会继续往世界写实体。
-                if (!gameManager.isGameRunning()) {
+                // M-12：守卫收窄为「只认 RUNNING」——isGameRunning() 含 WAVE_INTERMISSION，
+                // 快速清波（重锤 AOE 秒杀时 3 tick 批次间隙即空）会让本波剩余怪延续刷进
+                // 休整期，污染下一波清波判定与休整手感。本任务即「本波刷怪窗口」：
+                // state 一离开 RUNNING（清波转入休整 / 结算 / 停止）立即自停。
+                if (gameManager.getState() != GameState.RUNNING) {
                     cancelSpawnTask();
                     return;
                 }
@@ -160,7 +178,7 @@ public class WaveManager {
      * ④ 按正常路径相同节奏（3 tick / 2 只）分批刷出。</p>
      *
      * <p>任务句柄同样写入 {@link #spawnTask}，{@link #cancelSpawnTask()}、
-     * {@link #clearAllMobs()} 与 {@code isGameRunning()} 守卫全覆盖。</p>
+     * {@link #clearAllMobs()} 与「state != RUNNING 即停」守卫（M-12）全覆盖。</p>
      *
      * @param waveConfig 本波配置
      * @param playerCount 开波时的在场人数（快照，刷怪期间不再重读）
@@ -206,8 +224,8 @@ public class WaveManager {
         spawnTask = new BukkitRunnable() {
             @Override
             public void run() {
-                // 与正常路径同一守卫：游戏已结束/已停止时立刻自我终止
-                if (!gameManager.isGameRunning()) {
+                // 与正常路径同一守卫（M-12：只认 RUNNING，休整期即停）
+                if (gameManager.getState() != GameState.RUNNING) {
                     cancelSpawnTask();
                     return;
                 }
@@ -266,7 +284,7 @@ public class WaveManager {
      * 单 tick 实体生成量从「5+2×波数」降到 2。任务句柄同样写入 {@link #spawnTask}，
      * 因此 {@link #cancelSpawnTask()}、{@link #clearAllMobs()} 与游戏结束的守卫都能覆盖到它
      * —— 这一点很关键：兜底路径原来是同步的，不存在「任务还活着但游戏已结束」的窗口，
-     * 改成异步后必须补上 {@code isGameRunning()} 守卫，否则失败结算后仍会继续刷怪。</p>
+     * 改成异步后必须补上「state != RUNNING 即停」守卫（M-12），否则失败结算后仍会继续刷怪。</p>
      *
      * @param waveNumber 波次号（决定总只数）
      * @param onComplete 全部生成完毕后回调（可为 null）
@@ -278,8 +296,8 @@ public class WaveManager {
         spawnTask = new BukkitRunnable() {
             @Override
             public void run() {
-                // 与正常路径同一守卫：游戏已结束/已停止时立刻自我终止
-                if (!gameManager.isGameRunning()) {
+                // 与正常路径同一守卫（M-12：只认 RUNNING，休整期即停）
+                if (gameManager.getState() != GameState.RUNNING) {
                     cancelSpawnTask();
                     return;
                 }
@@ -328,10 +346,78 @@ public class WaveManager {
      * 导致 {@link #isWaveCleared()} 恒为 false —— 波次永远无法判定完成、
      * {@code GameManager.waveCheckTask} 每 3 秒空转到本局结束，同时集合永久持有该无效实体的强引用。
      * 标记 persistent 后，怪物只能以死亡或 {@link #clearAllMobs()} 离场，判定假设才成立。</p>
+     *
+     * <p>P2-12：同时打上 {@code hilltopvillage:wave-mob} PDC 标记。所有波次怪（含三特殊怪与
+     * 空投怪）都经过本方法，崩溃/强杀重启后由 {@link #cleanupOrphans()}（实例级，竞技场
+     * 世界加载后）与 {@link #cleanupAllOrphans(HilltopVillagePlugin)}（启动级，全服一次）
+     * 按此标记清扫 —— persistent 标记只保证「局内不被移除」，跨进程重启时 {@code activeMobs}
+     * 随进程消失，残怪无人认领，必须靠 PDC 标记补清扫。</p>
      */
     private void markWaveMobPersistent(Mob mob) {
         mob.setRemoveWhenFarAway(false);
         mob.setPersistent(true);
+        mob.getPersistentDataContainer().set(waveMobKey, PersistentDataType.BYTE, (byte) 1);
+    }
+
+    /**
+     * 清扫本竞技场世界内残留波次怪（P2-12）：崩溃/强杀（非优雅退出）后，上一局已刷出的
+     * persistent 怪随世界存盘；重启后新实例直接进入 WAITING，无人清理。残留怪可攻击
+     * 新局玩家与新生成的真村民（村民伤害白名单放行 Monster 来源），造成
+     * 「被上一局残怪杀掉 → 强制失败」。
+     *
+     * <p>按 {@code hilltopvillage:wave-mob} PDC 标记识别（不依赖内存引用），模式与
+     * {@link com.hilltopvillage.shop.NpcManager#cleanupOrphans()} /
+     * {@link com.hilltopvillage.mechanics.VillagerPreviewManager#cleanupOrphans()} 一致。
+     * 由 {@code ArenaInstance} 构造期调用（此时该世界刚加载完，且本世界此刻必无进行中
+     * 对局——世界唯一性与退役隔离保证），只扫本世界：多竞技场下按全服扫会误删
+     * 他场正在对局的活怪（它们带同样标记）。</p>
+     *
+     * @return 被清除的实体数
+     */
+    public int cleanupOrphans() {
+        World world = gameManager.getGameWorld();
+        if (world == null) return 0;
+        int removed = 0;
+        for (Entity entity : world.getEntities()) {
+            if (!(entity instanceof LivingEntity living)) continue;
+            if (!living.getPersistentDataContainer().has(waveMobKey, PersistentDataType.BYTE)) continue;
+            // 防御：本场当前活跃怪（构造期 activeMobs 必为空，双保险）
+            if (activeMobs.contains(living)) continue;
+            living.remove();
+            removed++;
+        }
+        if (removed > 0) {
+            gameManager.getPlugin().getLogger().info("已清理 " + removed + " 只残留波次怪 (竞技场 "
+                    + gameManager.getArenaId() + ")");
+        }
+        return removed;
+    }
+
+    /**
+     * 全服清扫残留波次怪（静态版，P2-12）：供插件启动阶段（{@code onEnable}）调用一次。
+     *
+     * <p>启动时任何对局都未开始（竞技场走启用队列串行加载），全服扫描无「误删活怪」风险；
+     * 竞技场世界通常此刻尚未加载（启用队列下一 tick 才 createWorld），因此本扫描主要覆盖
+     * 已随服务器启动加载的世界，竞技场世界的清扫由 {@link #cleanupOrphans()}（ArenaInstance
+     * 构造期）互补完成。两处都仿 {@code NpcManager/VillagerSystem.cleanupOrphans} 模式。</p>
+     *
+     * @return 被清除的实体数
+     */
+    public static int cleanupAllOrphans(HilltopVillagePlugin plugin) {
+        NamespacedKey key = new NamespacedKey(plugin, WAVE_MOB_KEY_NAME);
+        int removed = 0;
+        for (World world : Bukkit.getWorlds()) {
+            for (Entity entity : world.getEntities()) {
+                if (entity.getPersistentDataContainer().has(key, PersistentDataType.BYTE)) {
+                    entity.remove();
+                    removed++;
+                }
+            }
+        }
+        if (removed > 0) {
+            plugin.getLogger().info("已清理 " + removed + " 只残留波次怪（启动清扫）");
+        }
+        return removed;
     }
 
     private void spawnCustomMob(String type, Location location) {
@@ -564,13 +650,36 @@ public class WaveManager {
     }
 
     private Location getRandomSpawnLocation() {
-        // STORY-1.2：怪物刷怪走独立的 mob-spawn-points；旧存档（该键为空）回退到玩家出生点，
-        // 仅当两套点都为空时才返回 null（调用方刷怪任务会自我终止，见 isGameRunning 守卫）。
+        // M-14 死配置接线（决策 D-1）：距离取 [spawn-radius-min, spawn-radius-max] 内的随机值
+        // （per-arena 优先、全局兜底）。两键都 <=0（max<=0）时按各路径的旧行为兜底。
+        int radiusMin = gameManager.getSpawnRadiusMin();
+        int radiusMax = gameManager.getSpawnRadiusMax();
+
+        // STORY-1.2：怪物刷怪走独立的 mob-spawn-points；旧存档（该键为空）回退到玩家出生点。
         List<Location> fixedPoints = gameManager.getMobSpawnPointsView();
         if (fixedPoints.isEmpty()) {
-            gameManager.getPlugin().getLogger().severe("No mob spawn points configured! "
-                    + "Deploy them with Step 3 of /hilltop setup or /hilltop deploy addmobspawn.");
-            return null;
+            // 新回退路径（M-14 原设计意图）：无任何固定刷怪点时，以核心为中心生成随机环形位置。
+            // 可达场景：对局中管理员把两套点都清空（正常开局被 hasEffectiveMobSpawnPoints 拦截，
+            // 走不到这里）。radius-max 未配置时保持旧行为（终止刷怪 + 日志提示补部署）。
+            if (radiusMax <= 0) {
+                gameManager.getPlugin().getLogger().severe("No mob spawn points configured! "
+                        + "Deploy them with Step 3 of /hilltop setup or /hilltop deploy addmobspawn.");
+                return null;
+            }
+            Location core = gameManager.getCoreLocation();
+            if (core == null) return null;
+            if (!ringSpawnWarningLogged) {
+                ringSpawnWarningLogged = true;
+                gameManager.getPlugin().getLogger().warning("竞技场 " + gameManager.getArenaId()
+                        + " 的 mob-spawn-points 与 spawn-points 均为空，已回退到「以核心为中心、半径 "
+                        + radiusMin + "-" + radiusMax + "」的环形刷怪；建议用 /hilltop deploy addmobspawn 补部署刷怪点");
+            }
+            double distance = randomRingDistance(radiusMin, radiusMax);
+            double angle = random.nextDouble() * 2 * Math.PI;
+            core.add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+            int yOffset = gameManager.getSpawnYOffset();
+            if (yOffset != 0) core.add(0, yOffset, 0);
+            return core;
         }
 
         // 只读视图而非 getMobSpawnPoints()：后者每次都 new ArrayList<>(...)，
@@ -578,20 +687,37 @@ public class WaveManager {
         // 不会改到 GameManager 内部的 Location 本体（视图的元素安全约束见该方法 Javadoc）。
         Location basePoint = fixedPoints.get(random.nextInt(fixedPoints.size())).clone();
 
-        // 应用扩散半径（默认3.0格）
-        GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
-        double spread = cfg.getSpawnRadiusSpread();  // 使用getter方法
+        // 以固定刷怪点为中心的随机水平偏移：距离取 [min,max]；max<=0 时用历史行为
+        // 3.0 兜底（GameConfig.spawnRadiusSpread，无 IO 的旧扩散常量），避免旧存档缺键时行为突变。
+        double distance;
+        if (radiusMax > 0) {
+            distance = randomRingDistance(radiusMin, radiusMax);
+        } else {
+            distance = random.nextDouble() * gameManager.getConfigManager().getActiveConfig().getSpawnRadiusSpread();
+        }
 
-        if (spread > 0) {
+        if (distance > 0) {
             double angle = random.nextDouble() * 2 * Math.PI;
-            double distance = random.nextDouble() * spread;
             double offsetX = Math.cos(angle) * distance;
             double offsetZ = Math.sin(angle) * distance;
 
             basePoint.add(offsetX, 0, offsetZ);
         }
 
+        // M-14：生成高度偏移（per-arena spawn-y-offset 优先、全局 spawning.spawn-y-offset 兜底）
+        int yOffset = gameManager.getSpawnYOffset();
+        if (yOffset != 0) {
+            basePoint.add(0, yOffset, 0);
+        }
+
         return basePoint;
+    }
+
+    /** 在 [min,max] 中取随机距离（min 夹到非负；max 夹到不小于 min），半径为 0 时返回 0。 */
+    private double randomRingDistance(int radiusMin, int radiusMax) {
+        double min = Math.max(0, radiusMin);
+        double max = Math.max(min, radiusMax);
+        return min + random.nextDouble() * (max - min);
     }
 
     public void onMobDeath(LivingEntity mob) {

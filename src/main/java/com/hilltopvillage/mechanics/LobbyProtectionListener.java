@@ -14,7 +14,9 @@ import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
+import org.bukkit.event.block.BlockBurnEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.block.BlockIgniteEvent;
 import org.bukkit.event.block.BlockPlaceEvent;
 import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
@@ -141,6 +143,34 @@ public class LobbyProtectionListener implements Listener {
     public void onBlockExplode(BlockExplodeEvent event) {
         if (!inLobby(event.getBlock())) return;
         event.blockList().clear();
+        event.setCancelled(true);
+    }
+
+    /**
+     * P2-22：大厅内禁止引燃（打火石 / 火焰蔓延 / 闪电 / 劫掠者 / 火球等一切来源）。
+     *
+     * <p>火一旦点燃就会蔓延烧毁装饰方块，而大厅不在 {@code MapRestoreManager} 的回滚范围内，
+     * 烧毁不可恢复。建造模式的管理员豁免（用 {@code /hilltop build} 整修大厅时可能需要试点火）；
+     * 自然引燃（{@code event.getPlayer() == null}，如闪电/烈焰人）不给豁免，直接拦。</p>
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockIgnite(BlockIgniteEvent event) {
+        if (!inLobby(event.getBlock())) return;
+        Player igniter = event.getPlayer();
+        if (igniter != null && isBuildMode(igniter)) return;
+        event.setCancelled(true);
+    }
+
+    /**
+     * P2-22：大厅内禁止火焰烧毁方块。
+     *
+     * <p>{@link BlockBurnEvent} 不携带玩家（火可能由自然因素蔓延而来），只按世界判定；
+     * 建造模式的豁免不适用于本事件，但点火入口已在 {@link #onBlockIgnite} 拦下，
+     * 建造模式下也点不出新火。对已存在的火（如插件异常残留）依然兜底。</p>
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockBurn(BlockBurnEvent event) {
+        if (!inLobby(event.getBlock())) return;
         event.setCancelled(true);
     }
 

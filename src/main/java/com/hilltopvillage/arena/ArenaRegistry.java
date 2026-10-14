@@ -60,7 +60,10 @@ public final class ArenaRegistry {
     public ArenaDefinition getByWorldName(String worldName) {
         if (worldName == null || worldName.isBlank()) return null;
         for (ArenaDefinition arena : arenas.values()) {
-            if (arena.getWorldName().equals(worldName)) return arena;
+            // 忽略大小写（P2-29）：arenas.yml 的原始字符串与实际世界名大小写不一致时
+            // （Bukkit 世界查找本身不区分大小写，能正常加载与游玩），equals 会让
+            // /hilltop setup 起手解析误报 setup.no-arena-here。
+            if (arena.getWorldName().equalsIgnoreCase(worldName)) return arena;
         }
         return null;
     }

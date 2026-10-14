@@ -37,25 +37,31 @@ public class HammerListener implements Listener {
 
     /** 重锤剩余次数 PDC 键（存发锤时的 max-uses 快照，每次猛击 -1） */
     private static final String HAMMER_USES_KEY = "hammer-uses-left";
+    /** 统一道具类型 PDC 键（D-3 PDC 防伪）：STRING 类型，值见 KIND_* 常量 */
+    private static final String ITEM_KIND_KEY = "item-kind";
+    /** item-kind 取值：重锤 */
+    private static final String KIND_HAMMER = "hammer";
 
     private final HilltopVillagePlugin plugin;
     private final LanguageManager lang;
-    private final String hammerName;
+    /** 统一道具类型键（构造期建好复用；与 {@link WaveManager} 的 airdropKey 同一模式） */
+    private final NamespacedKey itemKindKey;
     private final Map<UUID, BossBar> chargeBars;
     private final Map<UUID, Integer> lastChargeTier;
     private final Map<UUID, Integer> lastBossBarTick;
     private final Set<UUID> recentlyLanded;
-    /** 猛击冷却：玩家 UUID → 下次可用时间戳（毫秒，System.currentTimeMillis） */
+    /**
+     * 猛击冷却：玩家 UUID → 下次可用时间戳（毫秒，System.currentTimeMillis）。
+     *
+     * <p><b>按设计保留</b>（L11-09）：冷却跨离场/死亡/重连有意不清（防止离场或送死重置冷却刷技能），
+     * 读时惰性失效（{@code readyAt < now} 即视为可用），量级有界于历史在线玩家数，不构成泄漏。</p>
+     */
     private final Map<UUID, Long> smashCooldowns;
 
     public HammerListener(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
         this.lang = plugin.getLanguageManager();
-        String configuredName = plugin.getConfigManager().getActiveConfig().getHammerItemName();
-        this.hammerName = ChatColor.translateAlternateColorCodes('&',
-                (configuredName == null || configuredName.isEmpty())
-                        ? lang.get("item.hammer-name")
-                        : configuredName);
+        this.itemKindKey = new NamespacedKey(plugin, ITEM_KIND_KEY);
         this.chargeBars = new ConcurrentHashMap<>();
         this.lastChargeTier = new ConcurrentHashMap<>();
         this.lastBossBarTick = new ConcurrentHashMap<>();
@@ -70,6 +76,18 @@ public class HammerListener implements Listener {
     }
 
     /* ========== 模型系统 ========== */
+
+    /**
+     * 重锤显示名：实时从 activeConfig 读取（P2-17），命令 / GUI 改名后无需重启即生效。
+     * 配置留空则回退 messages.yml 的 {@code item.hammer-name}。
+     */
+    private String hammerName() {
+        String configuredName = plugin.getConfigManager().getActiveConfig().getHammerItemName();
+        return ChatColor.translateAlternateColorCodes('&',
+                (configuredName == null || configuredName.isEmpty())
+                        ? lang.get("item.hammer-name")
+                        : configuredName);
+    }
 
     public ItemStack createHammer() {
         GameConfig cfg = plugin.getConfigManager().getActiveConfig();
@@ -89,7 +107,9 @@ public class HammerListener implements Listener {
         if (hammer == null) return null;
 
         ItemMeta meta = hammer.getItemMeta();
-        meta.setDisplayName(hammerName);
+        meta.setDisplayName(hammerName());
+        // D-3：PDC 防伪标记（识别器以 PDC 为准；显示名仅作旧道具迁移兼容）
+        meta.getPersistentDataContainer().set(itemKindKey, PersistentDataType.STRING, KIND_HAMMER);
         List<String> lore = new ArrayList<>();
         lore.add(lang.get("hammer.lore1"));
         lore.add(lang.get("hammer.lore2"));
@@ -132,11 +152,19 @@ public class HammerListener implements Listener {
         return null;
     }
 
+    /**
+     * 是否重锤：PDC {@code hilltopvillage:item-kind = hammer} 命中 → true；
+     * 否则回退显示名比较（迁移兼容：fix3 之前发放的旧锤无 PDC，下个大版本可删此分支）。
+     */
     public boolean isHammer(ItemStack item) {
         if (item == null) return false;
         if (!item.hasItemMeta()) return false;
         ItemMeta meta = item.getItemMeta();
-        return meta.hasDisplayName() && meta.getDisplayName().equals(hammerName);
+        // D-3：PDC 为准
+        String kind = meta.getPersistentDataContainer().get(itemKindKey, PersistentDataType.STRING);
+        if (KIND_HAMMER.equals(kind)) return true;
+        // 迁移兼容（旧道具无 PDC，仅按精确显示名识别）
+        return meta.hasDisplayName() && meta.getDisplayName().equals(hammerName());
     }
 
     /* ========== 右键蓄力激活 ========== */
@@ -149,8 +177,10 @@ public class HammerListener implements Listener {
         GameManager gameManager = gm(player);
         if (gameManager == null) return;
 
-        // STORY-1.8：只在对局运行（含整备期，休整期允许开锤）时允许开锤，等待区/结算期拒绝并提示
-        if (!gameManager.isGameRunning()) {
+        // STORY-1.8：只在对局运行（含整备期，休整期允许开锤）时允许开锤，等待区/结算期拒绝并提示。
+        // M-18/P2-13：结算倒计时窗口（haltGame 后状态刻意保持 RUNNING/WAVE_INTERMISSION）
+        // 由 isSettlementPhase() 单独拦截 —— haltGame 不改状态，仅靠 isGameRunning() 拦不住。
+        if (!gameManager.isGameRunning() || gameManager.isSettlementPhase()) {
             ItemStack probe = player.getInventory().getItemInMainHand();
             if (isHammer(probe)) {
                 player.sendMessage(lang.getFor(player, "hammer.not-running"));
@@ -211,6 +241,19 @@ public class HammerListener implements Listener {
 
         PlayerData data = gameManager.getPlayerData(player);
         if (data == null || !data.isSmashActive()) return;
+
+        // M-18 防御纵深：旁观/已阵亡玩家不得触发猛击结算（幽灵猛击主路径：蓄力中死亡/重连回核心）。
+        // 正常清理由 clearSmashState()（onDeath/rejoin 调用）负责，此处兜底。
+        if (!data.isAlive() || player.getGameMode() == GameMode.SPECTATOR) {
+            clearSmashState(player);
+            return;
+        }
+        // M-18 面 3：结算倒计时窗口（haltGame 后状态刻意不变）内在飞蓄力单不落地结算 ——
+        // 与交互门控同一口径（P2-13 统一门控源），避免结算期满档猛击伤害/弹飞队友。
+        if (gameManager.isSettlementPhase()) {
+            clearSmashState(player);
+            return;
+        }
 
         double currentY = event.getTo().getY();
         Location to = event.getTo();
@@ -363,11 +406,54 @@ public class HammerListener implements Listener {
         lastBossBarTick.remove(player.getUniqueId());
     }
 
+    /**
+     * 统一清理入口（M-13 + M-18，跨 lane 接口，F2 调用方注意）。
+     *
+     * <p><b>契约：幂等</b>——重复调用安全；<b>玩家离线安全</b>（不访问玩家实体状态，
+     * 仅以 UUID 做 map 键与 PlayerData 查找）。供 F2 在 {@code ArenaInstance.removePlayer}
+     * / 重置路径挂接，以及既有 quit 路径（主类 onPlayerQuit）调用。</p>
+     *
+     * <p>清理内容：蓄力 BossBar（{@code removeChargeBar}：setVisible(false) + removeAll()）、
+     * chargeBars / lastChargeTier / lastBossBarTick 条目、recentlyLanded，以及 PlayerData 的
+     * smash 状态（经 {@link #clearSmashState(Player)}）。</p>
+     *
+     * <p><b>smashCooldowns 刻意不清</b>（设计保留，见 fix3-L11-09 结论）：冷却跨离场/死亡/重连
+     * 保留，防止「离场或送死重置冷却刷技能」；条目读时惰性失效（readyAt &lt; now 即视为可用），
+     * 每条仅一个 Long，量级有界于历史曾猛击的玩家数，不构成泄漏。真退服的冷却是时间戳条目，
+     * 由 {@code onPlayerQuit} 单独做内存卫生清理（见该处注释）。</p>
+     */
     public void cleanupPlayer(Player player) {
+        if (player == null) return;
         UUID uuid = player.getUniqueId();
-        removeChargeBar(player);
+        clearSmashState(player);
         recentlyLanded.remove(uuid);
-        smashCooldowns.remove(uuid);
+    }
+
+    /**
+     * 清除玩家的猛击（蓄力）状态与蓄力 BossBar（死亡 / 重连专用，M-18；跨 lane 接口，F2 调用方注意）。
+     *
+     * <p><b>契约：幂等</b>——重复调用安全；<b>玩家离线安全</b>（UUID 键控，仅 map 操作；
+     * 玩家已离场 / 无 PlayerData 时自动降级为仅清 BossBar）。</p>
+     *
+     * <p>清理内容：{@code removeChargeBar(player)}（BossBar setVisible(false) + removeAll()，
+     * chargeBars / lastChargeTier / lastBossBarTick 条目）+ 所在竞技场 PlayerData 的
+     * {@code deactivateSmash()}。gm(player) 为 null（玩家已离场或不在任何竞技场）时至少清
+     * BossBar；此时 PlayerData 由对局级清理（endGame / stopGame / removeOfflinePlayer 的批量
+     * {@code deactivateSmash()}）收口。</p>
+     *
+     * <p>语义：幽灵猛击防线 —— 蓄力中死亡（旁观重生落回核心）或 quit 后重连落回核心时，
+     * 若不清此状态，onPlayerMove 的 fallDistance 恒达标会立刻打出满档 AOE（M-18 主路径）。</p>
+     */
+    public void clearSmashState(Player player) {
+        if (player == null) return;
+        removeChargeBar(player);
+        GameManager gameManager = gm(player);
+        if (gameManager != null) {
+            PlayerData data = gameManager.getPlayerData(player);
+            if (data != null) {
+                data.deactivateSmash();
+            }
+        }
     }
 
     /**
@@ -412,8 +498,11 @@ public class HammerListener implements Listener {
 
     private void applyAreaDamage(Player attacker, Location center, double damage, double radius) {
         World world = center.getWorld();
+        // P2-18：排除 invulnerable 实体（商店 NPC / 预览村民均设了 invulnerable）——
+        // 不被击退推离原位、不吃伤害。怪物不无敌，伤害/击退路径不受影响。
         Collection<LivingEntity> nearby = world.getNearbyLivingEntities(center, radius, radius, radius,
-                entity -> entity != null && entity.isValid() && entity != attacker
+                entity -> entity != null && entity.isValid() && !entity.isInvulnerable()
+                        && entity != attacker
                         && !VillagerSystem.isVillageVillager(entity));
 
         for (LivingEntity entity : nearby) {
@@ -425,14 +514,20 @@ public class HammerListener implements Listener {
             Vector knockback = entity.getLocation().toVector().subtract(center.toVector()).normalize();
 
             if (entity instanceof Player) {
-                // 击飞附近玩家（不造成伤害）
-                knockback.setY(1.2 + falloff * 0.6);
-                knockback.multiply(2.0);
+                // M-20（决策 D-2）：弹飞队友量级收敛到烈焰蛋当前锚点
+                // （CHANGELOG:1178 —— 烈焰蛋垂直初速 2.25 实测升空约 21 格）。
+                // 旧值 setY(1.2 + falloff*0.6) × multiply(2.0) = 竖向初速 2.76~3.6，是烈焰蛋的
+                // 1.2~1.6 倍，线性外推升空 26~34 格、落地摔伤可秒人。现改为：
+                //   竖向 = 1.8 × falloff + 0.4（falloff=1 → 2.2 ≤ 2.2 上限；falloff=0.3 → 0.94，明显更小）
+                //   水平 = 归一化水平向量 × 0.7（对齐烈焰蛋 0.25×knockback≈1.25 的小倍率量级）
+                // 语义保留：锤子对玩家仍「只弹不伤」，目标是「把人从近身弹开几格」。
+                knockback.multiply(new Vector(0.7, 0.0, 0.7));
+                knockback.setY(1.8 * falloff + 0.4);
                 entity.setVelocity(knockback);
                 ((Player) entity).playSound(entity.getLocation(), Sound.ENTITY_PLAYER_ATTACK_KNOCKBACK, 0.7f, 1.0f);
             } else {
-                // 对怪物造成伤害 + 击退
-                entity.damage(actualDamage);
+                // 对怪物造成伤害 + 击退（M-17：带来源重载，技能击杀计入统计）
+                entity.damage(actualDamage, attacker);
                 knockback.setY(0.4);
                 knockback.multiply(1.5);
                 entity.setVelocity(knockback);
@@ -445,8 +540,10 @@ public class HammerListener implements Listener {
         int slownessLevel = 2;
 
         World world = center.getWorld();
+        // P2-18：invulnerable 实体（商店 NPC / 预览村民）不吃余震减速
         Collection<LivingEntity> nearby = world.getNearbyLivingEntities(center, radius, radius, radius,
                 entity -> entity != null && !(entity instanceof Player) && entity.isValid()
+                        && !entity.isInvulnerable()
                         && !VillagerSystem.isVillageVillager(entity));
 
         for (LivingEntity entity : nearby) {
@@ -510,6 +607,11 @@ public class HammerListener implements Listener {
 
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerQuit(PlayerQuitEvent event) {
-        cleanupPlayer(event.getPlayer());
+        Player player = event.getPlayer();
+        cleanupPlayer(player);
+        // 真退服才清冷却条目（内存卫生）：cleanupPlayer 被 F2 挂到离场/死亡/重连路径，
+        // 其中必须保留冷却（防离场重置刷技能，L11-09）；退服后时间戳不可能再被复用为玩法
+        // 手段（登录即清零走新局），故此处清除避免长跑服条目无界累积。
+        smashCooldowns.remove(player.getUniqueId());
     }
 }

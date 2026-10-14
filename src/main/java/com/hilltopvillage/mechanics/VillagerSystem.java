@@ -48,6 +48,27 @@ public class VillagerSystem {
     public static final String VILLAGE_VILLAGER_KEY = "village-villager";
 
     /**
+     * {@link #VILLAGE_VILLAGER_KEY} 对应的 {@link NamespacedKey} 惰性静态缓存（P2-21）。
+     *
+     * <p>本类为静态方法，拿不到实例字段，故用 volatile 静态缓存（同 {@code WaveManager.airdropKey}
+     * 的"构造期缓存"思路，只是收归静态）。NamespacedKey 构造每次都做 String 处理 +
+     * 校验，而 {@link #isVillageVillager(Entity)} 位于三处 AOE 判定的半热路径上。</p>
+     */
+    private static volatile NamespacedKey villageVillagerKey;
+
+    /**
+     * 获取（并首次构造）待保护村民的 PDC 键。
+     */
+    private static NamespacedKey villageVillagerKey(HilltopVillagePlugin plugin) {
+        NamespacedKey key = villageVillagerKey;
+        if (key == null) {
+            key = new NamespacedKey(plugin, VILLAGE_VILLAGER_KEY);
+            villageVillagerKey = key;
+        }
+        return key;
+    }
+
+    /**
      * 判断实体是否为本插件生成的待保护村民（供三处 AOE 豁免共用）。
      *
      * @param entity 待判定实体（null 安全）
@@ -58,7 +79,7 @@ public class VillagerSystem {
         HilltopVillagePlugin plugin = HilltopVillagePlugin.getPlugin(HilltopVillagePlugin.class);
         if (plugin == null) return false;
         return entity.getPersistentDataContainer().has(
-                new NamespacedKey(plugin, VILLAGE_VILLAGER_KEY), PersistentDataType.BYTE);
+                villageVillagerKey(plugin), PersistentDataType.BYTE);
     }
 
     private final HilltopVillagePlugin plugin;

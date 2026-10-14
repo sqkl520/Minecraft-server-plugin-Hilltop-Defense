@@ -24,6 +24,33 @@ public class ConfigManager {
     private File monstersConfigFile;
     private FileConfiguration monstersConfigYaml;
 
+    /**
+     * game-settings.yml 的「外部修改检测」时间戳（M-15）。
+     *
+     * <p>在 initSettingsFile / loadFromFile / saveToFile 成功时记录当时的 lastModified；
+     * {@link #saveToFile()} 前若发现 mtime 变化，说明文件被外部（手改 / 其它进程）修改过，
+     * 走 {@link #mergeExternalChanges()} 的合并路径，而不是拿内存旧快照静默全量回写。</p>
+     */
+    private long settingsLastModified;
+
+    /**
+     * 本次会话经 GUI 删除过的波次号（P2-33 记账）。
+     *
+     * <p>{@link #saveToFile()} 对「内存 waves 存在」的键逐个写值，但被删除的旧键会留在磁盘上
+     * （刻意的「不清整段」策略），导致重启后已删除的波次复活。本集合只记录
+     * {@link #removeWave(int)}（GUI 删除入口）删过的号，保存时精确清掉这些键——
+     * 不碰管理员手写进文件、从未出现在内存里的其它键。</p>
+     */
+    private final Set<Integer> removedWaveKeys = new LinkedHashSet<>();
+
+    /** game-settings.yml 顶层已知键集合（P2-36：用于拼写错误汇总警告）。 */
+    private static final Set<String> KNOWN_TOP_LEVEL_KEYS = Set.of(
+            "world-name", "core", "min-players", "max-players", "victory-waves",
+            "wave-interval-seconds", "wave-timeout-seconds", "defeat-countdown-seconds",
+            "villager-health", "rejoin-timeout-seconds", "map-restore", "scoreboard",
+            "hammer", "fireball", "shop", "starter-kit", "nodes", "spawning",
+            "monsters", "waves");
+
     public ConfigManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
         this.activeConfig = new GameConfig();
@@ -43,6 +70,7 @@ public class ConfigManager {
             plugin.saveResource("game-settings.yml", false);
         }
         settingsYaml = YamlConfiguration.loadConfiguration(settingsFile);
+        settingsLastModified = settingsFile.lastModified();
     }
 
     /**
@@ -66,7 +94,199 @@ public class ConfigManager {
         return !current.equals(lastSavedSnapshot);
     }
 
+    /**
+     * GUI 删除波次（P2-33）：内存移除 + 删除记账。
+     *
+     * <p>只删内存是不够的：{@link #saveToFile()} 对内存里存在的键逐个写值，
+     * 被删除的旧键会留在磁盘上（「不整段清空」策略的代价），重启后又会被
+     * {@link #loadFromFile()} 读回来（波次复活）。本方法把删除动作记账，
+     * 保存时精确清掉这些键——只清 GUI 删过的，不碰管理员手写的键。</p>
+     *
+     * <p>若之后又新建同号波次，保存时按「内存中存在则不清」跳过，不会误删新波次。</p>
+     */
+    public void removeWave(int waveNumber) {
+        activeConfig.getWaves().remove(waveNumber);
+        removedWaveKeys.add(waveNumber);
+    }
+
+    /** 解析 nodes.buff-effects 字符串列表（loadFromFile 与外部修改合并共用）。 */
+    private Map<PotionEffectType, Integer> parseBuffEffects(List<String> buffEffectList) {
+        Map<PotionEffectType, Integer> parsedBuffs = new LinkedHashMap<>();
+        for (String raw : buffEffectList) {
+            if (raw == null || raw.isBlank()) continue;
+            String[] parts = raw.split(":", 2);
+            if (parts.length != 2) {
+                plugin.getLogger().warning("Invalid nodes.buff-effects entry (expected \"EFFECT:AMPLIFIER\"): " + raw);
+                continue;
+            }
+            PotionEffectType effectType = PotionEffectType.getByName(parts[0].trim().toUpperCase());
+            if (effectType == null) {
+                plugin.getLogger().warning("Unknown potion effect: " + parts[0].trim() + ", skipping");
+                continue;
+            }
+            try {
+                parsedBuffs.put(effectType, Integer.parseInt(parts[1].trim()));
+            } catch (NumberFormatException e) {
+                plugin.getLogger().warning("Invalid amplifier in nodes.buff-effects entry: " + raw);
+            }
+        }
+        return parsedBuffs;
+    }
+
+    /**
+     * 保存前的「外部修改合并」（M-15）。
+     *
+     * <p>当检测到 game-settings.yml 的 mtime 与上次读/写不一致（被外部手改）时调用：
+     * 重读磁盘，对一组<b>没有 GUI/命令编辑入口</b>的键，把磁盘值合并回内存，
+     * 使随后 {@link #saveToFile()} 的全量回写不再用陈旧内存值覆盖手改值。</p>
+     *
+     * <p>语义边界：上列「外部可编辑键」是逐键白名单——它们在本会话中不可能被游戏内改过，
+     * 磁盘值总是更新的一方；有 GUI 编辑入口的键不在白名单（游戏内为权威）；
+     * 若磁盘键缺失或类型损坏则跳过该键（保留内存值）。</p>
+     */
+    private void mergeExternalChanges() {
+        YamlConfiguration disk;
+        try {
+            disk = YamlConfiguration.loadConfiguration(settingsFile);
+        } catch (Exception exception) {
+            plugin.getLogger().severe("重读 game-settings.yml 失败，跳过外部修改合并（以内存值保存）: "
+                    + exception.getMessage());
+            return;
+        }
+        GameConfig baseline = lastSavedSnapshot;
+
+        // 防御性护栏：仅当「当前值仍等于会话基线值」（本会话未修改该键）时才用磁盘值覆盖。
+        // 白名单里的键正常都没有编辑入口，该判断等价于恒真；未来若给某键加了编辑入口，
+        // 会话内改动仍会胜出，不会被磁盘旧值吞掉。
+        if (hasNumber(disk, "wave-timeout-seconds")
+                && activeConfig.getWaveTimeoutSeconds() == baseline.getWaveTimeoutSeconds()) {
+            activeConfig.setWaveTimeoutSeconds(disk.getInt("wave-timeout-seconds"));
+        }
+        if (hasNumber(disk, "defeat-countdown-seconds")
+                && activeConfig.getDefeatCountdownSeconds() == baseline.getDefeatCountdownSeconds()) {
+            activeConfig.setDefeatCountdownSeconds(disk.getInt("defeat-countdown-seconds"));
+        }
+        if (hasNumber(disk, "villager-health")
+                && Double.compare(activeConfig.getVillagerHealth(), baseline.getVillagerHealth()) == 0) {
+            activeConfig.setVillagerHealth(disk.getDouble("villager-health"));
+        }
+        if (hasNumber(disk, "rejoin-timeout-seconds")
+                && activeConfig.getRejoinTimeoutSeconds() == baseline.getRejoinTimeoutSeconds()) {
+            activeConfig.setRejoinTimeoutSeconds(disk.getInt("rejoin-timeout-seconds"));
+        }
+        if (hasBoolean(disk, "map-restore.enabled")
+                && activeConfig.isMapRestoreEnabled() == baseline.isMapRestoreEnabled()) {
+            activeConfig.setMapRestoreEnabled(disk.getBoolean("map-restore.enabled"));
+        }
+        if (hasBoolean(disk, "scoreboard.enabled")
+                && activeConfig.isScoreboardEnabled() == baseline.isScoreboardEnabled()) {
+            activeConfig.setScoreboardEnabled(disk.getBoolean("scoreboard.enabled"));
+        }
+        if (hasNumber(disk, "nodes.search-radius")
+                && activeConfig.getNodeSearchRadius() == baseline.getNodeSearchRadius()) {
+            activeConfig.setNodeSearchRadius(disk.getInt("nodes.search-radius"));
+        }
+        if (disk.isString("nodes.repair-cost-name")
+                && Objects.equals(activeConfig.getRepairCostName(), baseline.getRepairCostName())) {
+            activeConfig.setRepairCostName(disk.getString("nodes.repair-cost-name"));
+        }
+        if (hasNumber(disk, "nodes.repair-cost-amount")
+                && activeConfig.getRepairCostAmount() == baseline.getRepairCostAmount()) {
+            activeConfig.setRepairCostAmount(disk.getInt("nodes.repair-cost-amount"));
+        }
+        if (disk.isList("nodes.buff-effects")
+                && Objects.equals(activeConfig.getNodeBuffEffects(), baseline.getNodeBuffEffects())) {
+            Map<PotionEffectType, Integer> parsedBuffs = parseBuffEffects(disk.getStringList("nodes.buff-effects"));
+            if (!parsedBuffs.isEmpty()) {
+                activeConfig.getNodeBuffEffects().clear();
+                activeConfig.getNodeBuffEffects().putAll(parsedBuffs);
+            }
+        }
+        if (hasNumber(disk, "nodes.buff-refresh-ticks")
+                && activeConfig.getNodeBuffRefreshTicks() == baseline.getNodeBuffRefreshTicks()) {
+            activeConfig.setNodeBuffRefreshTicks(disk.getInt("nodes.buff-refresh-ticks"));
+        }
+        if (hasNumber(disk, "nodes.buff-stack-cap")
+                && activeConfig.getNodeBuffStackCap() == baseline.getNodeBuffStackCap()) {
+            activeConfig.setNodeBuffStackCap(disk.getInt("nodes.buff-stack-cap"));
+        }
+        if (hasNumber(disk, "nodes.buff-duration-ticks")
+                && activeConfig.getNodeBuffDurationTicks() == baseline.getNodeBuffDurationTicks()) {
+            activeConfig.setNodeBuffDurationTicks(disk.getInt("nodes.buff-duration-ticks"));
+        }
+        if (hasNumber(disk, "spawning.spawn-y-offset")
+                && activeConfig.getSpawnYOffset() == baseline.getSpawnYOffset()) {
+            activeConfig.setSpawnYOffset(disk.getInt("spawning.spawn-y-offset"));
+        }
+        if (hasNumber(disk, "spawning.airdrop-max-per-dropper")
+                && activeConfig.getAirdropMaxPerDropper() == baseline.getAirdropMaxPerDropper()) {
+            activeConfig.setAirdropMaxPerDropper(disk.getInt("spawning.airdrop-max-per-dropper"));
+        }
+        if (hasNumber(disk, "shop.currency-drop-chance")
+                && Double.compare(activeConfig.getCurrencyDropChance(), baseline.getCurrencyDropChance()) == 0) {
+            activeConfig.setCurrencyDropChance(disk.getDouble("shop.currency-drop-chance"));
+        }
+        if (hasNumber(disk, "shop.currency-drop-amount")
+                && activeConfig.getCurrencyDropAmount() == baseline.getCurrencyDropAmount()) {
+            activeConfig.setCurrencyDropAmount(disk.getInt("shop.currency-drop-amount"));
+        }
+        if (hasBoolean(disk, "starter-kit.enabled")
+                && activeConfig.isStarterKitEnabled() == baseline.isStarterKitEnabled()) {
+            activeConfig.setStarterKitEnabled(disk.getBoolean("starter-kit.enabled"));
+        }
+        if (disk.isList("starter-kit.items")
+                && Objects.equals(activeConfig.getStarterKitItems(), baseline.getStarterKitItems())) {
+            // 与 loadFromFile 同语义：键存在即以磁盘为准（含显式空列表 = 清空套装）
+            activeConfig.setStarterKitItems(parseStarterKitItems(disk.getMapList("starter-kit.items")));
+        }
+    }
+
+    /** 键存在且为数值（int/double 皆可）。 */
+    private static boolean hasNumber(YamlConfiguration yaml, String path) {
+        return yaml.get(path) instanceof Number;
+    }
+
+    /** 键存在且为布尔。 */
+    private static boolean hasBoolean(YamlConfiguration yaml, String path) {
+        return yaml.get(path) instanceof Boolean;
+    }
+
+    /**
+     * 解析 starter-kit.items 列表（loadFromFile 与外部修改合并共用）。
+     * 非法条目记 warning 后跳过。
+     */
+    private List<GameConfig.StarterKitItem> parseStarterKitItems(List<Map<?, ?>> maps) {
+        List<GameConfig.StarterKitItem> parsedKit = new ArrayList<>();
+        for (Map<?, ?> map : maps) {
+            Object materialRaw = map.get("material");
+            if (!(materialRaw instanceof String materialName) || materialName.isBlank()) {
+                plugin.getLogger().warning("Invalid starter-kit item (missing material), skipping");
+                continue;
+            }
+            Material material = Material.getMaterial(materialName.trim().toUpperCase());
+            if (material == null || !material.isItem()) {
+                plugin.getLogger().warning("Unknown starter-kit material: " + materialName + ", skipping");
+                continue;
+            }
+            Object amountRaw = map.get("amount");
+            int amount = (amountRaw instanceof Number number) ? number.intValue() : 1;
+            parsedKit.add(new GameConfig.StarterKitItem(material, Math.max(1, amount)));
+        }
+        return parsedKit;
+    }
+
     public void saveToFile() {
+        // M-15：save 前检测外部修改。文件 mtime 与上次读/写记录不一致 → 有人在游戏外
+        // 手改过文件：① 对「无 GUI 编辑入口」的键做磁盘值合并（见 mergeExternalChanges）；
+        // ② 把内存 settingsYaml 重定位到磁盘最新内容，使本方法不写回的键
+        //（手写未知键、airdrop-mob-type 等只读键）保留外部改动而不是被旧内存副本覆盖。
+        if (settingsFile.lastModified() != settingsLastModified) {
+            mergeExternalChanges();
+            settingsYaml = YamlConfiguration.loadConfiguration(settingsFile);
+            plugin.getLogger().info("检测到 game-settings.yml 在外部被修改，已合并外部改动后保存"
+                    + "（本次会话经 GUI 修改的键仍以游戏内为准）");
+        }
+
         settingsYaml.set("world-name", activeConfig.getWorldName());
         settingsYaml.set("core.x", activeConfig.getCoreX());
         settingsYaml.set("core.y", activeConfig.getCoreY());
@@ -199,10 +419,21 @@ public class ConfigManager {
             }
         }
 
+        // P2-33：清掉本次会话经 GUI（removeWave）删除过的波次键——只清记账过的，
+        // 不碰管理员手写进文件、内存里从未存在过的其它键。
+        // 若同号波次被重新创建（内存中又存在），跳过清除，避免误删新波次。
+        for (Integer removedWave : removedWaveKeys) {
+            if (!activeConfig.getWaves().containsKey(removedWave)) {
+                settingsYaml.set("waves." + removedWave, null);
+            }
+        }
+
         try {
             settingsYaml.save(settingsFile);
             saveMonstersConfig();
             lastSavedSnapshot = activeConfig.snapshot();
+            removedWaveKeys.clear();
+            settingsLastModified = settingsFile.lastModified();
         } catch (IOException e) {
             plugin.getLogger().severe("Failed to save game-settings.yml: " + e.getMessage());
         }
@@ -348,6 +579,8 @@ public class ConfigManager {
             settingsYaml.set("nodes.repair-amount", null);
             try {
                 settingsYaml.save(settingsFile);
+                // M-15：本次写盘更新 mtime 记录，避免随后的保存误判为「外部修改」
+                settingsLastModified = settingsFile.lastModified();
             } catch (IOException e) {
                 plugin.getLogger().severe("Failed to remove legacy keys from game-settings.yml: " + e.getMessage());
             }
@@ -356,25 +589,7 @@ public class ConfigManager {
         // 节点增益效果：字符串列表，格式 "效果名:等级"（等级为 amplifier，0 = I 级）
         List<String> buffEffectList = settingsYaml.getStringList("nodes.buff-effects");
         if (!buffEffectList.isEmpty()) {
-            Map<PotionEffectType, Integer> parsedBuffs = new LinkedHashMap<>();
-            for (String raw : buffEffectList) {
-                if (raw == null || raw.isBlank()) continue;
-                String[] parts = raw.split(":", 2);
-                if (parts.length != 2) {
-                    plugin.getLogger().warning("Invalid nodes.buff-effects entry (expected \"EFFECT:AMPLIFIER\"): " + raw);
-                    continue;
-                }
-                PotionEffectType effectType = PotionEffectType.getByName(parts[0].trim().toUpperCase());
-                if (effectType == null) {
-                    plugin.getLogger().warning("Unknown potion effect: " + parts[0].trim() + ", skipping");
-                    continue;
-                }
-                try {
-                    parsedBuffs.put(effectType, Integer.parseInt(parts[1].trim()));
-                } catch (NumberFormatException e) {
-                    plugin.getLogger().warning("Invalid amplifier in nodes.buff-effects entry: " + raw);
-                }
-            }
+            Map<PotionEffectType, Integer> parsedBuffs = parseBuffEffects(buffEffectList);
             if (!parsedBuffs.isEmpty()) {
                 activeConfig.getNodeBuffEffects().clear();
                 activeConfig.getNodeBuffEffects().putAll(parsedBuffs);
@@ -421,27 +636,24 @@ public class ConfigManager {
         // getMapList 不存在时返回空列表；仅当键存在时才整体替换默认列表，
         // 否则旧配置文件（无 starter-kit 节）会被清空成空套装
         if (settingsYaml.isSet("starter-kit.items")) {
-            List<GameConfig.StarterKitItem> parsedKit = new ArrayList<>();
-            for (Map<?, ?> map : settingsYaml.getMapList("starter-kit.items")) {
-                Object materialRaw = map.get("material");
-                if (!(materialRaw instanceof String materialName) || materialName.isBlank()) {
-                    plugin.getLogger().warning("Invalid starter-kit item (missing material), skipping");
-                    continue;
-                }
-                Material material = Material.getMaterial(materialName.trim().toUpperCase());
-                if (material == null || !material.isItem()) {
-                    plugin.getLogger().warning("Unknown starter-kit material: " + materialName + ", skipping");
-                    continue;
-                }
-                Object amountRaw = map.get("amount");
-                int amount = (amountRaw instanceof Number number) ? number.intValue() : 1;
-                parsedKit.add(new GameConfig.StarterKitItem(material, Math.max(1, amount)));
-            }
+            List<GameConfig.StarterKitItem> parsedKit = parseStarterKitItems(settingsYaml.getMapList("starter-kit.items"));
             activeConfig.setStarterKitItems(parsedKit);
         }
 
         ConfigurationSection monsterSection = settingsYaml.getConfigurationSection("monsters");
         if (monsterSection != null) {
+            // P2-36：monsters 段的未知 key 原先静默 continue（L10-15），排障困难；
+            // 这里把「文件里存在但代码不认识」的怪物键一次性汇总 warning。
+            Set<String> unknownMonsters = new LinkedHashSet<>();
+            for (String key : monsterSection.getKeys(false)) {
+                if (activeConfig.getMonsters().get(key) == null) {
+                    unknownMonsters.add(key);
+                }
+            }
+            if (!unknownMonsters.isEmpty()) {
+                plugin.getLogger().warning("game-settings.yml 的 monsters 段存在无法识别的怪物键"
+                        + "（拼写错误？这些配置不会生效）: " + String.join(", ", unknownMonsters));
+            }
             for (String key : monsterSection.getKeys(false)) {
                 GameConfig.MonsterConfig mc = activeConfig.getMonsters().get(key);
                 if (mc == null) continue;
@@ -509,6 +721,26 @@ public class ConfigManager {
         loadMonstersConfig();
 
         lastSavedSnapshot = activeConfig.snapshot();
+        // M-15：记录本次读取时的时间戳，供 saveToFile 检测外部修改
+        settingsLastModified = settingsFile.lastModified();
+
+        // P2-36：未知顶层键一次性汇总 warning（拼写错误 如 victory-wave 会被静默保默认，
+        // 排障困难）。只在加载时扫一遍，不影响任何热路径。
+        warnUnknownTopLevelKeys();
+    }
+
+    /** game-settings.yml 顶层未知键汇总警告（P2-36）。 */
+    private void warnUnknownTopLevelKeys() {
+        Set<String> unknown = new LinkedHashSet<>();
+        for (String key : settingsYaml.getKeys(false)) {
+            if (!KNOWN_TOP_LEVEL_KEYS.contains(key)) {
+                unknown.add(key);
+            }
+        }
+        if (!unknown.isEmpty()) {
+            plugin.getLogger().warning("game-settings.yml 存在无法识别的顶层配置键（拼写错误？这些键不会生效）: "
+                    + String.join(", ", unknown));
+        }
     }
 
     /**

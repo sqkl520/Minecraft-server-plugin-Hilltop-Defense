@@ -18,7 +18,9 @@ import org.bukkit.inventory.ItemStack;
 import org.bukkit.inventory.meta.ItemMeta;
 
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Arena selection GUI - displays all available arenas in a chest interface.
@@ -37,6 +39,14 @@ public class ArenaSelectionGUI implements Listener {
     /** 供 InventoryClickEvent 识别本 GUI（标题可被语言配置改变，不能作为识别依据） */
     public static final class ArenaSelectorHolder implements InventoryHolder {
         private Inventory inventory;
+
+        /**
+         * 渲染期的 slot → arenaId 映射。
+         *
+         * <p>点击时按本映射反查竞技场，而不是重取 `getActiveArenas()` 后按下标取——
+         * 列表在 GUI 常开期间可能变动（场被禁用 / 新增 / 加载完成），按下标重取会点到错场的条目。</p>
+         */
+        private final Map<Integer, String> slotArenaIds = new HashMap<>();
 
         @Override
         public Inventory getInventory() {
@@ -69,12 +79,14 @@ public class ArenaSelectionGUI implements Listener {
         List<IArena> arenas = new ArrayList<>(arenaManager.getActiveArenas());
 
         // Place arena icons (up to 45 arenas, leaving bottom row for navigation)
+        // 同时把 slot → arenaId 写进 holder：点击时按映射取场，避免 GUI 常开期间列表变动点错场
         int slot = 0;
         for (IArena arena : arenas) {
             if (slot >= 45) break; // Max 45 arenas (5 rows)
 
             ItemStack icon = createArenaIcon(arena, player);
             inv.setItem(slot, icon);
+            holder.slotArenaIds.put(slot, arena.getArenaId());
             slot++;
         }
 
@@ -160,7 +172,7 @@ public class ArenaSelectionGUI implements Listener {
             } else if (!arena.isWorldAvailable()) {
                 reason = languageManager.getFor(player, "arena-map-missing");
             } else if (!arena.isDeployed()) {
-                reason = languageManager.getFor(player, "arena-not-deployed");
+                reason = languageManager.getFor(player, "arena-not-deployed", arena.getArenaId());
             } else if (state == GameState.RUNNING || state == GameState.WAVE_INTERMISSION) {
                 reason = languageManager.getFor(player, "arena-started");
             } else if (arena.getPlayerCount() >= arena.getMaxPlayers()) {
@@ -264,7 +276,7 @@ public class ArenaSelectionGUI implements Listener {
     @EventHandler
     public void onInventoryClick(InventoryClickEvent event) {
         // 通过 InventoryHolder 识别本 GUI（标题会随语言变化，不能作为识别依据）
-        if (!(event.getInventory().getHolder() instanceof ArenaSelectorHolder)) return;
+        if (!(event.getInventory().getHolder() instanceof ArenaSelectorHolder holder)) return;
 
         // Cancel the click to prevent item movement
         event.setCancelled(true);
@@ -272,6 +284,11 @@ public class ArenaSelectionGUI implements Listener {
         // Check if player clicked
         if (!(event.getWhoClicked() instanceof Player)) return;
         Player player = (Player) event.getWhoClicked();
+
+        // 只处理点本 GUI 本体：点击玩家背包时 getSlot() 是 convertSlot 后的槽位（快捷栏 0-8、
+        // 主背包 9-35），与竞技场条目槽位 0-44 重叠，会经 slotArenaIds 命中而误触发 join/误报 join-failed
+        if (event.getClickedInventory() == null
+                || !event.getClickedInventory().equals(event.getInventory())) return;
 
         // Check if clicked item exists
         ItemStack clickedItem = event.getCurrentItem();
@@ -283,11 +300,17 @@ public class ArenaSelectionGUI implements Listener {
         // Info icon - do nothing
         if (slot == 53) return;
 
-        // Get clicked arena
-        List<IArena> arenas = new ArrayList<>(arenaManager.getActiveArenas());
-        if (slot >= arenas.size()) return;
+        // 按渲染期写入的 slot → arenaId 映射反查（不按下标重取列表：列表可能已变动，
+        // 下标会指到别的场）。映射缺失 = 该 slot 本来就没有竞技场条目（空位）。
+        String clickedArenaId = holder.slotArenaIds.get(slot);
+        if (clickedArenaId == null) return;
 
-        IArena arena = arenas.get(slot);
+        // 按 ID 取当前实例：场已消失（被禁用 / 退役）时提示并静默返回
+        IArena arena = arenaManager.getArena(clickedArenaId);
+        if (arena == null) {
+            languageManager.send(player, "arena-not-found", clickedArenaId);
+            return;
+        }
 
         // Check if already in an arena
         IArena currentArena = arenaManager.getPlayerArena(player);

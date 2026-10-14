@@ -13,6 +13,7 @@ import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
+import org.bukkit.OfflinePlayer;
 import org.bukkit.World;
 import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
@@ -80,6 +81,16 @@ public class ArenaInstance implements IArena {
     private boolean restoreStarted;
     /** 本局结果：null = 未结束/进行中，true = 胜利，false = 失败（用于统计结算计胜负） */
     private Boolean sessionVictory;
+    /**
+     * 本局结束瞬间的波次快照（M-08）。
+     *
+     * <p>收尾链上 {@code GameManager.stopGame()} 会把 currentWave 归零，而 reset 里补录
+     * 离线残留玩家统计（recordOffline 的 wavesSurvived）时已读不到真实波次；因此在
+     * {@link #onGameEnd()}（归零前）与 {@link #reset()} 开头各用 {@code Math.max} 捕获一次
+     * 快照（幂等，两处互补覆盖所有收尾路径），与在线玩家踢出时记录的波次取值一致。
+     * 跨局在 completeResetAfterRestore / onGameStart 归零。</p>
+     */
+    private int sessionWave;
 
     // ⚠️ 本类刻意<b>不</b>持有自己的 currentWave：波次由 GameManager 推进，这里曾有一份
     // 只在构造与开局时被赋 0、之后永不更新的影子副本，导致传给 StatsManager 的 wave 恒为 0
@@ -128,6 +139,12 @@ public class ArenaInstance implements IArena {
 
         // 波次系统自然结束（胜利/失败）时同步竞技场状态机
         this.gameManager.setOnGameEndCallback(this::onNaturalGameEnd);
+
+        // P2-12：本世界刚加载（启用队列保证 createWorld 完成才构造实例），清扫崩溃/强杀
+        // 残留的 persistent 波次怪（按 hilltopvillage:wave-mob PDC 标记识别，只扫本世界）。
+        // 与 HilltopVillagePlugin.onEnable 的静态全服清扫互补：启动时竞技场世界往往
+        // 尚未加载，主场景由这里兜底。
+        this.gameManager.getWaveManager().cleanupOrphans();
 
         plugin.getLogger().info("Arena instance created: " + arenaId);
     }
@@ -254,7 +271,7 @@ public class ArenaInstance implements IArena {
 
         // 未部署：默认拒绝，管理员豁免（便于进图执行部署向导核对位置）
         if (!gameManager.hasSpawnPoints() && !player.hasPermission("hilltopvillage.admin")) {
-            plugin.getLanguageManager().send(player, "arena-not-deployed");
+            plugin.getLanguageManager().send(player, "arena-not-deployed", definition.getId());
             return false;
         }
 
@@ -270,7 +287,10 @@ public class ArenaInstance implements IArena {
         }
 
         // 保存玩家原版状态（背包/经验/血量/模式…），离开时归还
-        plugin.getPlayerGoodsManager().save(player);
+        // P2-34：管理器初始化失败时为 null（插件未被禁用，但该功能停用）→ 跳过快照
+        if (plugin.getPlayerGoodsManager() != null) {
+            plugin.getPlayerGoodsManager().save(player);
+        }
 
         // Add to this arena
         players.add(player.getUniqueId());
@@ -298,7 +318,7 @@ public class ArenaInstance implements IArena {
         // 与开局分支互斥（本分支要求 !isPlayable()，开局分支要求 isPlayable()），
         // 因此拆成独立的 if 后语义不变：既不会「已达标仍提示」，也不会「不可用仍开局」。
         if (state == GameState.WAITING && !isPlayable() && player.hasPermission("hilltopvillage.admin")) {
-            plugin.getLanguageManager().send(player, "arena-not-deployed-hint");
+            plugin.getLanguageManager().send(player, "arena-not-deployed-hint", definition.getId());
         }
 
         // 人数达标后自动开始倒计时
@@ -341,9 +361,12 @@ public class ArenaInstance implements IArena {
 
         // 结算本局统计（sessionVictory 为 null 表示中途离开，不计胜负）
         // 数据必须取自 GameManager 的那一份：增量写（击杀/阵亡/节点修复）全部打在它上面
+        // 波次口径用「当前波次 与 sessionWave 快照取大」：局中离场取当前值（快照为 0），
+        // 结算完成（stopGame 归零波次）后的残留离场取快照，避免记 0 波
         PlayerData sessionData = gameManager.getPlayerData(uuid);
-        if (sessionData != null) {
-            plugin.getStatsManager().record(player, sessionData, sessionVictory, gameManager.getCurrentWave());
+        if (sessionData != null && plugin.getStatsManager() != null) {
+            plugin.getStatsManager().record(player, sessionData, sessionVictory,
+                    Math.max(gameManager.getCurrentWave(), sessionWave));
         }
 
         // Remove from tracking
@@ -358,12 +381,19 @@ public class ArenaInstance implements IArena {
         // 移除侧边栏记分板
         scoreboard.hide(player);
 
+        // 跨 lane（约定#1 / M-13）：清锤与烈焰蛋的玩家残留态。
+        // cleanupPlayer 幂等（F3 负责保证）：清蓄力 BossBar、smash 状态与冷却，
+        // 避免玩家在蓄力中离场后进度条永久糊屏、或带着幽灵蓄力态重进。
+        plugin.getHammerListener().cleanupPlayer(player);
+        plugin.getFireballListener().cleanupPlayer(player);
+
         // Teleport to lobby
         Location lobbySpawn = plugin.getMultiArenaManager().getLobbySpawn();
         player.teleport(lobbySpawn != null ? lobbySpawn : Bukkit.getWorlds().get(0).getSpawnLocation());
 
         // 归还玩家原版状态（背包/经验/血量/模式…）
-        if (!plugin.getPlayerGoodsManager().restore(player)) {
+        // P2-34：管理器初始化失败时为 null → 视同「无快照」，走下面的保底清理分支
+        if (plugin.getPlayerGoodsManager() == null || !plugin.getPlayerGoodsManager().restore(player)) {
             // 无快照（异常情况）：退回生存模式并清空游戏物品
             player.getInventory().clear();
             player.setGameMode(GameMode.SURVIVAL);
@@ -412,6 +442,14 @@ public class ArenaInstance implements IArena {
         boolean alive = data == null || data.isAlive();
         Location core = gameManager.getCoreLocation();
 
+        // 跨 lane（约定#1）：重连时先清锤/蛋的残留玩家态（蓄力 BossBar / 蓄力标记 / 冷却）。
+        // 退服时的 quit 清理已清过 BossBar，但 PlayerData 的蓄力标记可能仍在，若不清理，
+        // 重连落地后第一步就会触发「幽灵猛击」。cleanupPlayer 幂等（F3 保证）；
+        // 此处同时清 PlayerData 侧 smash 标记（M-18 rejoin 面），双保险。
+        if (data != null) data.deactivateSmash();
+        plugin.getHammerListener().cleanupPlayer(player);
+        plugin.getFireballListener().cleanupPlayer(player);
+
         if (alive) {
             player.setGameMode(GameMode.SURVIVAL);
             if (core != null) player.teleport(core);
@@ -427,6 +465,11 @@ public class ArenaInstance implements IArena {
 
         broadcastI18n("player-rejoined", player.getName());
         plugin.getLanguageManager().send(player, "rejoin-welcome");
+
+        // M-06：重连后恢复侧边栏。onPlayerQuit 的清理链已把记分板条目从内存摘除，
+        // 不在这里重建的话玩家整局看不到侧边栏（波次/存活/击杀全丢）。
+        // show 幂等：内部覆盖式重建 BoardState 并 setScoreboard，重复调用安全。
+        scoreboard.show(player);
         return true;
     }
 
@@ -451,9 +494,9 @@ public class ArenaInstance implements IArena {
         // （kills / deaths / nodes-repaired 全为 0），等于该玩家这一局白打。
         // 掉线玩家拿不到在线 Player 对象，因此走按 UUID 的 recordOffline 重载。
         PlayerData sessionData = gameManager.getPlayerData(uuid);
-        if (sessionData != null) {
+        if (sessionData != null && plugin.getStatsManager() != null) {
             plugin.getStatsManager().recordOffline(uuid, playerName, sessionData, sessionVictory,
-                    gameManager.getCurrentWave());
+                    Math.max(gameManager.getCurrentWave(), sessionWave));
         }
 
         gameManager.removeOfflinePlayer(uuid);
@@ -951,6 +994,8 @@ public class ArenaInstance implements IArena {
         // 新一局开始：换发本局代号，使上一局任何残留的结算回调立即失效
         sessionId++;
         cancelEndSequence();
+        // M-08：上一局波次快照随新局归零（局中发现的中途离场者按局进程记新波次）
+        sessionWave = 0;
 
         broadcastI18n("game-started");
 
@@ -979,6 +1024,11 @@ public class ArenaInstance implements IArena {
         // 就会凭空多出一批打不死的“村民”把游戏搞坏。此处是本场开局的最后屏障。
         plugin.getVillagerPreviewManager().clearInWorld(getWorld());
         villagerSystem.cleanupOrphans();
+        // P2-12：开局前最后一道波次怪清扫线（与村民清理同一位置同一理由）——崩溃残留的
+        // persistent 波次怪若在构造期清扫时所在区块尚未加载而漏网，本局开局前（玩家已带动
+        // 区块加载）在此清除，确保它不能攻击新局的玩家与刚生成的村民。此刻本波刷怪尚未开始
+        // （startGame 在下方才调用），activeMobs 为空，按标记清除只可能命中残留。
+        gameManager.getWaveManager().cleanupOrphans();
         villagerSystem.spawnAll();
 
         // Start wave system（波次归零由 gameManager.startGame() 内部完成，本类不再另存副本）
@@ -989,6 +1039,9 @@ public class ArenaInstance implements IArena {
      * Called when game ends (state → ENDING).
      */
     private void onGameEnd() {
+        // M-08：捕获本局波次快照 —— 下面的 stopGame() 会把 currentWave 归零，
+        // 而 reset() 补录离线残留玩家统计（recordOffline 的 wavesSurvived）时需要真实波次
+        sessionWave = Math.max(sessionWave, gameManager.getCurrentWave());
         // Stop all game tasks
         gameManager.stopGame();
 
@@ -1011,15 +1064,51 @@ public class ArenaInstance implements IArena {
         // 结算倒计时随本局一起作废，避免它对下一局生效
         cancelEndSequence();
 
+        // M-08：捕获本局波次快照。正常收尾路径里 onGameEnd（→ stopGame）已把 currentWave
+        // 归零、快照已由那时的 Math.max 记下；resetNow 等不经 onGameEnd 的路径在此兜底捕获
+        // （此刻 currentWave 仍是真实值）。
+        sessionWave = Math.max(sessionWave, gameManager.getCurrentWave());
+
+        // 重置 GameManager 内部状态（幂等：波次/怪物/节点 Buff 全部清理）。
+        // 刻意前移到补录循环之前：先归零状态，循环里对在线残留的 removePlayer 兜底
+        // 就不会命中「人数不足 → 判负」等收尾重入分支。
+        gameManager.stopGame();
+
+        // M-08：补结算「离线残留」玩家（掉线重连窗口内仍在 players 集合中的玩家）。
+        // 在线玩家的本局统计已在 removePlayer() 落库（各收尾路径的踢人循环），此处只处理
+        // 未经过 removePlayer 的离线残留——为他们准备的 recordOffline 入口
+        // （expirePendingRejoins → removeOfflinePlayer）会因本方法随后清空集合而早退
+        // （players.remove 返回 false），不在清集合前补录就会整局统计丢失
+        // （掉线 60s 窗口 > 结算 20s + 重置 5s，是常规可复现时序）。
+        // 「只结算一次」：removePlayer/removeOfflinePlayer 都会把 UUID 从本集合移除，
+        // 集合中残留的每一名成员都必然未结算过（reset 期间处于 ENDING 硬屏障，不可能再 addPlayer）。
+        // 波次口径用 sessionWave 快照（getCurrentWave 已被上面的 stopGame 归零）。
+        for (UUID uuid : new ArrayList<>(players)) {
+            Player online = Bukkit.getPlayer(uuid);
+            if (online != null && online.isOnline()) {
+                // 防御：理论上各收尾踢人循环已把所有在线玩家移出；极端时序下若仍有在线
+                // 残留，走完整离场流程（结算统计 + 归还物品 + 送回大厅）
+                removePlayer(online);
+                continue;
+            }
+            PlayerData leftoverData = gameManager.getPlayerData(uuid);
+            if (leftoverData != null) {
+                OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
+                String name = offline != null ? offline.getName() : null;
+                plugin.getStatsManager().recordOffline(uuid, name, leftoverData, sessionVictory, sessionWave);
+            }
+            // 同步清掉「玩家 → 竞技场」映射（L06-04 / P2-11 同一收口）：残留映射会让下次
+            // 登录的 isInArena 判定为 true，推迟物品快照归还
+            plugin.getMultiArenaManager().forgetPlayerArena(uuid);
+        }
+
         // Clear all players
         players.clear();
         spectators.clear();
 
-        // 重置 GameManager 内部状态（幂等：波次/怪物/节点 Buff 全部清理）
-        gameManager.stopGame();
         // 同步清空 GameManager 的玩家集合与 PlayerData：
         // 处于掉线重连窗口的离线玩家不会经过 removePlayer()，否则会跨局残留成「幽灵玩家」。
-        // 本局统计已在 removePlayer() 中落库，此处只清集合，不重复结算。
+        // 本局统计已在上面的补录循环与 removePlayer() 中落库，此处只清集合，不重复结算。
         gameManager.clearAllPlayers();
 
         // Clean up entities (mobs, villagers, dropped items, scoreboard)
@@ -1053,6 +1142,8 @@ public class ArenaInstance implements IArena {
         restoreStarted = false;
         resetScheduled = false;
         sessionVictory = null;
+        // M-08：波次快照随本局结算完毕归零（下一局在 onGameStart 会再次清零，此处对齐语义）
+        sessionWave = 0;
         // 保险（幂等）：回到 WAITING 之前确保倒计时句柄干净。正常路径下主修复已在倒计时
         // 终止分支置空，但无论经由哪条结算路径（自然结束 / stopGame）回到 WAITING，
         // 都在此兜底一次，保证 checkAutoStart() 的 startCountdownTask == null 守卫必然成立。

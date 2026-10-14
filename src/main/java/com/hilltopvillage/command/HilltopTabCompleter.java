@@ -98,7 +98,7 @@ public class HilltopTabCompleter implements TabCompleter {
             for (String sub : Arrays.asList("help", "setcore", "addspawn", "listspawns", "delspawn", "clearspawns",
                     "confirmclear", "reloadnodes", "showparticles",
                     "addmobspawn", "listmobspawns", "delmobspawn", "clearmobspawns", "confirmclearmob",
-                    "addvillager", "listvillagers", "delvillager", "clearvillagers",
+                    "addvillager", "listvillagers", "delvillager", "clearvillagers", "confirmclearvillagers",
                     "setshop", "clearshop")) {
                 if (sub.startsWith(input)) {
                     completions.add(sub);
@@ -115,6 +115,18 @@ public class HilltopTabCompleter implements TabCompleter {
                     "confirm-nodes", "rescan", "villagers-done", "confirm-shop", "showshopparticles", "clear-shop",
                     "preview", "goto")) {
                 if (sub.startsWith(input)) completions.add(sub);
+            }
+            return completions;
+        }
+
+        // M-01：/hilltop setup goto <N> —— 补全 1-8 步骤数字
+        if (args.length == 3 && args[0].equalsIgnoreCase("setup") && args[1].equalsIgnoreCase("goto")
+                && sender.hasPermission("hilltopvillage.admin")) {
+            List<String> completions = new ArrayList<>();
+            String input = args[2];
+            for (int step = 1; step <= 8; step++) {
+                String value = String.valueOf(step);
+                if (value.startsWith(input)) completions.add(value);
             }
             return completions;
         }

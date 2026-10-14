@@ -236,7 +236,24 @@ public final class PlayerGoodsManager {
         goods = new ConcurrentHashMap<>();
         if (!goodsFile.exists()) return;
 
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(goodsFile);
+        // P2-34 文件级容错：半截/损坏的 YAML 若逃逸到 onEnable 会让整个插件加载失败 ——
+        // 比丢一份快照严重得多。损坏文件重命名为 .corrupt 保留现场，本次以空数据启动
+        //（仿 ArenaManager.load() 的兜底姿势）。
+        //
+        // 刻意不用 YamlConfiguration.loadConfiguration(File)：1.21.4 的该静态方法内部
+        // 自带 catch（已反编译核实）—— 解析失败时只打一条 "Cannot load" 日志并返回空配置，
+        // 异常根本传不出来，下面的 quarantine 分支永远不可达。改为显式读取文件内容 +
+        // loadFromString：解析错误直接抛 InvalidConfigurationException，兜底才真正生效。
+        //（charset 与 loadConfiguration 内部一致，均为 UTF-8，已反编译核实。）
+        YamlConfiguration yaml = new YamlConfiguration();
+        try {
+            yaml.loadFromString(Files.readString(goodsFile.toPath(), StandardCharsets.UTF_8));
+        } catch (Exception exception) {
+            plugin.getLogger().log(Level.SEVERE, FILE_NAME + " 解析失败，"
+                    + "已重命名为 " + FILE_NAME + ".corrupt 并跳过加载（本次以空快照启动）", exception);
+            quarantineCorruptFile();
+            return;
+        }
         ConfigurationSection root = yaml.getConfigurationSection("players");
         if (root == null) return;
 
@@ -280,6 +297,22 @@ public final class PlayerGoodsManager {
 
         if (loaded > 0) {
             plugin.getLogger().info("已从 " + FILE_NAME + " 恢复 " + loaded + " 份未归还的玩家物品快照");
+        }
+    }
+
+    /**
+     * 把损坏的存档文件重命名为 {@code *.corrupt} 保留现场（P2-34）。
+     *
+     * <p>重命名失败时退化为「不删除、直接留原文件」：下一次写盘会原子替换它，
+     * 至少本次启动不会因为旧文件反复解析失败而卡死。</p>
+     */
+    private void quarantineCorruptFile() {
+        File corrupt = new File(goodsFile.getParentFile(), goodsFile.getName() + ".corrupt");
+        if (goodsFile.renameTo(corrupt)) {
+            plugin.getLogger().warning("损坏的 " + FILE_NAME + " 已重命名为 " + corrupt.getName());
+        } else {
+            plugin.getLogger().warning("无法重命名损坏的 " + FILE_NAME + "（文件被占用？），"
+                    + "本次跳过加载；下次写盘会原子替换该文件");
         }
     }
 

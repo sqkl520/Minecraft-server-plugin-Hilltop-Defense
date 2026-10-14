@@ -32,7 +32,14 @@ import java.util.regex.Pattern;
 /** Loads and persists the canonical arena registry. */
 public final class ArenaManager {
 
-    private static final int SCHEMA_VERSION = 1;
+    /**
+     * arenas.yml 当前 schema 版本。
+     *
+     * <p>与出厂模板 {@code src/main/resources/arenas.yml} 的 {@code schema-version: 2} 保持一致
+     * （P2-35：原先代码写 1、模板写 2，任何未来打算「按 schema-version 做迁移」的人都会被误导）。
+     * 目前没有按版本分层迁移的读取逻辑，仅在 {@link #load()} 里对「读到更高版本」打 warning。</p>
+     */
+    private static final int SCHEMA_VERSION = 2;
     private static final Pattern ARENA_ID = Pattern.compile("[a-z0-9][a-z0-9_-]*");
     /** 竞技场未配置 game.min-players 且读不到 GameConfig 时的兜底值（与 GameConfig 字段默认值一致） */
     private static final int DEFAULT_MIN_PLAYERS = 2;
@@ -85,6 +92,15 @@ public final class ArenaManager {
         } catch (Exception exception) {
             plugin.getLogger().log(Level.WARNING, "Could not load arenas.yml; keeping an empty registry.", exception);
             configuration = new YamlConfiguration();
+        }
+
+        // P2-35：schema-version 统一为与出厂模板一致的常量；读到更高版本时打 warning，
+        // 提醒管理员该文件可能由更新版插件写过，当前版本可能不认识其中部分内容。
+        int schemaVersion = configuration.getInt("schema-version", SCHEMA_VERSION);
+        if (schemaVersion > SCHEMA_VERSION) {
+            plugin.getLogger().warning("arenas.yml 的 schema-version 为 " + schemaVersion
+                    + "，高于当前插件支持的 " + SCHEMA_VERSION + "；"
+                    + "该文件可能由更新版本的插件写入，部分内容可能无法识别");
         }
 
         // Paper 默认只加载 level-name 指向的世界；竞技场/大厅世界文件夹存在但未加载时自动加载
@@ -171,7 +187,20 @@ public final class ArenaManager {
         }
     }
 
-    /** Saves canonical arena fields while retaining unrelated YAML data. */
+    /**
+     * Saves canonical arena fields while retaining unrelated YAML data.
+     *
+     * <p>⚠️ 危险（P2-35 死代码地雷）：本方法会用 registry 里<b>固化的旧值</b>整份覆写
+     * {@code core / spawn-points / mob-spawn-points} 等字段——{@code AdminDeployManager} 刚写进
+     * 磁盘的生成点 / 村民 / 商店位置会被改回旧值。实测全仓库<b>零调用方</b>（只为保持历史兼容
+     * 保留方法本体）。写入任何竞技场数据必须走「先重读磁盘、只改目标键」的路径
+     * （{@link #updateGameParams}、{@code AdminDeployManager.saveSpawnPoints}、
+     * {@code ArenaAdminService} 各写方），<b>勿调用本方法</b>。</p>
+     *
+     * @deprecated 死代码地雷，用固化旧值整份覆写 arenas.yml；勿调用。写入请走
+     *             {@link #updateGameParams} / {@code AdminDeployManager} / {@code ArenaAdminService}。
+     */
+    @Deprecated(forRemoval = true)
     public void save() {
         configuration.set("schema-version", SCHEMA_VERSION);
         configuration.set("default-arena", registry.getDefaultArenaId());
