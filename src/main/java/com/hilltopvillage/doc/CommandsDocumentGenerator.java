@@ -40,6 +40,27 @@ public class CommandsDocumentGenerator {
         md.append("- **使用示例**: `/hilltop leave`\n");
         md.append("- **注意事项**: 游戏进行中退出将视为放弃，已获得的积分和击杀数将丢失。\n\n");
 
+        md.append("### `/hilltop gui`\n\n");
+        md.append("- **功能**: 打开竞技场选择菜单（带状态与人数）。\n");
+        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop gui`\n");
+        md.append("- **注意事项**: 仅限玩家使用（控制台不可执行）。菜单中彩色条目代表可加入状态，灰色条目不可加入。\n\n");
+
+        md.append("### `/hilltop lobby`\n\n");
+        md.append("- **功能**: 返回大厅。\n");
+        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop lobby`\n");
+        md.append("- **注意事项**: 若当前在竞技场中，会先退出该竞技场再传送到大厅。仅限玩家使用。\n\n");
+
+        md.append("### `/hilltop list`\n\n");
+        md.append("- **功能**: 列出所有竞技场。\n");
+        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop list`\n");
+        md.append("- **注意事项**: 显示每个竞技场的编号、名称、状态与当前人数。\n\n");
+
         md.append("### `/hilltop status`\n\n");
         md.append("- **功能**: 查看当前游戏状态。\n");
         md.append("- **权限**: 无（所有玩家可用）。\n");
@@ -47,12 +68,33 @@ public class CommandsDocumentGenerator {
         md.append("- **使用示例**: `/hilltop status`\n");
         md.append("- **注意事项**: 显示内容包括游戏状态、当前波次、在线玩家数、存活怪物数、能量节点状态等。\n\n");
 
+        md.append("### `/hilltop stats [玩家名]`\n\n");
+        md.append("- **功能**: 查看自己或他人的统计。\n");
+        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **参数**: `[玩家名]` — 可选，指定要查看的玩家（不填则查看自己）。\n");
+        md.append("- **使用示例**: `/hilltop stats`, `/hilltop stats Steve`\n");
+        md.append("- **注意事项**: 显示胜率、K/D、修复节点数、最高波次等持久化数据。控制台执行时需带玩家名。\n\n");
+
+        md.append("### `/hilltop top <类型>`\n\n");
+        md.append("- **功能**: 查看排行榜。\n");
+        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **参数**: `<类型>` — 排行榜类型：`kills` / `wins` / `games` / `best-wave` / `nodes` / `deaths`（前 10 名）。\n");
+        md.append("- **使用示例**: `/hilltop top kills`\n");
+        md.append("- **注意事项**: 无参数或类型无效时会列出可用类型。\n\n");
+
         md.append("### `/hilltop hammer`\n\n");
         md.append("- **功能**: 获取神圣之锤（Sacred Hammer）。\n");
-        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`（管理员；普通玩家请通过村民商店购买）。\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop hammer`\n");
         md.append("- **注意事项**: 锤子右键可触发蓄力重击（Smash），左键为普通攻击。每位玩家同时只能持有一把锤子。\n\n");
+
+        md.append("### `/hilltop fireball`\n\n");
+        md.append("- **功能**: 获取烈焰蛋（Fireball）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`（管理员；普通玩家请通过村民商店购买）。\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop fireball`\n");
+        md.append("- **注意事项**: 右键投掷，命中后爆炸造成范围伤害与击退。仅限玩家使用。\n\n");
 
         md.append("### `/hilltop help`\n\n");
         md.append("- **功能**: 查看命令帮助。\n");
@@ -86,6 +128,41 @@ public class CommandsDocumentGenerator {
         md.append("- **使用示例**: `/hilltop stop`\n");
         md.append("- **注意事项**: 强制结束游戏，所有进行中的波次和怪物将被清除，如需重新开始请再次执行 start 命令。\n\n");
 
+        md.append("### `/hilltop arenas`\n\n");
+        md.append("- **功能**: 查看详细竞技场状态与故障原因。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop arenas`\n");
+        md.append("- **注意事项**: 逐场展示状态、玩家数、世界加载情况，并标注未部署 / 世界缺失 / 配置禁用等故障原因及处置提示。\n\n");
+
+        md.append("### `/hilltop enable [竞技场]`\n\n");
+        md.append("- **功能**: 将竞技场加入启用队列。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **使用示例**: `/hilltop enable`, `/hilltop enable arena2`\n");
+        md.append("- **注意事项**: 加入队列后要等世界加载与初始化完成，状态变为「就绪」后才可加入。已就绪 / 已在队列中的竞技场会提示而不会重复入队。\n\n");
+
+        md.append("### `/hilltop disable [竞技场]`\n\n");
+        md.append("- **功能**: 禁用竞技场用于维护。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **使用示例**: `/hilltop disable`, `/hilltop disable arena2`\n");
+        md.append("- **注意事项**: 踢出玩家并从可加入列表移除。**对局进行中会被拒绝**，请等本局结束。禁用后立即重新启用会有几秒隔离等待（等上一局的地图回滚跑完）。\n\n");
+
+        md.append("### `/hilltop build`\n\n");
+        md.append("- **功能**: 切换大厅建造模式。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop build`\n");
+        md.append("- **注意事项**: 开启后临时解除大厅保护，用于整修大厅；再次执行关闭。仅限玩家使用。\n\n");
+
+        md.append("### `/hilltop tps`\n\n");
+        md.append("- **功能**: TPS / MSPT 诊断。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop tps`\n");
+        md.append("- **注意事项**: 输出服务器与对局双层级诊断信息（TPS/MSPT、内存、在线/对局玩家、波次、怪物、节点、DisplayEntity 清理队列、各世界实体/区块计数）。MSPT 超过 50ms 时附排查建议。\n\n");
+
         md.append("### `/hilltop deploy`\n\n");
         md.append("- **功能**: 打开管理员部署菜单。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
@@ -101,53 +178,88 @@ public class CommandsDocumentGenerator {
         md.append("- **注意事项**: 核心是村庄守卫的核心建筑，怪物将以此为目标。请站在核心上方执行命令。设置后会播放粒子效果作为视觉反馈。\n\n");
 
         md.append("### `/hilltop deploy addspawn`\n\n");
-        md.append("- **功能**: 将管理员当前所在坐标添加为怪物生成点。\n");
+        md.append("- **功能**: 将管理员当前所在坐标添加为玩家出生点。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy addspawn`\n");
-        md.append("- **注意事项**: 每个生成点会被自动分配一个独特的粒子效果，用于视觉区分。可设置多个生成点。站在想要的位置执行命令即可精准记录坐标。\n\n");
+        md.append("- **注意事项**: 玩家出生点是开局时玩家被传送到的位置（阵亡复活用核心坐标，不是这里）；**不**影响怪物刷怪。至少需要 1 个玩家出生点才能开局。可设置多个，粒子预览统一显示为绿色。站在想要的位置执行命令即可精准记录坐标。\n\n");
 
         md.append("### `/hilltop deploy listspawns`\n\n");
-        md.append("- **功能**: 列出所有已设置的生成点。\n");
+        md.append("- **功能**: 列出所有已设置的玩家出生点。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy listspawns`\n");
-        md.append("- **注意事项**: 显示每个生成点的编号、坐标。编号用于 delspawn 命令。\n\n");
+        md.append("- **注意事项**: 显示每个出生点的编号、坐标。编号用于 delspawn 命令。\n\n");
 
         md.append("### `/hilltop deploy delspawn <编号>`\n\n");
-        md.append("- **功能**: 删除指定编号的生成点。\n");
+        md.append("- **功能**: 删除指定编号的玩家出生点。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `<编号>` — 生成点编号（从 listspawns 获取）。\n");
+        md.append("- **参数**: `<编号>` — 出生点编号（从 listspawns 获取）。\n");
         md.append("- **使用示例**: `/hilltop deploy delspawn 2`\n");
-        md.append("- **注意事项**: 删除后所有剩余生成点的粒子自动重新分配，确保无重复。\n\n");
+        md.append("- **注意事项**: 删除后剩余出生点的编号会前移，请重新用 listspawns 确认编号。\n\n");
 
         md.append("### `/hilltop deploy showparticles`\n\n");
-        md.append("- **功能**: 在所有已设置的生成点周围展示粒子效果。\n");
+        md.append("- **功能**: 在所有玩家出生点周围展示粒子效果（30 秒）。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy showparticles`\n");
-        md.append("- **注意事项**: 粒子效果在以每个生成点为中心、半径3格的范围内以螺旋动画展示，默认持续30秒。每个生成点使用其分配的独特粒子类型，便于视觉区分。重复执行会重置计时。\n\n");
+        md.append("- **注意事项**: 粒子为彩色光柱 + 环绕螺旋，五类点位各有专属颜色（玩家出生点=绿、怪物刷怪点=红、能量节点=蓝、村民=黄、商店=金）。重复执行会重置计时。\n\n");
 
         md.append("### `/hilltop deploy clearspawns`\n\n");
-        md.append("- **功能**: 清除所有生成点（需二次确认）。\n");
+        md.append("- **功能**: 清除所有玩家出生点（需二次确认）。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy clearspawns`\n");
-        md.append("- **注意事项**: 执行后需在15秒内输入 `/hilltop deploy confirmclear` 确认。超时或未确认则操作取消。清除后怪物将在核心周围随机生成。\n\n");
+        md.append("- **注意事项**: 执行后需在 15 秒内输入 `/hilltop deploy confirmclear` 确认。超时或未确认则操作取消。清除后仍需重新添加出生点，否则无法开局（本操作不影响怪物刷怪点）。\n\n");
 
         md.append("### `/hilltop deploy confirmclear`\n\n");
-        md.append("- **功能**: 确认清除所有生成点。\n");
+        md.append("- **功能**: 确认清除所有玩家出生点。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy confirmclear`\n");
-        md.append("- **注意事项**: 此命令仅在 `/hilltop deploy clearspawns` 执行后15秒内有效。\n\n");
+        md.append("- **注意事项**: 此命令仅在 `/hilltop deploy clearspawns` 执行后 15 秒内有效。\n\n");
+
+        md.append("### `/hilltop deploy addmobspawn`\n\n");
+        md.append("- **功能**: 将管理员当前所在坐标添加为怪物刷怪点。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy addmobspawn`\n");
+        md.append("- **注意事项**: 怪物从刷怪点周围生成。若未设置独立刷怪点，旧存档会回退用玩家出生点刷怪，但新部署请两套点各设至少 1 个（`/hilltop start` 会检查）。可设置多个。\n\n");
+
+        md.append("### `/hilltop deploy listmobspawns`\n\n");
+        md.append("- **功能**: 列出所有已设置的怪物刷怪点。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy listmobspawns`\n");
+        md.append("- **注意事项**: 显示每个刷怪点的编号、坐标。编号用于 delmobspawn 命令。\n\n");
+
+        md.append("### `/hilltop deploy delmobspawn <编号>`\n\n");
+        md.append("- **功能**: 删除指定编号的怪物刷怪点。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: `<编号>` — 刷怪点编号（从 listmobspawns 获取）。\n");
+        md.append("- **使用示例**: `/hilltop deploy delmobspawn 1`\n");
+        md.append("- **注意事项**: 删除后剩余刷怪点的编号会前移。\n\n");
+
+        md.append("### `/hilltop deploy clearmobspawns`\n\n");
+        md.append("- **功能**: 清除所有怪物刷怪点（需二次确认）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy clearmobspawns`\n");
+        md.append("- **注意事项**: 执行后需在 15 秒内输入 `/hilltop deploy confirmclearmob` 确认。清除后怪物将回退到玩家出生点刷怪。\n\n");
+
+        md.append("### `/hilltop deploy confirmclearmob`\n\n");
+        md.append("- **功能**: 确认清除所有怪物刷怪点。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy confirmclearmob`\n");
+        md.append("- **注意事项**: 此命令仅在 `/hilltop deploy clearmobspawns` 执行后 15 秒内有效。\n\n");
 
         md.append("### `/hilltop deploy reloadnodes`\n\n");
-        md.append("- **功能**: 重新扫描地图中的能量节点。\n");
+        md.append("- **功能**: 从 `nodes.yml` 重新读取节点注册表。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy reloadnodes`\n");
-        md.append("- **注意事项**: 重新从世界方块中加载能量节点，用于地图更新后刷新节点状态。\n\n");
+        md.append("- **注意事项**: 只重新读取注册表，**不**扫描世界方块（节点注册请用向导第 4 步 [添加节点]，已废弃扫描式命令）。\n\n");
 
         md.append("### `/hilltop deploy setshop`\n\n");
         md.append("- **功能**: 将管理员当前所在坐标设为商店 NPC 位置，并立即生成商店村民。\n");
@@ -162,6 +274,48 @@ public class CommandsDocumentGenerator {
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy clearshop`\n");
         md.append("- **注意事项**: 删除 `arenas.yml` 的 `arenas.<id>.shop-npc` 并移除「正站在本竞技场世界」的商店村民实体（商店 NPC 为插件级单例，别处竞技场 / 大厅的商店不受影响）。**对局进行中会被拒绝**，需先 `/hilltop stop`。清除后商店变为「未设置」，向导第 7 步与最终确认会重新要求设置。\n\n");
+
+        md.append("### `/hilltop deploy addvillager`\n\n");
+        md.append("- **功能**: 将管理员当前所在坐标登记为村民位置。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy addvillager`\n");
+        md.append("- **注意事项**: 村民是怪物进攻的目标，**全部阵亡则对局失败**。至少需要 1 个。可多次执行登记多个村民。\n\n");
+
+        md.append("### `/hilltop deploy listvillagers`\n\n");
+        md.append("- **功能**: 列出所有已登记的村民。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy listvillagers`\n");
+        md.append("- **注意事项**: 显示每个村民的编号、坐标。编号用于 delvillager 命令。\n\n");
+
+        md.append("### `/hilltop deploy delvillager <编号>`\n\n");
+        md.append("- **功能**: 删除指定编号的村民。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: `<编号>` — 村民编号（从 listvillagers 获取）。\n");
+        md.append("- **使用示例**: `/hilltop deploy delvillager 2`\n");
+        md.append("- **注意事项**: 删除后剩余村民的编号会前移。\n\n");
+
+        md.append("### `/hilltop deploy clearvillagers`\n\n");
+        md.append("- **功能**: 清除所有村民（需二次确认）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy clearvillagers`\n");
+        md.append("- **注意事项**: 执行后需在 15 秒内输入 `/hilltop deploy confirmclearvillagers` 确认。清除后需重新登记，否则无法开局（村民为必填项）。\n\n");
+
+        md.append("### `/hilltop deploy confirmclearvillagers`\n\n");
+        md.append("- **功能**: 确认清除所有村民。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy confirmclearvillagers`\n");
+        md.append("- **注意事项**: 此命令仅在 `/hilltop deploy clearvillagers` 执行后 15 秒内有效。\n\n");
+
+        md.append("### `/hilltop setup`\n\n");
+        md.append("- **功能**: 8 步引导式部署向导（世界 → 核心 → 出生点+刷怪点 → 节点 → 村民 → 商店 → 预览 → 完成）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无（向导进行中可用 `goto <步骤>` 回跳）。\n");
+        md.append("- **使用示例**: `/hilltop setup`\n");
+        md.append("- **注意事项**: 需站在目标竞技场世界内执行；每步自动保存，可随时 [保存并返回大厅] 后回来继续。完成收尾时该竞技场自动加入启用队列（`enabled: true` 时）。一般通过聊天栏可点击按钮操作，无需手动输入子命令。\n\n");
 
         md.append("### `/hilltop manage`\n\n");
         md.append("- **功能**: 打开竞技场管理 GUI。\n");
@@ -213,10 +367,10 @@ public class CommandsDocumentGenerator {
         md.append("## 权限节点\n\n");
         md.append("| 权限节点 | 说明 |\n");
         md.append("|---|---|\n");
-        md.append("| `hilltopvillage.admin` | 管理员权限，包含 start/stop/deploy/help/reloadconfig |\n");
+        md.append("| `hilltopvillage.admin` | 管理员权限，包含 start/stop/deploy/help/reloadconfig/enable/disable/arenas/hammer/fireball/build/tps 等 |\n");
         md.append("| `hilltopvillage.config.admin` | 配置中心管理员权限，包含 config 主命令 |\n");
-        md.append("| `hilltopvillage.config.gamerules` | 游戏规则配置权限 |\n");
-        md.append("| `hilltopvillage.config.hammer` | 锤子参数配置权限 |\n");
+        md.append("| `hilltopvillage.config.rules` | 游戏规则配置权限 |\n");
+        md.append("| `hilltopvillage.config.items` | 锤子与物品参数配置权限 |\n");
         md.append("| `hilltopvillage.config.nodes` | 能量节点配置权限 |\n");
         md.append("| `hilltopvillage.config.monsters` | 怪物属性配置权限 |\n");
         md.append("| `hilltopvillage.config.waves` | 波次组合配置权限 |\n\n");
@@ -224,10 +378,10 @@ public class CommandsDocumentGenerator {
         md.append("---\n\n");
         md.append("## 注意事项\n\n");
         md.append("1. **命令别名**: `/hilltop` 命令也可使用 `/hv` 或 `/htv` 作为别名。\n");
-        md.append("2. **控制台限制**: 除 status/reloadconfig 外，大部分涉及 GUI 或播放效果的命令仅限玩家在游戏内使用。\n");
-        md.append("3. **部署流程**: 建议按照 `setcore → addspawn → reloadnodes → start` 的顺序操作。\n");
+        md.append("2. **控制台限制**: 采用黑名单模型——仅以下命令不可由控制台执行：`join` / `leave` / `lobby` / `gui` / `hammer` / `fireball` / `setup` / `deploy` / `config` / `manage` / `build`。其余命令（含 `status` / `reloadconfig` / `start` / `stop` / `enable` / `disable` / `arenas` / `list` / `stats`（带玩家名） / `top` / `tps` / `help` / `lang` / `shop reload` / `shop give`）均可在控制台执行（管理命令仍需 OP / `hilltopvillage.admin` 权限）。\n");
+        md.append("3. **部署流程**: 建议按照 `setcore → addspawn → addmobspawn → reloadnodes → start` 的顺序操作（玩家出生点与怪物刷怪点两套均需至少 1 个）。\n");
         md.append("4. **配置保存**: 使用 GUI 关闭菜单时配置会自动保存，`/hilltop reloadconfig` 用于手动重载外部编辑的配置。\n");
-        md.append("5. **粒子展示**: `/hilltop deploy showparticles` 仅展示当前已设置的生成点对应粒子。若没有生成点则不会有任何效果。\n");
+        md.append("5. **粒子展示**: `/hilltop deploy showparticles` 仅展示当前已设置的玩家出生点对应粒子。若没有出生点则不会有任何效果。\n");
         md.append("6. **多语言**: 使用 `/hilltop lang <en|zh>` 切换语言。所有消息文本可在 `plugins/HilltopVillage/messages.yml` 中自定义编辑。\n");
 
         final String content = md.toString();

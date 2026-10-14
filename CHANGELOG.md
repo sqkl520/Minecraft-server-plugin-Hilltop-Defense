@@ -208,7 +208,7 @@
 - **多竞技场隔离**：部署期上下文按 arenaId 缓存，两个服主同时部署不同场互不干扰；始终优先复用正式实例的
   GameManager（部署改动须由它写入，运行中的对局才能立即生效，并避免两份 AdminDeployManager 竞态写 arenas.yml）
 - **新增 i18n 键** `setup.no-arena-here`（en/zh 双语对称）；**不复用** `no-active-arenas`（语义已变）。
-  `setup.must-be-in-arena-world` 保留（仍由 `/hilltop deploy` 的世界校验使用）
+  `setup.must-be-in-arena-world` 保留（仍由 `/hilltop deploy` 的世界校验使用）【更正 2026-10-14】实际引用的是 `deploy.` 前缀版（`deploy.must-be-in-arena-world`，HCH 与 SetupWizard 均引用它）；`setup.` 版为死键，已在 fix3 删除
 
 
 ### Docs（2026-10-11 — README 补"阶段 2.5：进入竞技场世界"）
