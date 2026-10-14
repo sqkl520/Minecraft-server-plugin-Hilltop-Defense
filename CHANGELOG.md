@@ -1,6 +1,124 @@
 # Changelog
 
 
+## [1.0.9-SNAPSHOT-fix3] - 2026-10-14
+
+> 1.0.9 的第三个修复版：13 路全维度审查（P0=0 / P1=20 / P2=40）后的七路并行修复 + 修复后命令逻辑五通道专项审查与修补。
+> 原 `1.0.9-SNAPSHOT` / `-fix1` / `-fix2` 的包与 GitHub Release 保留不动。
+> 审查报告：`docs/01-reviews/fix3/`（13 通道）+ `docs/01-reviews/fix3-cmd/`（5 通道）；合并总清单：`fix3-MASTER-BACKLOG.md`。
+
+### Fixed（2026-10-14 — F1 向导核心与会话，M-01/02/03 + P2-1~10）
+
+- **M-01 `/hilltop setup goto <N>` 修复**：分发层此前只传 `args[1]`，goto 分支的 `split(" ",2)` 永远拿不到数字、功能完全不可用（README/Tab 均承诺可用）。分发层改为 `String.join` 拼接余下全部参数；Tab 补全补 goto 后的 1-8 数字补全
+- **M-02 向导坐标采集加世界守卫**：此前 `addspawn/addmobspawn/addnode/addvillager/confirm-core/confirm-shop` 全部直接 `player.getLocation()` 写入——saveexit 回大厅后点聊天历史残留按钮会把**大厅坐标静默写进 arenas.yml**（不重启时开局把玩家跨世界传送、村民生成到大厅；重启后坐标按竞技场世界固化）。新增 `blockedByWorldGuard()` 覆盖 7 个命令分支 + 4 个 GUI 点击分支（复用 `deploy.must-be-in-arena-world` 键，含传送指引）；`AdminDeployManager` 三个 add 方法兜底拒收异世界坐标 + 日志
+- **M-03 双管理员互踢修复（监听器常驻化）**：`SetupWizard` 的 Listener 原为"打开时注册、关闭时 unregisterAll"——A 关闭 GUI/saveexit/掉线会把 B 正开界面的监听一并注销（B 点击失效 + 界面物品可被拖走取走）。改为 onEnable 注册一次永不注销（事件处理器自带标题判断 + 会话 null 检查），删除全部 17 处注销/重注册调用与 `onSetupInventoryClose`；`onQuit` 补会话判断防误清他人预览
+- **P2-1 完成收尾加"最后屏障"**：`confirm-world`/`confirm-core` 补 step 守卫（此前任意步骤可执行——清核心/推进/多推几次可绕过 preview 四项必填直达完成）；`showStepDone` 内置 `validateCompletion()` 四项必填复核（goto 8 / step=8 恢复两条旁路不再能绕过）
+- **P2-2 `wizard.step` 增加竞技场绑定**：config.yml 增存 `wizard.arena.<uuid>`；恢复时竞技场不匹配则从第 1 步开始并提示 `setup.resumed-arena-mismatch`（此前换场 resume 会把步骤指针接到另一竞技场）；完成收尾一并清 arena 键
+- **P2-3 第 4 步节点 ≥1 校验**：`confirm-nodes` 与 GUI 收口双入口加"至少 1 个节点"拦截（新键 `setup.nodes-required`，含"0 节点的场任意玩家阵亡会立即全队判负且无法复活"说明）；`setup.step4-nodes` 文案重写（删"自动识别"暗示、明写手动注册）
+- **P2-4 第 1 步 [确认] 不再物理删除 core**：`confirm-world` 改为仅当 core 已为空时才置 null（此前重设向导（如只改商店）时第 1 步 [确认] 会把已部署场的 core 三键从 arenas.yml 物理删除、无任何提醒）；`setup.step1` 补"原值在第 2 步确认前保留"说明
+- **P2-5 世界名指引**：`setup.saved-exit`/`setup.enable-hint` 补 `{0}` 世界名；`setup.resuming` 补场名+世界名
+- **P2-6 第 7 步预览显示真值**：min/max/波数改 live 实例 → ArenaDefinition → 全局三级取数（此前读全局值，arena2/3 与实际 per-arena 不符）
+- **P2-7 goto 8 与 step=8 恢复**：`goto 8` 改调 `showStepDone`（此前只发提示、跳过 enable 收尾）；恢复条件放宽为 1..8（此前 step=8 落盘后重进从 1/8 重启）；收尾顺手关残留 GUI
+- **P2-8 节点 GUI 硬编码清零**：节点管理 GUI 10 处 + 村民 GUI 2 处硬编码中文全改 i18n（EN 管理员界面不再中英混杂）
+- **P2-9 村民删除体验**：村民 GUI 删除改为"仅当当前页超界才回退"（此前无条件回第 1 页）+ 补 `setup.villager-removed` 聊天反馈
+- **P2-10 arenas.yml 写失败播报**：`saveSpawnPoints`/`saveShopNpcLocation` 改返回 boolean；autoSave 路径失败时播报 `setup.save-failed`（此前 IOException 全程静默照报成功、第 8 步还会把写失败误诊为 enable 问题）
+
+### Fixed（2026-10-14 — F2 对局状态机与玩家生命周期，M-06/07/08/12 + P2-11~13）
+
+- **M-06 重连后记分板恢复**：`ArenaInstance.rejoin()` 补 `scoreboard.show(player)`（fix1「退出清理补齐」摘除了内存条目但 rejoin 未恢复，导致重连玩家整局无侧边栏）
+- **M-07 幽灵存活态修复**：`respawnDeadPlayers()` 跳过仍在死亡画面的玩家（`player.isDead()`）；`PlayerLifecycleListener.onRespawn` 进行中分支先查 `data.isAlive()`——已被波次刷新复活者走正常复活流程（此前"死亡画面跨波次刷新"会让玩家进入 `alive=true + 旁观` 的幽灵状态：**永久无法自主复活 + 抑制全灭判负**）；两处延迟任务补 `getPlayerData` 二次校验
+- **M-08 结算丢统计修复**：`reset()` 清集合前对离线残留玩家逐个 `recordOffline` + `forgetPlayerArena`（此前重连窗口内掉线的玩家，若对局在其窗口内结束并重置，本局统计全部不入库）；波次口径用 `sessionWave` 快照（stopGame 归零波次后不会记 0 波）
+- **M-12 休整期刷怪修复**：`WaveManager` 三条刷怪路径守卫改「state != RUNNING 即自停」（此前 `isGameRunning()` 含休整期——快速清波时刷怪延续到休整期污染下一波）
+- **P2-11 物品延迟归还修复**：`tryRejoin` 失败分支补 `restore` + `goods-restored`（此前重连窗口内登录且局已结束，物品快照要等下一次登录才归还、期间对局货币可在大厅消费）
+- **P2-12 崩溃残怪清扫**：全部波次怪统一 PDC 标记 `hilltopvillage:wave-mob`；三点清扫——onEnable 静态全服 + ArenaInstance 构造期按世界 + onGameStart 开局前兜底（此前崩溃/强杀重启后 persistent 波次怪无启动清扫、永久驻场可攻击新局村民）
+- **P2-13 结算期门控统一 API**：`GameManager` 新增 `settlementPhase` 标记 + `isSettlementPhase()` / `isGameActive()`（haltGame 置位、endGame/stopGame/startGame 复位）——供技能/修节点门控统一口径
+
+### Fixed（2026-10-14 — F3 锤与烈焰蛋，M-17/18/20 + P2-14~18）
+
+- **M-17 技能击杀计统计**：烈焰蛋/重锤 AOE 怪物分支改 `damage(amount, attacker)` 带伤害来源（此前裸 `damage()` 无来源 → `getKiller()==null` → 主武器清怪 Kills 全记 0）
+- **M-18 幽灵猛击修复**：新增幂等 `clearSmashState(Player)`；`onPlayerMove` 补 `!data.isAlive() || SPECTATOR` 守卫（命中即兜底清理）；结算期在飞蓄力不落地结算（此前高处蓄力→被杀/掉线→旁观重生或重连落回核心，走一步即触发满档 AOE 且旁观状态可放炮）
+- **M-20 重锤弹飞队友收敛（作者决策 D-2）**：玩家分支竖向初速由 2.76~3.6 收敛为 `1.8*falloff+0.4`（≤2.2，对齐烈焰蛋调优锚点 CHANGELOG:1178）、水平由乘 2.0 改为归一化向量 ×0.7（此前推算可把队友弹飞 26~34 格、落地摔伤秒人，「弹飞不伤」名不副实）；「对玩家只弹不伤」语义保留
+- **P2-14 旁观者投弹修复**：烈焰蛋右键入口补 SPECTATOR + `isAlive` 双重静默拒绝（锤已有限制、蛋此前没有）
+- **P2-15 三道具 PDC 防伪升级（作者决策 D-3）**：新增 `hilltopvillage:item-kind` PDC（fireball/hammer/repair），三个工厂产物全带标记；识别器改「PDC 命中 → true，否则精确显示名兼容」（旧道具平滑过渡，兼容分支下个大版本可删）；与「货币只认 PDC」规范对齐
+- **P2-16 击退公式注释修正**：`applyBwKnockback` 的 1.5 补偿（归一化域语义、分支由几何比例主导）注释写清，**数值零改动**（火箭跳为官方 feature）
+- **P2-17 道具改名即时生效**：`cachedFireballName`/`hammerName` 构造期缓存删除、改实时读取（此前 reloadconfig/GUI 改名必须重启才生效）
+- **P2-18 AOE 击退免疫无敌实体**：烈焰蛋爆炸波及/近炸、重锤 AOE/余震四处过滤加 `!entity.isInvulnerable()`（商店 NPC 与预览村民不再被 setVelocity 推离原位/吹入虚空）
+
+### Fixed（2026-10-14 — F4 节点系统，P2-19~22 + M-16 侧）
+
+- **P2-19 节点方块保护**：新增 `BlockBreakEvent`（对局窗口 STARTING/RUNNING/WH 中拦截，部署期放行；提示 `node.block-protected`）+ `BlockExplodeEvent`（重生锚原版爆炸的 blockList 过滤，与既有 EntityExplode 过滤对齐）——此前玩家挖掉/炸掉节点方块后逻辑节点仍在（Buff/计数照跑）但永久不可修复
+- **P2-20 满血不吞材料 + 非成员判空**：`repairNode` 满血早退返回 false + `NodeListener` 满血提示 `node.repair-full` 不扣材料；`NodeListener` 入口 `getPlayerData==null` 静默 return + `NodeSystem` 判空（非成员右键 NPE 双防线）
+- **M-16 重置后节点复活修复（含 F1 侧）**：新增 `SetupWizard.invalidateDeploymentContext(arenaId)`（幂等，`invalidateAllDeploymentContexts` 兜底），`ArenaResetService` 重置收尾调用；`deploymentGameManager` cached 分支同步重载 NodeSystem（带世界加载守卫）——此前重置清空 nodes.yml 后同会话重走第 4 步，增删任一节点会把已清空的节点整份写回
+- **P2-21 热路径键缓存**：`VillagerSystem.isVillageVillager` 的 NamespacedKey 改惰性静态缓存（AOE 过滤半热路径，此前每次调用 new）
+- **P2-22 大厅防火**：`LobbyProtectionListener` 补 `BlockIgniteEvent`/`BlockBurnEvent` 拦截（打火石点燃木质装饰 → 火蔓延烧毁且不在地图回滚域、永久损坏）
+- **P2-13 节点门控**：`NodeListener` 修复门控切换 `isGameActive()` 口径（结算期拒绝修复）
+
+### Fixed（2026-10-14 — F5 商店全链，M-05 + P2-23~30）
+
+- **M-05 商店 STARTING 档保护死代码修复**：向导清除/设置守卫改读 live 实例状态（此前读 `GameManager.getState()`——STARTING 是其内部同步瞬时帧、外部永不可观测）；拒绝口径经 `NpcManager.isGameInProgress()` 统一并补结算期 VICTORY/DEFEAT（三入口同源）
+- **P2-23 商店迁移保护**：`spawnNpc` 改返回 boolean——跨世界迁移前检查旧实体所在世界的对局状态，对局中拒绝并保留旧实体（此前全局 despawn 会**跨世界抽走他场正在对局的商店 NPC**）；set 三路径（向导 confirm-shop/setshop/showStepDone 兜底）加目标场对局保护（新键 `setup.shop-set-in-game`/`deploy.setshop-in-game`）且改"先生成后存盘"（失败不写配置）；`deploy setshop` 补 pitch 归零
+- **P2-25 孤儿清理次序**：主类启动改为先 `respawnFromConfig`（强制加载商店区块）再 `cleanupOrphans`（此前硬崩后未加载区块的孤儿清不到、重启后与新 NPC 并存）
+- **P2-26 货币工厂防御**：`createCurrencyItem` 入参 `Math.max(1, amount)` 钳制；退款分支补 `price > 0` 判定 + 溢出改掉落（此前 `currency-drop-amount≤0` 时每次掉币抛 IAE 吞击杀统计刷日志）
+- **P2-27 换材质不再作废存量货币**：`isCurrency` 删材质短路、PDC-only（此前 `shop reload` 换 currency 材质后带 PDC 的真币全部不被识别）
+- **P2-28 副手货币可用**：`countCurrency`/`removeCurrency` 同步纳入副手（主背包先扣、不够再扣副手）
+- **P2-29 世界名大小写**：`NpcManager.despawnIfInWorld` 与 `ArenaRegistry.getByWorldName` 改 `equalsIgnoreCase`（配置大小写与实际文件夹不符时清除删 YAML 但实体残留/向导误报 no-arena-here）
+- **P2-30 旁观者开商店修复**：`ShopListener.onPlayerInteractEntity` 补 SPECTATOR 判定
+
+### Fixed（2026-10-14 — F6 数据完整性与配置，M-10/11/14/15 + P2-31~36）
+
+- **M-10 StatsManager 写盘竞态修复**：照 `PlayerGoodsManager` 模式加 `AtomicLong writeSeq`（主线程取号、锁内比对弃旧写）——此前在途旧快照可在 saveNow 之后落盘、覆盖关服新统计
+- **M-11 聊天输入交错修复**：超时任务改两参 `remove(uuid, entry)` 身份精确匹配；非法输入重挂改"新条目 + 新超时任务"——此前 30 秒临界输非法数字会使该玩家**此后每条聊天都被吞**、连发两次请求会误杀后一次
+- **M-14 死配置接线（作者决策 D-1，per-arena 优先/全局兜底）**：`GameManager` 新增 `getNodeSearchRadius()/getSpawnRadiusMin()/getSpawnRadiusMax()/getSpawnYOffset()` 透传（liveArena 实时读）；`NodeAttackGoal`/`ExplodeBeetleGoal` 改读 per-arena 索敌半径；`WaveManager.getRandomSpawnLocation` 接入 min/max 随机距离与 y-offset、两套点全空且 max>0 时新增"以核心为中心环形刷怪"回退（每波一次 warning 防刷屏）——此前 `arenas.yml` 的这四个键读存校验俱全但**运行时零消费**，服主按 50 理解索敌半径实际是全局 128
+- **M-15 手改配置防覆盖（真合并）**：`ConfigManager` 记录 `settingsLastModified`，`saveToFile` 检测 mtime 变化时 `mergeExternalChanges()`——19 个无 GUI 入口键以磁盘为准（会话基线守卫），手写未知键保留；语义：手改保留、GUI 改动仍胜出（此前未 reload 就触发 GUI 保存会把内存旧快照全量回写、静默覆盖手改值）
+- **P2-31 `hasUnsavedChanges` 修复**：`GameConfig` 实现全量 `equals/hashCode`（75 字段 + 嵌套 MonsterConfig/WaveConfig/MobComposition/StarterKitItem 字段级；脚本验证三件套对齐）；顺带补 `snapshot()` 漏拷的 spawnRadiusSpread——此前引用比较恒 true、主菜单永远"待保存"
+- **P2-32 聊天输入防护**：`NumericInputHandler.onChat` 加 `!isFinite || |v|>1e9` 拦截 + `requestInteger` clamp（此前 `(int)NaN=0`、`(int)1e300=MAX_INT` 可达 setter）
+- **P2-33 波次删除记账**：`ConfigManager.removeWave(int)` 内存删 + 记账，saveToFile 清记账键——此前 GUI 删波次只删内存、重启后波次复活
+- **P2-34 损坏存档容错升级**：实测发现 paper-api 的 `loadConfiguration(File)` **内部自带 catch 吞异常**，`PlayerGoodsManager`/`StatsManager` 改用 `Files.readString + loadFromString` 使 catch 真正生效 + 坏文件改名 `.corrupt` 保留现场；onEnable 两 new 加 Throwable 兜底——此前半截损坏文件会让整个插件加载失败
+- **P2-35 死代码标注与 schema 统一**：`ArenaManager.save()`/`MultiArenaManager.startArena()/startAllArenas()` 加 `@Deprecated(forRemoval=true)` + 危险 javadoc（零外部调用方；save() 会用固化旧值整份覆写 core/spawn-points）；`SCHEMA_VERSION` 1→2 与出厂模板一致 + load 读到更高版本 warning
+- **P2-36 未知配置键警告**：顶层未知键与 monsters 段未知键汇总 warning（此前拼写错误静默保留默认、排障困难）
+
+### Fixed（2026-10-14 — F7 命令层与入口，M-09/19 + P2-37~42）
+
+- **M-09 打错场 ID 静默改靶修复**：`resolveArena`/`resolveArenaId` 对显式非空 ID 未命中直接返回 null（不再回落默认场——此前 `/hilltop stop arean1`（typo）会把另一场进行中的对局停掉）；调用方全核对，新增三态提示：显式未命中 → `arena-not-found {0}`、定义存在无实例 → `arena-not-deployed {0}` + hint、无配置场 → `no-active-arenas`
+- **M-19 非参赛者击杀 NPE 修复**：`onMobDeath` 的 `getPlayerData(killer)` 加判空（被 /tp 带进竞技场世界的非成员击杀波次怪不再在 EntityDeathEvent 内 NPE）
+- **P2-41 竞技场世界准入防护（作者决策 D-4）**：新增 `mechanics/ArenaAccessListener`（PlayerTeleportEvent）——目标世界属竞技场定义且玩家非成员时取消传送 + 提示 `arena.access-denied`；**放行条件含实例成员集合命中**（join 时序 `players.add → teleport → playerArenaMap.put` 的窗口内映射尚未写入，只查映射会误拦正常入场）；管理员豁免（部署需要）；onEnable 注册
+- **P2-37 未部署场指引**：`deploy/status/start/stop` 解析失败先查 definitionManager → `arena-not-deployed {0}` + hint（含"运行 /hilltop setup 或用 /hilltop enable 启用"指引）；无参 `enable/disable` 优先按管理员所在世界反查（`resolveArenaIdForAdmin`，防静默操作默认场）；manage GUI 未部署场启用按钮 lore 补"先运行 /hilltop setup"（新键 `manage.detail.enable-not-deployed/-setup-hint`）
+- **P2-38 manage GUI 开关消费返回值**：禁用按钮按命令路径同款 switch 映射结果（此前对局中点击静默失败）；启用按钮补预检 + `arena-enable-failed`
+- **P2-39 deploy 命令按世界解析**：deploy 入口改为世界反查优先（与向导同源；此前站 arena2 世界被指向 arena1）；未启用场 `clearshop` 直接走 `ArenaAdminService.deleteShopNpc` 的 YAML 兜底（无实例也可清除）；`deploy help` 补实现分支
+- **P2-40 命令细节**：`start` 失败统一走 `arena-not-deployed` 含 enable 指引；`clearvillagers` 加 15 秒二次确认（新键 `deploy.clearvillagers-warning/-confirm/-already/-no-pending`）+ 修"恒报已清除 0 个"（先取数再清）
+- **P2-42 选图 GUI 点击映射**：holder 记录 slot→arenaId，点击按映射取（此前点击期按下标重取列表，GUI 常开时列表变动会点错场）
+
+### Fixed（2026-10-14 — 命令逻辑专项审查修补轮，C1~C5 五通道）
+
+> 修复后针对全部命令逻辑做了 5 通道专项审查（`docs/01-reviews/fix3-cmd/`，P0=0），以下为审查发现的即时修补：
+
+- **C5-01 选图 GUI 背包点击误触发**：`ArenaSelectionGUI.onInventoryClick` 补 `getClickedInventory` 守卫（点击玩家背包时 `getSlot()` 是 convertSlot 后槽位、与条目槽位 0-44 重叠，可经映射命中误触发 join）
+- **C1-01 节点复核缝**：`validateCompletion` 补节点 ≥1 分支（bounceTo=4）——goto 8 / step=8 恢复两条旁路不再能 0 节点完成部署
+- **C2-01 世界名校验大小写**：`handleDeployCommand` 的世界校验改 `equalsIgnoreCase`（此前反查命中后仍精确比较，配置大小写不符时站对世界也被误拒）
+- **C2-02 确认命令指错**：`clearmobspawns` 的 already 提示改用专用键 `deploy.clearmobspawns-already`（此前复用 clearspawns 键、指引的 confirmclear 不在本 pending 集）
+- **C3-01 join 归一化**：`joinArena` 的显式 ID 先经定义侧归一化（`/hilltop join Arena1` 不再误报 arena-not-found，与 stop/enable/disable 口径一致）
+- **C3-02 双消息叠报**：`ArenaCommand` join 失败分支不再补发泛化 `join-failed`（joinArena/addPlayer 全失败路径均已发精确原因）
+- **C5-02 min-players clamp**：`GameRulesMenu` 的 min-players setter 补 `Math.min(20, Math.max(1, v))`（Shift 聊天输入 NaN/0/大数不再直达 setter）
+
+### Docs（2026-10-14 — F8 文案与文档收尾）
+
+- README.md / README-EN.md 与 fix3 实际行为同步（第 4/5 步按钮实名、[重新扫描]/reloadnodes"扫描"废弃语义整段重写、节点"自动识别"改"手动注册且至少 1 个"、补 goto 回跳说明、补竞技场准入保护说明、部署收尾启用指引核对）
+- `CommandsDocumentGenerator` 对齐（权限表两处不存在节点改 `config.items`/`config.rules`、hammer 权限修正、控制台黑名单描述、补齐缺失命令条目——以 README 命令表为源）
+- 死键清理 14 个（`joined-game`/`left-game`/`join-queue`/`shop.usage`/`shop.reloaded`/`nodes.scan-*`(3)/`setup.not-in-progress`/`setup.btn-rescan`/`setup.btn-list-villagers`/`setup.btn-skip-shop`/`setup.must-be-in-arena-world`/`deploy.reloadnodes-scanning`）
+- deploy 系列"怪物生成点"旧语义改"玩家出生点"口径（`cmd/desc/menu-hint/addspawn-added/listspawns-empty/confirmclear-done` 六键，F-2 同源漏网键）
+- 删除键 1 个：`setup.already-done`（P2-7 后成为死键）
+
+### ⚠️ 升级提示（升级到 fix3 的服主必读）
+
+`LanguageManager` 加载规则是「JAR 为底、磁盘覆盖，**只补缺键**」。fix3 中**修改**的旧键在已有旧 `plugins/HilltopVillage/messages.yml` 的服务器上**不会自动更新**，需删掉这些键后 `/hilltop reloadconfig` 或重启才能看到新文案（新增键会自动补写）：
+
+- `setup.step1` · `setup.step4-nodes` · `setup.saved-exit` · `setup.enable-hint` · `setup.resuming`（F1 修改）
+- `arena-not-deployed` · `arena-not-deployed-hint`（F7 修改：加 `{0}` 占位符——**务必删除，否则占位符不显示且文案过时**）
+- `deploy.cmd-addspawn` · `deploy.desc-addspawn` · `deploy.menu-hint-addspawn` · `deploy.addspawn-added` · `deploy.listspawns-empty` · `deploy.confirmclear-done`（F8 修改：出生点语义）
+
+**删掉的 14 个死键**（在服务器 messages.yml 里也会残留但不影响运行，可不管）。竞技场世界准入保护为 fix3 新增行为：非成员无法用 /tp 等外部手段传送进入（管理员除外）。
+
+
 ## [1.0.9-SNAPSHOT-fix2] - 2026-10-12
 
 > 1.0.9 的第二个修复版：修复作者实测反馈的 F-1~F-7，并实现作者新提的 F-8（村民预览实体）与 F-9（第 3 步合并总览界面）。
