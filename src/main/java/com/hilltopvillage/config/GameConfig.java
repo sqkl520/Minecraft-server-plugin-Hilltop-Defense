@@ -132,11 +132,47 @@ public class GameConfig {
 
     // ---- 开局初始套装 (starter-kit, STORY-1.2) ----
     // 开局时向每名在场玩家发放的物品；enabled=false 时不发放
+    // 默认与 game-settings.yml 模板保持一致：石剑 + 皮革四件套（D-2 决策）+ 面包/火把
     private boolean starterKitEnabled = true;
-    private List<StarterKitItem> starterKitItems = new ArrayList<>(Arrays.asList(
-            new StarterKitItem(Material.STONE_SWORD, 1),
-            new StarterKitItem(Material.BREAD, 16),
-            new StarterKitItem(Material.TORCH, 8)));
+    private List<StarterKitItem> starterKitItems = defaultStarterKitItems();
+
+    /** 新默认套装（装备线轮起：石剑 + 皮革四件套 + 面包x16 + 火把x8，与 game-settings.yml 模板一致）。 */
+    public static List<StarterKitItem> defaultStarterKitItems() {
+        return new ArrayList<>(Arrays.asList(
+                new StarterKitItem(Material.STONE_SWORD, 1),
+                new StarterKitItem(Material.LEATHER_HELMET, 1),
+                new StarterKitItem(Material.LEATHER_CHESTPLATE, 1),
+                new StarterKitItem(Material.LEATHER_LEGGINGS, 1),
+                new StarterKitItem(Material.LEATHER_BOOTS, 1),
+                new StarterKitItem(Material.BREAD, 16),
+                new StarterKitItem(Material.TORCH, 8)));
+    }
+
+    /**
+     * 装备线上线前的旧默认套装（石剑 + 面包x16 + 火把x8，1.0.9-fix4 及更早的出厂值）。
+     * 升级归一化用：见 {@link #isLegacyDefaultStarterKit}。
+     */
+    public static List<StarterKitItem> legacyDefaultStarterKitItems() {
+        return new ArrayList<>(Arrays.asList(
+                new StarterKitItem(Material.STONE_SWORD, 1),
+                new StarterKitItem(Material.BREAD, 16),
+                new StarterKitItem(Material.TORCH, 8)));
+    }
+
+    /**
+     * 是否为「旧默认套装」：逐项 material+amount 全等（顺序敏感）。
+     *
+     * <p>与 {@code LEGACY_WAVE_TIMEOUT_SECONDS} 同款升级归一化：存量服务器的
+     * {@code game-settings.yml} 磁盘上仍是旧默认列表（配置文件不会被升级覆盖，
+     * 且磁盘列表优先于代码默认），若直接沿用，皮革四件套在升级后永远不会发放。
+     * ConfigManager 在加载与外部合并时，把恰好等于此列表的值升级为新默认
+     * （追加皮革四件套）；服主改过任意一项（含顺序/数量）则原样保留——
+     * 代价是「服主恰好手写过逐字相同的旧默认」也会被一并升级，这是有意的取舍
+     * （旧默认正是出厂值本身，且升级收益远大于该边界）。</p>
+     */
+    public static boolean isLegacyDefaultStarterKit(List<StarterKitItem> parsed) {
+        return parsed != null && parsed.equals(legacyDefaultStarterKitItems());
+    }
 
     // ---- 烈焰蛋 (Fireball) 配置 ----
     private Material fireballMaterial = Material.FIRE_CHARGE;
@@ -159,16 +195,25 @@ public class GameConfig {
         MonsterConfig beetle = new MonsterConfig(Material.CAVE_SPIDER_SPAWN_EGG, 40, 0.3, 1.0,
                 "", 3.0, 0, 0, 0);
         beetle.setEntityType(EntityType.CAVE_SPIDER);
+        // 按怪种掉落（E2 作者拍板）：甲虫 1 个
+        beetle.setDropMin(1);
+        beetle.setDropMax(1);
         monsters.put("explode-beetle", beetle);
 
         MonsterConfig hunter = new MonsterConfig(Material.SKELETON_SPAWN_EGG, 60, 0.25, 1.8,
                 "", 0, 60, 40, 8);
         hunter.setEntityType(EntityType.SKELETON);
+        // 按怪种掉落（E2）：钩爪猎手 1~2 个
+        hunter.setDropMin(1);
+        hunter.setDropMax(2);
         monsters.put("hook-claw-hunter", hunter);
 
         MonsterConfig dropper = new MonsterConfig(Material.PHANTOM_SPAWN_EGG, 80, 0.3, 0,
                 "", 0, 160, 3, 10);
         dropper.setEntityType(EntityType.PHANTOM);
+        // 按怪种掉落（E2）：飞行抛投者 2~3 个（飞在 +8 高度最难打，打难打的怪更值钱）
+        dropper.setDropMin(2);
+        dropper.setDropMax(3);
         monsters.put("flying-dropper", dropper);
 
         defaultWave = new WaveConfig(10, new LinkedHashMap<>());
@@ -237,6 +282,11 @@ public class GameConfig {
         private int airdropMobCount;          // 每次空投怪物数量
         private int airdropIntervalTicks;     // 空投间隔 tick 数
         private String airdropMobType;        // 空投怪物类型
+
+        // 按怪种掉落（E2，2026-10-17 作者拍板）：该怪种被击杀时的货币掉落区间覆盖。
+        // -1 = 未配置（端点级回退：某端 <0 时该端用全局 shop.currency-drop-min/max 对应端）。
+        private int dropMin = -1;             // 每杀掉落货币数量下限（-1 = 未配置）
+        private int dropMax = -1;             // 每杀掉落货币数量上限（-1 = 未配置）
 
         /**
          * 创建一个完整的怪物配置对象。
@@ -324,6 +374,12 @@ public class GameConfig {
         public void setAirdropMobType(String v) { this.airdropMobType = v; }
         public int getAirdropIntervalTicks() { return airdropIntervalTicks; }
         public void setAirdropIntervalTicks(int v) { this.airdropIntervalTicks = v; }
+        /** 该怪种掉落货币数量下限（{@code <0} = 未配置，回退全局 shop.currency-drop-min） */
+        public int getDropMin() { return dropMin; }
+        public void setDropMin(int v) { this.dropMin = v; }
+        /** 该怪种掉落货币数量上限（{@code <0} = 未配置，回退全局 shop.currency-drop-max） */
+        public int getDropMax() { return dropMax; }
+        public void setDropMax(int v) { this.dropMax = v; }
 
         /**
          * 返回当前怪物配置的完整深拷贝，与原实例字段完全独立。
@@ -347,6 +403,8 @@ public class GameConfig {
             c.airdropMobType = this.airdropMobType;
             c.airdropIntervalTicks = this.airdropIntervalTicks;
             c.entityExplosion = this.entityExplosion;
+            c.dropMin = this.dropMin;
+            c.dropMax = this.dropMax;
             return c;
         }
 
@@ -374,6 +432,8 @@ public class GameConfig {
                     && boots == other.boots
                     && entityExplosion == other.entityExplosion
                     && airdropIntervalTicks == other.airdropIntervalTicks
+                    && dropMin == other.dropMin
+                    && dropMax == other.dropMax
                     && Objects.equals(displayName, other.displayName)
                     && Objects.equals(itemsAdderId, other.itemsAdderId)
                     && Objects.equals(airdropMobType, other.airdropMobType);
@@ -385,7 +445,7 @@ public class GameConfig {
                     explodeDamageMultiplier, cooldownTicks, stunDurationTicks, airdropMobCount,
                     entityType, baseDamage, itemsAdderId, customModelData, mainHandItem, offHandItem,
                     helmet, chestplate, leggings, boots, entityExplosion, airdropMobType,
-                    airdropIntervalTicks);
+                    airdropIntervalTicks, dropMin, dropMax);
         }
     }
 

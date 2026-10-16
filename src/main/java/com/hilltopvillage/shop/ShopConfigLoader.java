@@ -20,7 +20,7 @@ public class ShopConfigLoader {
 
     /** 合法商品类型 */
     private static final Set<String> VALID_TYPES = new HashSet<>(
-            Arrays.asList("HAMMER", "FIREBALL", "REPAIR_ITEM", "MATERIAL"));
+            Arrays.asList("HAMMER", "FIREBALL", "REPAIR_ITEM", "MATERIAL", "EQUIPMENT"));
 
     /** GUI 允许的尺寸（Bukkit 箱子行数：9/18/27/36/45/54） */
     private static final List<Integer> VALID_GUI_SIZES = Arrays.asList(9, 18, 27, 36, 45, 54);
@@ -94,11 +94,12 @@ public class ShopConfigLoader {
         String type = yaml.getString(path + ".type", "");
         if (!VALID_TYPES.contains(type)) {
             plugin.getLogger().warning("shop.yml: item '" + id + "' has unknown type '" + type
-                    + "' (valid: HAMMER/FIREBALL/REPAIR_ITEM/MATERIAL), skipped");
+                    + "' (valid: HAMMER/FIREBALL/REPAIR_ITEM/MATERIAL/EQUIPMENT), skipped");
             return null;
         }
 
         Material icon = Material.BARRIER;
+        boolean iconConfigured = false;
         String iconMatStr = yaml.getString(path + ".icon.material");
         if (iconMatStr != null && !iconMatStr.isEmpty()) {
             Material parsed = Material.getMaterial(iconMatStr);
@@ -108,6 +109,19 @@ public class ShopConfigLoader {
                 return null;
             }
             icon = parsed;
+            iconConfigured = true;
+        }
+        // EQUIPMENT 的发货材质 = icon.material（GUI 图标同）：缺省 BARRIER 会发出屏障方块，
+        // 属明确误配，直接 skip 而不是静默发错东西
+        if ("EQUIPMENT".equals(type) && !iconConfigured) {
+            plugin.getLogger().warning("shop.yml: EQUIPMENT item '" + id
+                    + "' is missing icon.material (delivery material), skipped");
+            return null;
+        }
+        if ("EQUIPMENT".equals(type) && !icon.isItem()) {
+            plugin.getLogger().warning("shop.yml: EQUIPMENT item '" + id + "' icon material '"
+                    + icon.name() + "' is not a carryable item, skipped");
+            return null;
         }
 
         int slot = yaml.getInt(path + ".slot", -1);
@@ -137,7 +151,10 @@ public class ShopConfigLoader {
             lore = null;
         }
 
-        return new ShopItem(id, slot, price, type, amount, icon, name, lore);
+        // 是否不可破坏（仅 EQUIPMENT 生效；不配置 = 普通耐久）
+        boolean unbreakable = yaml.getBoolean(path + ".unbreakable", false);
+
+        return new ShopItem(id, slot, price, type, amount, icon, name, lore, unbreakable);
     }
 
     /** GUI 尺寸校验：合法值原样返回；非法值钳制到不超过原值的最大档（全小则 9）并 warning */

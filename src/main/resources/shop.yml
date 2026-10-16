@@ -16,16 +16,48 @@ shop:
   gui:
     # GUI 标题（支持颜色码 &；留空则使用语言文件的 shop.gui.title）
     title: ""
-    size: 27
+    # 尺寸（9 的倍数，最大 54；54 = 6 行，本轮新增装备线后使用）
+    size: 54
   # 商品列表（key = 商品 ID）
   # type 可选值:
   #   HAMMER      = 神圣重锤（无视 amount，固定 1 个）
   #   FIREBALL    = 烈焰蛋（amount = 一次购买给的数量）
   #   REPAIR_ITEM = 世界树汁液（amount = 一次购买给的数量）
   #   MATERIAL    = 任意原版物品（按 icon.material 给 amount 个）
+  #   EQUIPMENT   = 装备（按 icon.material 发 1 件；name/lore 会写到发到手里的
+  #                 物品上；可选 unbreakable: true 标记不可破坏，不配 = 普通耐久）
+  #
+  # 54 格推荐排布（可自由修改，slot 0-53）：
+  #   第 1 行 (0-8)   工具 / 消耗品区
+  #   第 2 行 (9-17)  武器区（石剑开局赠送，不入店）
+  #   第 3 行 (18-26) 预留扩展
+  #   第 4 行 (27-35) 铁甲区
+  #   第 5 行 (36-44) 钻石甲区
+  #   第 6 行 (45-53) 预留扩展
   items:
+    # ==================== 工具 / 消耗品 ====================
+    bow:
+      slot: 0
+      price: 15
+      type: MATERIAL
+      icon:
+        material: BOW
+      name: "&f弓"
+      lore:
+        - "&7远程射击——专治飞在天上的抛投者"
+        - "&7箭需另行购买"
+    arrow:
+      slot: 2
+      price: 2
+      amount: 8
+      type: MATERIAL
+      icon:
+        material: ARROW
+      name: "&f箭 &7x8"
+      lore:
+        - "&7弓的弹药，一次购买 8 支"
     sacred_hammer:
-      slot: 10
+      slot: 4
       price: 5
       type: HAMMER
       icon:
@@ -35,7 +67,7 @@ shop:
         - "&7右键腾空蓄力，落地猛击"
         - "&7高度越高伤害越强"
     blaze_fireball:
-      slot: 12
+      slot: 6
       price: 3
       amount: 8
       type: FIREBALL
@@ -46,7 +78,7 @@ shop:
         - "&7右键投掷，命中爆炸"
         - "&7范围伤害 + 击退"
     world_tree_sap:
-      slot: 14
+      slot: 8
       price: 2
       amount: 4
       type: REPAIR_ITEM
@@ -56,3 +88,106 @@ shop:
       lore:
         - "&7右键修复失活的能量节点"
         - "&7每个恢复 50 点生命"
+    # ==================== 武器线 ====================
+    # 石剑开局赠送（starter-kit），本线从铁剑起售；全部白板（无附魔）
+    iron_sword:
+      slot: 11
+      price: 8
+      type: EQUIPMENT
+      icon:
+        material: IRON_SWORD
+      name: "&f铁剑"
+      lore:
+        - "&7比石剑更能打——第一件升级武器"
+    diamond_sword:
+      slot: 13
+      price: 25
+      type: EQUIPMENT
+      icon:
+        material: DIAMOND_SWORD
+      name: "&b钻石剑"
+      lore:
+        - "&7锋利持久，中期主力武器"
+    netherite_sword:
+      slot: 15
+      price: 48
+      type: EQUIPMENT
+      icon:
+        material: NETHERITE_SWORD
+      name: "&5下界合金剑"
+      lore:
+        - "&7全村最强的剑——后期攒钱目标"
+    # ==================== 护甲线（散件按件卖） ====================
+    # 皮革套开局赠送（starter-kit），本线从铁套起售
+    iron_helmet:
+      slot: 28
+      price: 6
+      type: EQUIPMENT
+      icon:
+        material: IRON_HELMET
+      name: "&f铁头盔"
+      lore:
+        - "&7铁套部件——比皮革硬得多"
+    iron_chestplate:
+      slot: 30
+      price: 6
+      type: EQUIPMENT
+      icon:
+        material: IRON_CHESTPLATE
+      name: "&f铁胸甲"
+      lore:
+        - "&7铁套部件——比皮革硬得多"
+    iron_leggings:
+      slot: 32
+      price: 6
+      type: EQUIPMENT
+      icon:
+        material: IRON_LEGGINGS
+      name: "&f铁护腿"
+      lore:
+        - "&7铁套部件——比皮革硬得多"
+    iron_boots:
+      slot: 34
+      price: 6
+      type: EQUIPMENT
+      icon:
+        material: IRON_BOOTS
+      name: "&f铁靴子"
+      lore:
+        - "&7铁套部件——比皮革硬得多"
+    diamond_helmet:
+      slot: 37
+      price: 14
+      type: EQUIPMENT
+      icon:
+        material: DIAMOND_HELMET
+      name: "&b钻石头盔"
+      lore:
+        - "&7钻石套部件——站场能力质变"
+    diamond_chestplate:
+      slot: 39
+      price: 14
+      type: EQUIPMENT
+      icon:
+        material: DIAMOND_CHESTPLATE
+      name: "&b钻石胸甲"
+      lore:
+        - "&7钻石套部件——站场能力质变"
+    diamond_leggings:
+      slot: 41
+      price: 14
+      type: EQUIPMENT
+      icon:
+        material: DIAMOND_LEGGINGS
+      name: "&b钻石护腿"
+      lore:
+        - "&7钻石套部件——站场能力质变"
+    diamond_boots:
+      slot: 43
+      price: 14
+      type: EQUIPMENT
+      icon:
+        material: DIAMOND_BOOTS
+      name: "&b钻石靴子"
+      lore:
+        - "&7钻石套部件——站场能力质变"

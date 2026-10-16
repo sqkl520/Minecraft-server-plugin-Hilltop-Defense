@@ -170,9 +170,17 @@ starter-kit:
   # 总开关：false = 开局不发放任何物品
   enabled: true
   # 物品列表：每项 material（原版 Material 名）+ amount（数量，超单叠上限自动拆叠）
-  # 默认：石剑 + 面包x16 + 火把x8（烈焰蛋/任务锤默认不给，需在商店购买）
+  # 默认：石剑 + 皮革四件套 + 面包x16 + 火把x8（烈焰蛋/任务锤默认不给，需在商店购买）
   items:
     - material: STONE_SWORD
+      amount: 1
+    - material: LEATHER_HELMET
+      amount: 1
+    - material: LEATHER_CHESTPLATE
+      amount: 1
+    - material: LEATHER_LEGGINGS
+      amount: 1
+    - material: LEATHER_BOOTS
       amount: 1
     - material: BREAD
       amount: 16
@@ -200,6 +208,10 @@ spawning:
 # ============================================================
 #  特殊怪物属性 (Monsters)
 #  每个怪物的独立属性配置
+#  按怪种掉落（drop-min/drop-max，可选键）：该怪种击杀时掉落 [min,max] 区间内随机
+#  数量（含两端）。三特殊怪出厂带各自数值（见下）；其它怪种不写该两键 = 回退全局
+#  shop.currency-drop-min/max（默认 1~2）。任一端写 -1 = 该端回退全局值；写 0/0 =
+#  该怪种不掉币。空投小怪（抛投者空投出的僵尸）恒为 0，不受此表影响。
 # ============================================================
 monsters:
   # 自爆甲虫：靠近能量节点后自爆
@@ -216,6 +228,9 @@ monsters:
     cooldown-ticks: 0
     stun-duration-ticks: 0
     airdrop-mob-count: 0
+    # 掉落：1 个（量多好打，与抛投者拉开差距）
+    drop-min: 1
+    drop-max: 1
   # 钩爪猎手：远程射击将玩家拖拽到身边
   hook-claw-hunter:
     display-egg: SKELETON_SPAWN_EGG
@@ -228,6 +243,9 @@ monsters:
     cooldown-ticks: 60
     stun-duration-ticks: 40
     airdrop-mob-count: 8
+    # 掉落：1~2 个
+    drop-min: 1
+    drop-max: 2
   # 飞行抛投者：飞行中向地面空投小怪
   flying-dropper:
     display-egg: PHANTOM_SPAWN_EGG
@@ -240,6 +258,9 @@ monsters:
     cooldown-ticks: 160
     stun-duration-ticks: 3
     airdrop-mob-count: 10
+    # 掉落：2~3 个（飞在 +8 高度最难打，打难打的怪更值钱）
+    drop-min: 2
+    drop-max: 3
 
 # ============================================================
 #  波次配置 (Waves)

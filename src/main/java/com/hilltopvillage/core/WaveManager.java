@@ -47,6 +47,13 @@ public class WaveManager {
     /** PDC 标记：空投小怪（dropCurrency 据此跳过，避免挂机刷钱；见 {@link #markAirdropMob}） */
     private final NamespacedKey airdropKey;
     /**
+     * PDC 标记：怪种 id（monsters 配置键，如 {@code explode-beetle}）。
+     * 按怪种掉落（E2）据此识别 mob 种类查掉落表——不按 EntityType 反查
+     * （entity-type 可被管理员配置覆盖，且原版同类怪会混入）。
+     * 见 {@link #markMonsterId} / {@link #resolveMonsterConfig}。
+     */
+    private final NamespacedKey monsterIdKey;
+    /**
      * 「两套刷怪点均空 → 以核心为中心环形刷怪」（M-14 回退路径）的提示是否已记过。
      * 每波重置一次（{@link #spawnWave(int, Runnable)} 入口），使误配置可见但不会
      * 按 mob 数量刷屏（旧实现在该状态按 mob 打 severe，一波 80 只 = 80 行）。
@@ -73,6 +80,7 @@ public class WaveManager {
         this.activeMobs = ConcurrentHashMap.newKeySet();
         this.airdropTasks = ConcurrentHashMap.newKeySet();
         this.airdropKey = new NamespacedKey(gameManager.getPlugin(), "airdrop-mob");
+        this.monsterIdKey = new NamespacedKey(gameManager.getPlugin(), "monster-id");
         this.waveMobKey = new NamespacedKey(gameManager.getPlugin(), WAVE_MOB_KEY_NAME);
         this.random = new Random();
     }
@@ -442,10 +450,12 @@ public class WaveManager {
                     EntityType entityType = EntityType.valueOf(type.toUpperCase());
                     Entity entity = world.spawnEntity(location, entityType);
                     if (entity instanceof Mob mob) {
+                        markMonsterId(mob, type);
                         applyMonsterEquipment(mob, gameManager.getConfigManager().getActiveConfig()
                                 .getMonsters().get(type.toLowerCase()));
                         prepareWaveMob(mob);
                     } else if (entity instanceof LivingEntity living) {
+                        markMonsterId(living, type);
                         activeMobs.add(living);
                     }
                 } catch (IllegalArgumentException e) {
@@ -535,10 +545,14 @@ public class WaveManager {
         if (!(spawned instanceof Mob spider)) {
             gameManager.getPlugin().getLogger().warning("explode-beetle entity type " + entityType
                     + " is not a Mob, AI goals were not applied");
-            if (spawned instanceof LivingEntity living) activeMobs.add(living);
+            if (spawned instanceof LivingEntity living) {
+                markMonsterId(living, "explode-beetle");
+                activeMobs.add(living);
+            }
             return;
         }
         markWaveMobPersistent(spider);
+        markMonsterId(spider, "explode-beetle");
         double health = mc != null ? mc.getHealth() : 40.0;
         spider.getAttribute(Attribute.MAX_HEALTH).setBaseValue(health);
         spider.setHealth(health);
@@ -579,10 +593,14 @@ public class WaveManager {
         if (!(spawned instanceof Mob skeleton)) {
             gameManager.getPlugin().getLogger().warning("hook-claw-hunter entity type " + entityType
                     + " is not a Mob, AI goals were not applied");
-            if (spawned instanceof LivingEntity living) activeMobs.add(living);
+            if (spawned instanceof LivingEntity living) {
+                markMonsterId(living, "hook-claw-hunter");
+                activeMobs.add(living);
+            }
             return;
         }
         markWaveMobPersistent(skeleton);
+        markMonsterId(skeleton, "hook-claw-hunter");
         double health = mc != null ? mc.getHealth() : 60.0;
         skeleton.getAttribute(Attribute.MAX_HEALTH).setBaseValue(health);
         skeleton.setHealth(health);
@@ -628,10 +646,14 @@ public class WaveManager {
         if (!(spawned instanceof Mob phantom)) {
             gameManager.getPlugin().getLogger().warning("flying-dropper entity type " + entityType
                     + " is not a Mob, AI goals were not applied");
-            if (spawned instanceof LivingEntity living) activeMobs.add(living);
+            if (spawned instanceof LivingEntity living) {
+                markMonsterId(living, "flying-dropper");
+                activeMobs.add(living);
+            }
             return;
         }
         markWaveMobPersistent(phantom);
+        markMonsterId(phantom, "flying-dropper");
         // fix4 反馈2佐证：抛投者是「空投载具 + 骚扰者」的自定义单位，若保留幻翼原版的
         // 白天日光焚烧（实测日志：滞空良久后 burned to death），它在白天对局中会未完成
         // 空投就被烧死、完全失去功能。此处关闭日焚烧（仅对 Phantom 生效，entity-type
@@ -756,7 +778,9 @@ public class WaveManager {
     /**
      * 波次怪物死亡时掉落商店货币（能量水晶）。fix4 起由「概率制 + 固定数量」改为
      * <b>每杀必掉、数量浮动</b>：默认每次击杀掉落 {@code [shop.currency-drop-min, shop.currency-drop-max]}
-     * 个随机数（区间含两端）。{@code shop.currency-drop-chance} 保留为概率门
+     * 个随机数（区间含两端）；<b>E2 起按怪种区分</b>——怪物带怪种 id PDC 标记且有
+     * {@code monsters.<id>.drop-min/drop-max} 时优先用该怪的区间（端点缺省回退全局），
+     * 空投怪 0（反挂机规则）。{@code shop.currency-drop-chance} 保留为概率门
      * （默认 1.0 = 必掉；旧格式文件在加载时已迁移为必掉）。仅游戏进行中
      * （RUNNING / WAVE_INTERMISSION）掉落；ShopManager 未初始化时静默跳过。
      *
@@ -785,7 +809,7 @@ public class WaveManager {
         double chance = Math.min(1.0, Math.max(0.0, cfg.getCurrencyDropChance()));
         if (random.nextDouble() >= chance) return 0;
 
-        int amount = rollCurrencyDropAmount(cfg);
+        int amount = rollCurrencyDropAmount(cfg, mob);
         if (amount <= 0) return 0;
         mob.getLocation().getWorld().dropItemNaturally(
                 mob.getLocation(),
@@ -794,16 +818,27 @@ public class WaveManager {
     }
 
     /**
-     * 滚动本次掉落的货币数量：{@code [min, max]} 闭区间随机。
+     * 滚动本次掉落的货币数量（E2 按怪种区分）：
+     * <b>优先用该怪的 {@code drop-min}/{@code drop-max}</b>（端点级回退——某端未配置时
+     * 用全局 {@code shop.currency-drop-min/max} 对应端），无怪种标记（兜底路径的原版僵尸、
+     * 老存档残留怪等）或该怪配置不存在时整体回退全局区间。
      *
      * <p>两端各自钳到 {@code [0, 64]}（64 = 单堆上限：{@code ItemStack} 虽然只校验
      * amount > 0，但超上限堆会在拾取/背包操作时被拆分，钳制让掉落物始终是合法单堆）；
      * min > max 时按 {@code [max, min]} 修正顺序，配置写反不会让掉落任务抛
      * {@link IllegalArgumentException}（{@code nextInt} 要求参数为正）。</p>
      */
-    private int rollCurrencyDropAmount(GameConfig cfg) {
-        int min = Math.max(0, Math.min(64, cfg.getCurrencyDropMin()));
-        int max = Math.max(0, Math.min(64, cfg.getCurrencyDropMax()));
+    private int rollCurrencyDropAmount(GameConfig cfg, LivingEntity mob) {
+        int min = cfg.getCurrencyDropMin();
+        int max = cfg.getCurrencyDropMax();
+        // 怪种级覆盖：<0 = 未配置（GameConfig.MonsterConfig.dropMin/dropMax 的缺省哨兵）
+        GameConfig.MonsterConfig mc = resolveMonsterConfig(mob);
+        if (mc != null) {
+            if (mc.getDropMin() >= 0) min = mc.getDropMin();
+            if (mc.getDropMax() >= 0) max = mc.getDropMax();
+        }
+        min = Math.max(0, Math.min(64, min));
+        max = Math.max(0, Math.min(64, max));
         if (min > max) {
             int swap = min;
             min = max;
@@ -877,6 +912,27 @@ public class WaveManager {
     /** 是否为空投小怪（带 {@link #airdropKey} PDC 标记）。 */
     private boolean isAirdropMob(LivingEntity mob) {
         return mob != null && mob.getPersistentDataContainer().has(airdropKey, PersistentDataType.BYTE);
+    }
+
+    /**
+     * 给波次怪打上怪种 id PDC 标记（E2 按怪种掉落；值为 monsters 配置键如
+     * {@code explode-beetle}）。空投小怪不打此标记——它们由 {@link #isAirdropMob}
+     * 先行跳过掉落，且其种类可被 {@code airdrop-mob-type} 任意配置。
+     */
+    private void markMonsterId(LivingEntity mob, String monsterId) {
+        if (mob == null || monsterId == null) return;
+        mob.getPersistentDataContainer().set(monsterIdKey, PersistentDataType.STRING, monsterId.toLowerCase());
+    }
+
+    /**
+     * 读取 mob 的怪种配置（E2）：优先按怪种 id PDC 标记查 {@code monsters.<id>}；
+     * 无标记（兜底路径的原版僵尸 / 老存档残留怪等）返回 null，调用方回退全局值。
+     */
+    private GameConfig.MonsterConfig resolveMonsterConfig(LivingEntity mob) {
+        if (mob == null) return null;
+        String monsterId = mob.getPersistentDataContainer().get(monsterIdKey, PersistentDataType.STRING);
+        if (monsterId == null) return null;
+        return gameManager.getConfigManager().getActiveConfig().getMonsters().get(monsterId);
     }
 
     /**

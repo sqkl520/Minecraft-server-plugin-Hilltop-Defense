@@ -11,6 +11,9 @@ import org.bukkit.inventory.meta.ItemMeta;
 import org.bukkit.persistence.PersistentDataContainer;
 import org.bukkit.persistence.PersistentDataType;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * 村民商店管理器：配置生命周期 + 货币物品工厂 + 发货路由 + 背包货币统计/扣除。
  * 货币识别<b>只认 PDC 标记</b>（hilltopvillage:shop-currency），不做材质判定
@@ -97,7 +100,8 @@ public class ShopManager {
 
     /**
      * 按商品类型发货，返回待放入背包的 ItemStack（null = 类型异常）。
-     * HAMMER 固定 1 个（忽略 amount）；FIREBALL / REPAIR_ITEM / MATERIAL 按 amount。
+     * HAMMER 固定 1 个（忽略 amount）；FIREBALL / REPAIR_ITEM / MATERIAL 按 amount；
+     * EQUIPMENT 固定 1 个（发货材质 = icon.material，带 name/lore/unbreakable）。
      */
     public ItemStack deliverItem(ShopItem item, Player player) {
         if (item == null) return null;
@@ -112,11 +116,50 @@ public class ShopManager {
                 return plugin.getNodeListener().createRepairItem(amount);
             case "MATERIAL":
                 return new ItemStack(item.getIcon(), amount);
+            case "EQUIPMENT":
+                return createEquipment(item);
             default:
                 plugin.getLogger().warning("Shop deliver: unknown item type '" + item.getType()
                         + "' for '" + item.getId() + "'");
                 return null;
         }
+    }
+
+    /**
+     * 构建 EQUIPMENT 发货物：图标材质即发货材质，固定 1 个。
+     *
+     * <p>与 MATERIAL 的关键差异：name / lore 不再只作 GUI 图标显示，而是原样
+     * 写入发到玩家手里的物品实体（均为空时保留原版外观；lore 一并作为物品
+     * lore——GUI 里追加的价格行由 {@code ShopGUI} 单独拼接，不会进入发货物）。
+     * {@code unbreakable: true} 时标记不可破坏（服主可选；不配 = 普通耐久）。</p>
+     *
+     * <p>本版不含附魔字段（附魔延后至下一版本，见设计文档 11.0b）。</p>
+     */
+    private ItemStack createEquipment(ShopItem item) {
+        ItemStack equipment = new ItemStack(item.getIcon(), 1);
+        ItemMeta meta = equipment.getItemMeta();
+        if (meta == null) {
+            // 理论上 item 材质必有 meta；防御性返回裸物品而不是 null（null 会让 ShopListener 走退款分支）
+            return equipment;
+        }
+
+        if (item.getName() != null && !item.getName().isEmpty()) {
+            meta.setDisplayName(ChatColor.translateAlternateColorCodes('&', item.getName()));
+        }
+        if (item.getLore() != null && !item.getLore().isEmpty()) {
+            List<String> loreLines = new ArrayList<>(item.getLore().size());
+            for (String line : item.getLore()) {
+                loreLines.add(ChatColor.translateAlternateColorCodes('&', line));
+            }
+            meta.setLore(loreLines);
+        }
+
+        if (item.isUnbreakable()) {
+            meta.setUnbreakable(true);
+        }
+
+        equipment.setItemMeta(meta);
+        return equipment;
     }
 
     /** 统计玩家背包中的货币数量（含副手槽，P2-28：与扣除口径保持读写同源） */

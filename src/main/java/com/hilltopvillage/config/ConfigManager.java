@@ -245,7 +245,21 @@ public class ConfigManager {
         if (disk.isList("starter-kit.items")
                 && Objects.equals(activeConfig.getStarterKitItems(), baseline.getStarterKitItems())) {
             // 与 loadFromFile 同语义：键存在即以磁盘为准（含显式空列表 = 清空套装）
-            activeConfig.setStarterKitItems(parseStarterKitItems(disk.getMapList("starter-kit.items")));
+            activeConfig.setStarterKitItems(normalizeStarterKitItems(parseStarterKitItems(disk.getMapList("starter-kit.items"))));
+        }
+        // E2 按怪种掉落（monsters.<key>.drop-min/drop-max）：无 GUI 编辑入口 → 白名单合并，
+        // 手改后经 GUI 保存不被内存旧值吞掉。逐个怪种按基线守卫比对（模式同上）。
+        for (Map.Entry<String, GameConfig.MonsterConfig> entry : activeConfig.getMonsters().entrySet()) {
+            GameConfig.MonsterConfig mc = entry.getValue();
+            GameConfig.MonsterConfig baseMc = baseline.getMonsters().get(entry.getKey());
+            if (mc == null || baseMc == null) continue;
+            String mpath = "monsters." + entry.getKey() + ".";
+            if (hasNumber(disk, mpath + "drop-min") && mc.getDropMin() == baseMc.getDropMin()) {
+                mc.setDropMin(disk.getInt(mpath + "drop-min"));
+            }
+            if (hasNumber(disk, mpath + "drop-max") && mc.getDropMax() == baseMc.getDropMax()) {
+                mc.setDropMax(disk.getInt(mpath + "drop-max"));
+            }
         }
     }
 
@@ -281,6 +295,25 @@ public class ConfigManager {
             parsedKit.add(new GameConfig.StarterKitItem(material, Math.max(1, amount)));
         }
         return parsedKit;
+    }
+
+    /**
+     * starter-kit 升级归一化（装备线轮）：磁盘列表恰好等于旧默认
+     * （石剑/面包/火把，见 {@link GameConfig#isLegacyDefaultStarterKit}）时
+     * 升级为新默认（追加皮革四件套，D-2 决策）。
+     *
+     * <p>与 {@code normalizeWaveTimeout} 同款先例：配置文件不会被版本升级覆盖，
+     * 且 starter-kit.items 键存在时磁盘值整体优先——不做归一化的话，存量服务器
+     * 升级后永远不会收到皮革套。服主改过列表（任意一项不同）则原样保留。
+     * 归一化只改内存值，随下一次 {@link #saveToFile()} 落盘。</p>
+     */
+    private List<GameConfig.StarterKitItem> normalizeStarterKitItems(List<GameConfig.StarterKitItem> parsed) {
+        if (GameConfig.isLegacyDefaultStarterKit(parsed)) {
+            plugin.getLogger().warning("检测到旧默认 starter-kit（石剑/面包/火把），已升级为新默认"
+                    + "（追加皮革四件套）");
+            return GameConfig.defaultStarterKitItems();
+        }
+        return parsed;
     }
 
     /**
@@ -429,6 +462,9 @@ public class ConfigManager {
             settingsYaml.set(path + "cooldown-ticks", mc.getCooldownTicks());
             settingsYaml.set(path + "stun-duration-ticks", mc.getStunDurationTicks());
             settingsYaml.set(path + "airdrop-mob-count", mc.getAirdropMobCount());
+            // E2 按怪种掉落：读有写有完整接线（-1 = 显式未配置走全局兜底，原样写回保往返一致）
+            settingsYaml.set(path + "drop-min", mc.getDropMin());
+            settingsYaml.set(path + "drop-max", mc.getDropMax());
         }
 
         settingsYaml.set("waves.default.total-mobs", activeConfig.getDefaultWave().getTotalMobs());
@@ -717,7 +753,7 @@ public class ConfigManager {
         // 否则旧配置文件（无 starter-kit 节）会被清空成空套装
         if (settingsYaml.isSet("starter-kit.items")) {
             List<GameConfig.StarterKitItem> parsedKit = parseStarterKitItems(settingsYaml.getMapList("starter-kit.items"));
-            activeConfig.setStarterKitItems(parsedKit);
+            activeConfig.setStarterKitItems(normalizeStarterKitItems(parsedKit));
         }
 
         ConfigurationSection monsterSection = settingsYaml.getConfigurationSection("monsters");
@@ -756,6 +792,9 @@ public class ConfigManager {
                 if (settingsYaml.contains("monsters." + key + ".stun-duration-ticks")) mc.setStunDurationTicks(settingsYaml.getInt("monsters." + key + ".stun-duration-ticks"));
                 if (settingsYaml.contains("monsters." + key + ".airdrop-mob-count")) mc.setAirdropMobCount(settingsYaml.getInt("monsters." + key + ".airdrop-mob-count"));
                 if (settingsYaml.contains("monsters." + key + ".airdrop-mob-type")) mc.setAirdropMobType(settingsYaml.getString("monsters." + key + ".airdrop-mob-type"));
+                // E2 按怪种掉落（可选键）：缺键保留 GameConfig 构造默认（特殊怪 = 作者掉落表值，其余 = -1 走全局兜底）
+                if (settingsYaml.contains("monsters." + key + ".drop-min")) mc.setDropMin(settingsYaml.getInt("monsters." + key + ".drop-min"));
+                if (settingsYaml.contains("monsters." + key + ".drop-max")) mc.setDropMax(settingsYaml.getInt("monsters." + key + ".drop-max"));
             }
         }
 
