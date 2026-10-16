@@ -17,14 +17,14 @@ A cooperative PvE tower defense plugin for Minecraft servers. Players must work 
 - **Death & Respawn** — Fallen players spectate until the next wave, then respawn at the core; impossible while no node is active
 - **Sacred Hammer** — Right-click to leap and charge a smash attack from above, dealing three-tier area damage + particle shockwaves + aftershock slowdown; supports ItemsAdder custom models; smashes have a cooldown (8s default) and a use limit (30 default, shatters when exhausted — buy a new one from the shop); smashing and node repair only work while a game is running
 - **Fireball** — BedWars-style Fireball: right-click to throw with flame particle trail, explodes on impact for area damage + knockback + ignite (zero damage to players — knockback only, no ignite; villagers fully exempt and no longer trigger proximity fuse); configurable cooldown
-- **Villager Shop** — Killing monsters drops Energy Crystals (configurable chance); right-click the shop villager to buy items; everything customizable in `shop.yml`
+- **Villager Shop** — Every wave-monster kill drops Energy Crystals (1–2 by default, amount range configurable); right-click the shop villager to buy items; everything customizable in `shop.yml`
 - **Special Monster AI** — Explode Beetle (rushes nodes to self-destruct; its entity explosion can be toggled off), Hook Claw Hunter (ranged hook grab + blindness), Flying Dropper (airdrops zombie squads); each supports armor/weapons/custom models
 
 **Architecture & Quality of Life**
 
 - **Multi-Arena Support** — A lobby plus multiple independent arena worlds, running concurrent matches without interference; players pick an arena via `/hilltop gui`
 - **Lobby System** — Everyone lands in the lobby on join; block break/place, damage, hunger and weather are blocked there; admins can lift protection with `/hilltop build`
-- **Sidebar Scoreboard** — Live wave progress, alive players, awaiting respawn, nodes, villagers and personal kills/deaths
+- **Sidebar Scoreboard** — Live wave progress, alive players, awaiting respawn, nodes, villagers, personal kills/deaths and crystals gained this match
 - **Player Stats & Leaderboards** — Win rate, K/D, best wave and more are persisted; `/hilltop stats` and `/hilltop top`
 - **Item Protection** — Inventory/XP/health saved on entering an arena and restored on leaving; snapshots are persisted to disk, so even a server crash won't lose them
 - **Reconnect Window** — Disconnecting mid-match keeps a 60-second (configurable) rejoin window
@@ -53,7 +53,7 @@ Energy nodes use **Respawn Anchor** blocks. Admins place multiple respawn anchor
 
 ## Shop System
 
-Killing wave monsters has a chance to drop **Energy Crystals** (currency; default 40% chance of 1, configurable via `shop.currency-drop-chance` / `shop.currency-drop-amount` in game-settings.yml). Walk up to the shop villager and **right-click** it to open the shop GUI; left-click an item icon to purchase.
+Every wave-monster kill **drops 1–2 Energy Crystals** (currency; the drop-chance gate `shop.currency-drop-chance` defaults to 1.0 = always drop, and the amount range is controlled by `shop.currency-drop-min` / `shop.currency-drop-max`, default 1–2 — all configurable in `game-settings.yml`). Airdropped zombies **never drop crystals** (anti-AFK design). The end-of-match battle report, the sidebar, `/hilltop stats` and `/hilltop top crystals` show your crystals gained this match / all time. Walk up to the shop villager and **right-click** it to open the shop GUI; left-click an item icon to purchase.
 
 **Economy loop**: monsters drop crystals → right-click the shop villager to buy items/World Tree Sap → right-click deactivated nodes with sap to repair → nodes resume buffing the defenders.
 
@@ -358,6 +358,8 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 | Disconnected mid-match | A **60-second** (configurable) rejoin window is kept; reconnecting returns you to the fight |
 | Rejoin window expired | Removed from the arena; the item snapshot stays on disk and is restored on your next login |
 
+> Want to leave mid-match? `/hilltop leave` returns you to the lobby; it works while spectating after death too (the spectate notice includes a clickable button).
+
 ### Scoreboard
 
 A sidebar appears automatically inside an arena:
@@ -371,6 +373,7 @@ A sidebar appears automatically inside an arena:
   Villagers: 6/8
   Your kills: 42
   Your deaths: 2
+  Crystals gained: 12
 ```
 
 Disable it with `scoreboard.enabled` in `game-settings.yml`.
@@ -386,7 +389,7 @@ Accumulated into `plugins/HilltopVillage/player-stats.yml` at the end of every m
 /hilltop top wins         # win leaderboard
 ```
 
-Leaderboard types: `kills` · `wins` · `games` · `best-wave` · `nodes` · `deaths`
+Leaderboard types: `kills` · `wins` · `games` · `best-wave` · `nodes` · `deaths` · `crystals`
 
 > Leaving mid-match still counts kills/deaths/node repairs, but **does not count as a win or loss**.
 
@@ -416,6 +419,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 - **Build mode**: admins can run `/hilltop build` to temporarily lift lobby protection for maintenance (run again to disable)
 - **Void protection**: falling out of the lobby world teleports you back to the lobby spawn
 - Lobby world and spawn are configured under `lobby.world` / `lobby.spawn` in `arenas.yml`
+- **Setting the lobby spawn**: an admin standing in the lobby world can run `/hilltop lobby setspawn` to save their current position (including facing) as the lobby spawn in `arenas.yml` — it **takes effect immediately**: new logins, lobby respawns and `/hilltop lobby` all use the new point, no restart needed
 
 ## Commands
 
@@ -427,15 +431,17 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop join [arena]` | Join an arena (auto-matches an available one if omitted) | ❌ |
 | `/hilltop leave` | Leave the current arena | ❌ |
 | `/hilltop gui` | Open the arena selection menu (with status and player counts) | ❌ |
-| `/hilltop lobby` | Return to the lobby | ❌ |
+| `/hilltop lobby` | Return to the lobby (sub-command `setspawn`: run it while standing in the lobby world to set the lobby spawn to your current position, effective immediately — Admin) | ❌ |
 | `/hilltop status [arena]` | View game status (wave/players/mobs/nodes/awaiting respawn) | ✅ |
 | `/hilltop stats [player]` | View your own or someone else's stats | ✅ (with a player name) |
-| `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths) | ✅ |
+| `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths/crystals) | ✅ |
 | `/hilltop hammer` | Get the Sacred Hammer (Admin; players buy from the shop) | ❌ |
 | `/hilltop fireball` | Get a Fireball (Admin; players buy from the shop) | ❌ |
 | `/hilltop lang <en\|zh>` | Switch language | ✅ |
 | `/hilltop start [arena]` | Start the game (Admin) | ✅ |
 | `/hilltop stop [arena]` | Force stop the game (Admin) | ✅ |
+| `/hilltop wave clear [arena]` | Force-clear all mobs of the current wave and finish it (enters intermission; cleared mobs produce no drops and don't count as kills) (Admin, `hilltopvillage.admin`) | ✅ |
+| `/hilltop wave skip [arena]` | Skip the intermission and start the next wave now (while RUNNING it equals clear-wave + skip in one step; refused without judging a loss if there aren't enough players) (Admin, `hilltopvillage.admin`) | ✅ |
 | `/hilltop help` | Show command help (Admin) | ✅ |
 | `/hilltop list` | List all arenas | ✅ |
 | `/hilltop arenas` | Detailed arena status (Admin) | ✅ |
@@ -447,7 +453,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop config` | Open config center GUI (Admin) | ❌ |
 | `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) | ✅ |
 | `/hilltop shop reload` | Reload villager shop config (Admin) | ✅ |
-| `/hilltop shop give <player> [amount]` | Give shop currency (Energy Crystals; default 1, max 6400) to an online player (Admin) | ✅ |
+| `/hilltop shop give <player> [amount]` | Give shop currency (Energy Crystals; default 1, max 6400) to an online player (Admin; works in any world, including the lobby) | ✅ |
 | `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) | ❌ |
 | `/hilltop tps` | TPS/MSPT diagnostics (Admin) | ✅ |
 
@@ -585,7 +591,7 @@ min-players: 2                   # players required to start (only applies to ar
 max-players: 6                   # max players per match
 victory-waves: 20                # waves needed to win
 wave-interval-seconds: 30        # rest time between waves
-wave-timeout-seconds: 120        # stall safeguard: if a wave stalls, stuck mobs are pulled to players and highlighted, then force-cleared after a 15s grace, 0=disable
+wave-timeout-seconds: 0          # wave-timeout safeguard: off by default (0); handle abnormal situations manually with /hilltop wave clear or wave skip. Set it back to a positive value (e.g. 120) to re-enable the automatic safeguard (stuck mobs pulled to players + highlighted, then force-cleared after a 15s grace)
 
 # Added in phases 1-3
 defeat-countdown-seconds: 20     # time from battle report to teleport back to lobby
