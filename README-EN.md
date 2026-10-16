@@ -17,7 +17,7 @@ A cooperative PvE tower defense plugin for Minecraft servers. Players must work 
 - **Death & Respawn** — Fallen players spectate until the next wave, then respawn at the core; impossible while no node is active
 - **Sacred Hammer** — Right-click to leap and charge a smash attack from above, dealing three-tier area damage + particle shockwaves + aftershock slowdown; supports ItemsAdder custom models; smashes have a cooldown (8s default) and a use limit (30 default, shatters when exhausted — buy a new one from the shop); smashing and node repair only work while a game is running
 - **Fireball** — BedWars-style Fireball: right-click to throw with flame particle trail, explodes on impact for area damage + knockback + ignite (zero damage to players — knockback only, no ignite; villagers fully exempt and no longer trigger proximity fuse); configurable cooldown
-- **Villager Shop** — Every wave-monster kill drops Energy Crystals (1–2 by default, amount range configurable); right-click the shop villager to buy items; everything customizable in `shop.yml`
+- **Villager Shop** — Every wave-monster kill drops Energy Crystals (1–2 by default, amount range configurable, and varies by monster type — tougher monsters are worth more); right-click the shop villager to buy items; everything customizable in `shop.yml`; equipment progression line: Iron Sword → Diamond Sword → Netherite Sword, plus iron/diamond armor pieces (leather armor granted at match start)
 - **Special Monster AI** — Explode Beetle (rushes nodes to self-destruct; its entity explosion can be toggled off), Hook Claw Hunter (ranged hook grab + blindness), Flying Dropper (airdrops zombie squads); each supports armor/weapons/custom models
 
 **Architecture & Quality of Life**
@@ -53,7 +53,7 @@ Energy nodes use **Respawn Anchor** blocks. Admins place multiple respawn anchor
 
 ## Shop System
 
-Every wave-monster kill **drops 1–2 Energy Crystals** (currency; the drop-chance gate `shop.currency-drop-chance` defaults to 1.0 = always drop, and the amount range is controlled by `shop.currency-drop-min` / `shop.currency-drop-max`, default 1–2 — all configurable in `game-settings.yml`). Airdropped zombies **never drop crystals** (anti-AFK design). The end-of-match battle report, the sidebar, `/hilltop stats` and `/hilltop top crystals` show your crystals gained this match / all time. Walk up to the shop villager and **right-click** it to open the shop GUI; left-click an item icon to purchase.
+Every wave-monster kill **drops 1–2 Energy Crystals** (currency; the drop-chance gate `shop.currency-drop-chance` defaults to 1.0 = always drop, and the amount range is controlled by `shop.currency-drop-min` / `shop.currency-drop-max`, default 1–2 — all configurable in `game-settings.yml`). Airdropped zombies **never drop crystals** (anti-AFK design). **Drops vary by monster type**: Explode Beetle 1, Hook Claw Hunter 1–2, Flying Dropper 2–3 (the harder the monster, the more it's worth) — configure `drop-min` / `drop-max` per monster in the `monsters` section of `game-settings.yml` (`-1` falls back to the global value, `0/0` means that monster drops nothing). The end-of-match battle report, the sidebar, `/hilltop stats` and `/hilltop top crystals` show your crystals gained this match / all time. Walk up to the shop villager and **right-click** it to open the shop GUI; left-click an item icon to purchase.
 
 **Economy loop**: monsters drop crystals → right-click the shop villager to buy items/World Tree Sap → right-click deactivated nodes with sap to repair → nodes resume buffing the defenders.
 
@@ -68,6 +68,8 @@ Every wave-monster kill **drops 1–2 Energy Crystals** (currency; the drop-chan
 
 **Custom items in shop.yml** (`plugins/HilltopVillage/shop.yml`):
 
+The shop ships with 16 items by default (54-slot GUI, laid out in sections): Tools/Consumables (Sacred Hammer 5 / Fireball x8 3 / World Tree Sap x4 2 / **Bow 15 / Arrows x8 2** — the new bow line fills the gap of having no ranged option against the flying Dropper), Weapons (**Iron Sword 8 / Diamond Sword 25 / Netherite Sword 48**), and Armor (**iron pieces 6 each / diamond pieces 14 each**, sold piece by piece). All equipment is **vanilla blank** (no enchantments — enchanting is planned for the next version). **A leather armor set is granted automatically at match start** (alongside the stone sword/bread/torches — see the `starter-kit` section of `game-settings.yml`).
+
 ```yaml
 shop:
   currency:
@@ -77,24 +79,37 @@ shop:
     name: "&6Shop Villager" # NPC overhead name
   gui:
     title: "&8Village Shop" # GUI title (empty = language file shop.gui.title)
-    size: 27               # GUI size (9/18/27/45/54)
+    size: 54               # GUI size (multiple of 9, max 54; default 54 = 6 rows)
   items:
     sacred_hammer:
       slot: 10             # GUI slot (0 ~ size-1)
       price: 5             # price in Energy Crystals
-      type: HAMMER         # HAMMER / FIREBALL / REPAIR_ITEM / MATERIAL
+      type: HAMMER         # HAMMER / FIREBALL / REPAIR_ITEM / MATERIAL / EQUIPMENT
       amount: 1            # quantity per purchase (HAMMER always 1, ignored)
       icon:
         material: NETHERITE_AXE
       name: "&6Sacred Hammer" # display name (color codes supported)
       lore:                # lore lines (price line appended automatically)
         - "&7Right-click air to charge, land to smash"
+    iron_sword:
+      slot: 11             # equipment item example
+      price: 8
+      type: EQUIPMENT      # equipment: delivers 1 item of icon.material
+      icon:
+        material: IRON_SWORD # EQUIPMENT: required — both the icon and the delivered item material
+      name: "&fIron Sword" # name/lore are written onto the item the player receives
+      lore:
+        - "&7Hits harder than stone — your first weapon upgrade"
+      unbreakable: false   # optional: true = unbreakable (omit for normal durability)
 ```
 
-- `type` values: `HAMMER` (Sacred Hammer, always 1 regardless of amount) / `FIREBALL` / `REPAIR_ITEM` (World Tree Sap) / `MATERIAL` (any vanilla item, gives `amount` of `icon.material`)
+- Every item entry, price, name and durability is customizable in `shop.yml` — **server owners can freely add/remove items and change prices or slots**
+- `type` values: `HAMMER` (Sacred Hammer, always 1 regardless of amount) / `FIREBALL` / `REPAIR_ITEM` (World Tree Sap) / `MATERIAL` (any vanilla item, gives `amount` of `icon.material`) / `EQUIPMENT` (delivers 1 item of `icon.material`; `icon.material` is **required** = the delivered item material, `name` / `lore` are optional but are written onto the delivered item, `unbreakable` optional = unbreakable)
 - Run `/hilltop shop reload` (admin) after editing — no restart needed
 - Anti-exploit: all clicks and drags inside the shop GUI are cancelled (icons can't be taken), and purchases have a 250ms cooldown against double-click double-charging
 - Currency anti-spoofing: Energy Crystals are identified by an item PDC tag, so **renaming a plain emerald to the currency name with an anvil/name tag will NOT count as money**. To hand out currency manually, use `/hilltop shop give <player> [amount]` (emeralds from vanilla `/give` lack the tag and are not accepted)
+
+> **Upgrade note for existing servers**: `shop.yml` uses "**file exists = template not released**" — after upgrading, if the server already has an old `shop.yml`, the **new items (bow/arrows/swords/armor) will NOT appear automatically**. Update the server's `shop.yml` with the new template (manually add the item entries, or back up and delete the old file to let it regenerate and then re-apply your customizations), then run `/hilltop shop reload`.
 
 
 ## Deployment Guide (Server Owner Guide)
@@ -628,10 +643,19 @@ spawning:
 ```
 
 # Starter kit (granted to every player on match start; overflow drops at their feet)
+# Default: stone sword + full leather armor set + bread x16 + torches x8
 starter-kit:
   enabled: true                  # master switch: false = grant nothing
   items:                         # material = vanilla Material name, amount = count
     - material: STONE_SWORD
+      amount: 1
+    - material: LEATHER_HELMET   # full leather set granted at match start
+      amount: 1
+    - material: LEATHER_CHESTPLATE
+      amount: 1
+    - material: LEATHER_LEGGINGS
+      amount: 1
+    - material: LEATHER_BOOTS
       amount: 1
     - material: BREAD
       amount: 16
