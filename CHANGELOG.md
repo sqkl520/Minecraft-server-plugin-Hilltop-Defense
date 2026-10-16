@@ -1,6 +1,40 @@
 # Changelog
 
 
+## [1.1.0-SNAPSHOT] - 2026-10-17
+
+> 首个 Minor 版本：装备成长线（作者拍板"弓+箭做、附魔下版本再加"）+ 怪种掉落表 + 商店 GUI 扩容。
+> 设计依据：`docs/03-analysis/equipment-economy-design-2026-10-15.md`（11.0 节十项决策终表）。
+> 原 `1.0.9-SNAPSHOT` / `-fix1` / `-fix2` / `-fix3` / `-fix4` 的包与 GitHub Release 保留不动。
+
+### Added（2026-10-17 — 装备成长线（E1））
+
+- **新增 `EQUIPMENT` 商店商品 type（服主自定义装备的载体）**：字段设计——`icon.material`（**必填**，即发货材质，缺失/非物品则跳过并 warning）、`name`（可选，`&` 颜色码，写到发货物上）、`lore`（可选，写道具实体上；GUI 价格行不写入发货物）、`unbreakable`（可选 boolean，默认 false = 普通耐久）。发货固定 1 件（读到 `new ItemStack(icon, 1)` + displayName + lore + unbreakable）。**本版不含附魔字段**（作者决策：附魔下一版本再加，届时旧配置零迁移）
+- **商店商品扩充至 16 件**（`shop.yml`，slot 唯一性已校验；原有 3 件商品内容保留、slot 重排至首行居中）：
+  - 工具区：神圣重锤 5 / 烈焰蛋×8 3 / 世界树汁液×4 2 / **弓 15 / 箭×8 2**（弓+箭为作者拍板新增——弥补"除烈焰蛋外无手段够到 +8 高度飞行抛投者"的缺口）
+  - 武器区（白板，无附魔）：**铁剑 8 / 钻石剑 25 / 下界合金剑 48**（铁剑定价 8 = 打完第 1 波的保底收入，第一件升级即买即得；4 档设计依据：作者明确"以后会不止 20 波"）
+  - 护甲区（白板散件）：**铁套 4 件各 6 / 钻石套 4 件各 14**
+- **开局赠送皮革四件套**：`starter-kit.items` 在原 石剑/面包/火把 基础上加入 LEATHER_HELMET/CHESTPLATE/LEGGINGS/BOOTS 各 1（作者拍板：皮革套默认发放不入商店；**未来职业系统将以皮革套颜色区分**——本版留待职业版本，无相关代码）
+- **商店 GUI 扩至 54 格**（`shop.yml` 的 `gui.size: 27 → 54`），单页分区（工具/武器/护甲），不做二级菜单
+- **升级归一化（starter-kit）**：磁盘列表逐项等于旧默认（石剑/面包/火把）时自动升级为含皮革套的新默认；服主改过则原样保留（模式同 fix4 的 `wave-timeout` 归一化）
+- **全部商品可服主自定义**：条目/价格/名称/lore/耐久均在 `shop.yml`，`/hilltop shop reload` 生效（E1 硬要求"服主可自定义售卖装备"）
+
+### Added（2026-10-17 — 怪种掉落表（E2））
+
+- **能量水晶掉落按怪种区分**（作者拍板"打难打的怪更值钱"）：甲虫 1 / 钩爪猎手 1~2 / 飞行抛投者 2~3 / 空投僵尸 0（反挂机规则原样保留）/ 未配置的怪回退全局 `shop.currency-drop-min/max`（1~2）
+- **配置**：`game-settings.yml` 的 `monsters.<id>` 段新增可选键 `drop-min`/`drop-max`（`-1` = 该端未配置、回退全局对应端；写 `0/0` = 该怪不掉）；GameConfig 构造为三特殊怪播种默认值（升级老存档缺键同样生效）
+- **怪种识别**：新增 PDC 标记 `hilltopvillage:monster-id`（在三个专属 spawn 方法与 spawnCustomMob 的 default 分支打标）——**不用实体类型反查**（管理员可自定义 entity-type、原版同类怪会混入，实体类型不可靠）；`dropCurrency` 经 PDC → monsters 配置查表
+- **五处同步**：`MonsterConfig` 的字段/getter+setter/`copy()`/`equals()`/`hashCode()` 全部同步（fix3 P2-31 纪律）；`ConfigManager` 的 load（contains 守卫）/ saveToFile（读有写有）/ `mergeExternalChanges`（逐怪种白名单——防手改掉落被 GUI 保存吞掉，模式同 `shop.currency-drop-*`）
+- 零新 i18n 键（掉落无播报）
+
+### ⚠️ 升级提示（升级到 1.1.0 的服主必读）
+
+- **`shop.yml` 需手动更新**：商店配置是"文件存在即不释放模板"——**新商品（装备/弓/箭）不会自动出现**。用新版模板替换服务器的 `plugins/HilltopVillage/shop.yml`（注意备份你改过的商品）或手动加条目，然后 `/hilltop shop reload`
+- **皮革套自动生效**：starter-kit 的升级归一化会在你未改过旧默认时自动加入皮革四件套；改过则保留你的列表
+- 掉落表新键（`monsters.<id>.drop-min/drop-max`）会自动补写；三特殊怪默认值（1/1、1/2、2/3）在缺省时由 GameConfig 播种
+- 服务端无需其它动作；`/hilltop reloadconfig` 即可让掉落表与 starter-kit 变更生效
+
+
 ## [1.0.9-SNAPSHOT-fix4] - 2026-10-17
 
 > 1.0.9 的第四个修复版：作者第二轮实测反馈（12 条）的五路并行修复 + 装备与经济数值设计文档（纯设计）。
