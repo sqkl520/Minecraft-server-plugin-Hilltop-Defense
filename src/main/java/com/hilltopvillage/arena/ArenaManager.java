@@ -296,6 +296,54 @@ public final class ArenaManager {
         float pitch = (float) spawn.getDouble("pitch", 0.0);
         return new Location(world, x, y, z, yaw, pitch);
     }
+
+    /**
+     * 把执行者当前位置写为大厅出生点（fix4 反馈9）：{@code lobby.spawn} 的
+     * x/y/z/yaw/pitch 五键。
+     *
+     * <p><b>遵守「重读盘 + 只改目标键」纪律</b>（与 {@link #clearDeploymentData}、
+     * {@link #updateGameParams} 同款）：{@link #save()} 是死代码地雷（会用 registry 里
+     * 固化的旧值整份覆写），这里重新读盘 → 只写 {@code lobby.spawn.*} →
+     * save。<b>不调用 {@link #load()}</b> 也无必要：本方法只改 lobby 段，
+     * arena 定义不受影响（且大厅出生点每次 {@link #getLobbySpawn()} 都实时从
+     * {@code configuration} 字段读——该字段指向磁盘加载的同一份 YamlConfiguration，
+     * 写盘后需把内存副本同步补写相同键才会即时生效，见下方注释）。</p>
+     *
+     * @param location 管理员当前位置（调用方须已校验处于大厅世界）
+     * @return true = 已写入磁盘；false = 写盘失败
+     */
+    public boolean updateLobbySpawn(Location location) {
+        if (location == null || location.getWorld() == null) return false;
+
+        YamlConfiguration disk = YamlConfiguration.loadConfiguration(arenasFile);
+        disk.set("lobby.spawn.x", location.getX());
+        disk.set("lobby.spawn.y", location.getY());
+        disk.set("lobby.spawn.z", location.getZ());
+        disk.set("lobby.spawn.yaw", (double) location.getYaw());
+        disk.set("lobby.spawn.pitch", (double) location.getPitch());
+        try {
+            disk.save(arenasFile);
+        } catch (IOException exception) {
+            plugin.getLogger().log(Level.WARNING, "写入大厅出生点失败", exception);
+            return false;
+        }
+
+        // 同步内存副本（configuration 字段）：getLobbySpawn() 实时读该字段，
+        // 只写磁盘不写内存的话，新出生点要等重启/重载才生效。
+        // 这里逐键补写与磁盘相同的值，不重跑 load()（避免为一次坐标写入重建整个 registry）。
+        configuration.set("lobby.spawn.x", location.getX());
+        configuration.set("lobby.spawn.y", location.getY());
+        configuration.set("lobby.spawn.z", location.getZ());
+        configuration.set("lobby.spawn.yaw", (double) location.getYaw());
+        configuration.set("lobby.spawn.pitch", (double) location.getPitch());
+
+        plugin.getLogger().info("大厅出生点已更新: " + location.getWorld().getName()
+                + " (" + String.format("%.1f", location.getX()) + ", "
+                + String.format("%.1f", location.getY()) + ", "
+                + String.format("%.1f", location.getZ()) + ")");
+        return true;
+    }
+
     public ArenaDefinition getDefaultArena() {
         String id = registry.getDefaultArenaId();
         return id == null ? null : registry.get(id);

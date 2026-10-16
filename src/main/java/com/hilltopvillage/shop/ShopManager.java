@@ -72,7 +72,8 @@ public class ShopManager {
      * 名称优先 shop.yml 的 currency.name，否则 i18n 的 shop.currency.name。
      *
      * <p>入参钳制（P2-26）：{@code ItemStack(Material, int)} 对 amount ≤ 0 直接抛
-     * IllegalArgumentException。配置链（{@code shop.currency-drop-amount}）无钳制时，
+     * IllegalArgumentException。配置链（fix4 起为 {@code shop.currency-drop-min/-max} 区间，
+     * 滚动逻辑在 {@code WaveManager#rollCurrencyDropAmount} 已钳制）异常时，
      * 服主配 0 / 负数会让每次掉币判定命中都在死亡事件里抛异常（吞击杀统计 + 刷日志）；
      * 退款分支同样走本工厂。这里统一兜底为至少 1。</p>
      */

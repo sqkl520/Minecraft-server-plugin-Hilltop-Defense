@@ -442,7 +442,8 @@ public class GameManager {
      * </ol>
      *
      * <p>仅在 {@link GameState#RUNNING}（本波刷怪中）生效；休整期 activeMobs 已空，无需介入。
-     * {@code wave-timeout-seconds <= 0} 表示管理员显式禁用该保险。</p>
+     * {@code wave-timeout-seconds <= 0} 表示禁用该保险 —— fix4 反馈12 起<b>默认即为 0（禁用）</b>，
+     * 代码路径与配置钩子保留，需要时把值调回正数（如 120）即可重新启用。</p>
      */
     private void handleWaveTimeout() {
         if (state != GameState.RUNNING) return;
@@ -498,6 +499,78 @@ public class GameManager {
                 }
             }
         }.runTaskLater(plugin, 20L * intervalSeconds);
+    }
+
+    /**
+     * fix4 反馈12：管理员强制推进波次（{@code /hilltop wave clear}）的结果码。
+     */
+    public enum ForceWaveResult {
+        /** RUNNING：已强清全部存活怪物并强制完成当前波，进入休整期 */
+        WAVE_CLEARED,
+        /** WAVE_INTERMISSION：已跳过休整倒计时，立即开始下一波 */
+        WAVE_SKIPPED,
+        /** 当前无进行中的对局（WAITING / 结算窗口 / 已结束） */
+        NOT_RUNNING,
+        /** 休整期人数低于下限，未开始下一波（正常排队回调在此情形会判负） */
+        NOT_ENOUGH_PLAYERS
+    }
+
+    /**
+     * fix4 反馈12：管理员强制推进波次。
+     *
+     * <p>行为随当前状态而定：</p>
+     * <ul>
+     *   <li><b>RUNNING</b>（本波刷怪中）：用 {@link WaveManager#purgeStuckMobs()} 强清全部存活
+     *       怪物（走 {@code discardMob}：不掉落货币、不计击杀统计，与超时保险第二阶段的语义一致），
+     *       取消波次 tick 并直接 {@link #onWaveComplete()} 进入休整期 —— 与
+     *       {@code checkWaveCompletion()} 判定清波后的路径完全一致；</li>
+     *   <li><b>WAVE_INTERMISSION</b>（休整期）：跳过倒计时立即 {@link #startNextWave()}，
+     *       保留与排队回调相同的人数下限守卫（不足时返回
+     *       {@link ForceWaveResult#NOT_ENOUGH_PLAYERS} 且不判负，把决定权留给管理员）；</li>
+     *   <li><b>其它状态 / 结算窗口</b>：拒绝（{@link ForceWaveResult#NOT_RUNNING}）。</li>
+     * </ul>
+     *
+     * <p>广播：清波路径向全场广播 {@code wave-clear-broadcast}（含波次号与被清怪物数）；
+     * 跳休整路径在确实开新波后广播 {@code wave-skip-broadcast}。若强推开波恰好越过最后一波，
+     * {@link #startNextWave()} 自身会走胜利结算（{@code game-victory}），不再补发跳过播报。</p>
+     *
+     * @return 结果码，见 {@link ForceWaveResult}
+     */
+    public ForceWaveResult forceAdvanceWave() {
+        // 结算窗口（haltGame 已调用、状态未切换）内不做任何推进：结算流程正在收尾
+        if (settlementPhase) return ForceWaveResult.NOT_RUNNING;
+
+        if (state == GameState.RUNNING) {
+            int purged = waveManager.purgeStuckMobs();
+            // 与 checkWaveCompletion 的清波路径一致：先取消 tick 任务，再走完成流程
+            if (waveCheckTask != null) {
+                waveCheckTask.cancel();
+                waveCheckTask = null;
+            }
+            int clearedWave = currentWave;
+            // 先播报「为什么突然清波」（管理员强清），再走常规 wave-complete 广播
+            broadcastI18n("wave-clear-broadcast", clearedWave, purged);
+            onWaveComplete();
+            return ForceWaveResult.WAVE_CLEARED;
+        }
+
+        if (state == GameState.WAVE_INTERMISSION) {
+            // 与排队回调同口径的人数守卫：不足下限时不擅自开波
+            if (players.size() < getArenaMinPlayers()) {
+                return ForceWaveResult.NOT_ENOUGH_PLAYERS;
+            }
+            cancelWaveScheduler();
+            // 先播「跳过休整」，再由 startNextWave 播 wave-start，读序自然。
+            // 若下一波越过最后一波（currentWave + 1 > totalWaves），startNextWave 会直接
+            // 走胜利结算（game-victory 即最终消息），此处不补发跳过播报。
+            if (currentWave + 1 <= totalWaves) {
+                broadcastI18n("wave-skip-broadcast", currentWave + 1);
+            }
+            startNextWave();
+            return ForceWaveResult.WAVE_SKIPPED;
+        }
+
+        return ForceWaveResult.NOT_RUNNING;
     }
 
     /**

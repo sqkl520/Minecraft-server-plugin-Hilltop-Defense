@@ -46,13 +46,13 @@ public class HilltopTabCompleter implements TabCompleter {
 
             for (String sub : Arrays.asList("start", "stop", "join", "leave", "lobby", "status", "list", "arenas",
                     "manage", "enable", "disable", "hammer", "fireball", "help", "setup", "deploy", "config",
-                    "reloadconfig", "shop", "lang", "tps", "gui", "build", "stats", "top")) {
+                    "reloadconfig", "shop", "lang", "tps", "gui", "build", "stats", "top", "wave")) {
                 if (sub.startsWith(input)) {
                     boolean isAdmin = sub.equals("start") || sub.equals("stop") || sub.equals("help")
                             || sub.equals("setup") || sub.equals("deploy") || sub.equals("config")
                             || sub.equals("reloadconfig") || sub.equals("shop") || sub.equals("tps")
                             || sub.equals("build") || sub.equals("arenas") || sub.equals("manage")
-                            || sub.equals("enable") || sub.equals("disable")
+                            || sub.equals("enable") || sub.equals("disable") || sub.equals("wave")
                             || sub.equals("hammer") || sub.equals("fireball");
                     if (isAdmin && !sender.hasPermission("hilltopvillage.admin")) continue;
                     completions.add(sub);
@@ -77,6 +77,29 @@ public class HilltopTabCompleter implements TabCompleter {
                 if (sub.startsWith(input)) completions.add(sub);
             }
             return completions;
+        }
+
+        // /hilltop lobby setspawn：补全 setspawn 子命令（仅管理员）
+        if (args.length == 2 && args[0].equalsIgnoreCase("lobby") && sender.hasPermission("hilltopvillage.admin")) {
+            List<String> completions = new ArrayList<>();
+            if ("setspawn".startsWith(args[1].toLowerCase())) completions.add("setspawn");
+            return completions;
+        }
+
+        // /hilltop wave <clear|skip>
+        if (args.length == 2 && args[0].equalsIgnoreCase("wave") && sender.hasPermission("hilltopvillage.admin")) {
+            List<String> completions = new ArrayList<>();
+            String input = args[1].toLowerCase();
+            for (String sub : Arrays.asList("clear", "skip")) {
+                if (sub.startsWith(input)) completions.add(sub);
+            }
+            return completions;
+        }
+
+        // /hilltop wave <clear|skip> <竞技场>
+        if (args.length == 3 && args[0].equalsIgnoreCase("wave")
+                && sender.hasPermission("hilltopvillage.admin")) {
+            return arenaIds(args[2].toLowerCase());
         }
 
         // /hilltop shop give <玩家>：补全在线玩家名
@@ -146,7 +169,7 @@ public class HilltopTabCompleter implements TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("top")) {
             List<String> completions = new ArrayList<>();
             String input = args[1].toLowerCase();
-            for (String sub : Arrays.asList("kills", "wins", "games", "best-wave", "nodes", "deaths")) {
+            for (String sub : Arrays.asList("kills", "wins", "games", "best-wave", "nodes", "deaths", "crystals")) {
                 if (sub.startsWith(input)) completions.add(sub);
             }
             return completions;

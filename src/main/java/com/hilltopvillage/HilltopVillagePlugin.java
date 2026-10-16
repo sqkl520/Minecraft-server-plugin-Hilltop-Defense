@@ -422,7 +422,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         if (!gameManager.isGameRunning()) return;
 
         if (gameManager.getWaveManager().getActiveMobs().contains(event.getEntity())) {
-            gameManager.getWaveManager().onMobDeath(event.getEntity());
+            int currencyDropped = gameManager.getWaveManager().onMobDeath(event.getEntity());
 
             Player killer = event.getEntity().getKiller();
             if (killer != null) {
@@ -431,6 +431,8 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
                 PlayerData data = gameManager.getPlayerData(killer);
                 if (data != null) {
                     data.addKill();
+                    // fix4 反馈6：击杀者同步累计本局获取的能量水晶（战斗掉落口径）
+                    data.addCurrencyCollected(currencyDropped);
                 }
             }
         }

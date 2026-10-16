@@ -49,10 +49,10 @@ public class CommandsDocumentGenerator {
 
         md.append("### `/hilltop lobby`\n\n");
         md.append("- **功能**: 返回大厅。\n");
-        md.append("- **权限**: 无（所有玩家可用）。\n");
-        md.append("- **参数**: 无。\n");
-        md.append("- **使用示例**: `/hilltop lobby`\n");
-        md.append("- **注意事项**: 若当前在竞技场中，会先退出该竞技场再传送到大厅。仅限玩家使用。\n\n");
+        md.append("- **权限**: 无（所有玩家可用）；`setspawn` 子命令需 `hilltopvillage.admin`。\n");
+        md.append("- **参数**: `setspawn` — 可选（管理员），把当前位置设为大厅出生点。\n");
+        md.append("- **使用示例**: `/hilltop lobby`, `/hilltop lobby setspawn`\n");
+        md.append("- **注意事项**: 若当前在竞技场中，会先退出该竞技场再传送到大厅。仅限玩家使用。`lobby setspawn` 必须在**大厅世界内**执行，位置（含朝向）即刻写入 `arenas.yml` 的 `lobby.spawn` 并即时生效（新登录、大厅复活与 `/hilltop lobby` 立即使用新出生点，无需重启）。\n\n");
 
         md.append("### `/hilltop list`\n\n");
         md.append("- **功能**: 列出所有竞技场。\n");
@@ -73,14 +73,14 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: 无（所有玩家可用）。\n");
         md.append("- **参数**: `[玩家名]` — 可选，指定要查看的玩家（不填则查看自己）。\n");
         md.append("- **使用示例**: `/hilltop stats`, `/hilltop stats Steve`\n");
-        md.append("- **注意事项**: 显示胜率、K/D、修复节点数、最高波次等持久化数据。控制台执行时需带玩家名。\n\n");
+        md.append("- **注意事项**: 显示胜率、K/D、修复节点数、累计获取能量水晶、最高波次等持久化数据。控制台执行时需带玩家名。\n\n");
 
         md.append("### `/hilltop top <类型>`\n\n");
         md.append("- **功能**: 查看排行榜。\n");
         md.append("- **权限**: 无（所有玩家可用）。\n");
-        md.append("- **参数**: `<类型>` — 排行榜类型：`kills` / `wins` / `games` / `best-wave` / `nodes` / `deaths`（前 10 名）。\n");
-        md.append("- **使用示例**: `/hilltop top kills`\n");
-        md.append("- **注意事项**: 无参数或类型无效时会列出可用类型。\n\n");
+        md.append("- **参数**: `<类型>` — 排行榜类型：`kills` / `wins` / `games` / `best-wave` / `nodes` / `deaths` / `crystals`（前 10 名）。\n");
+        md.append("- **使用示例**: `/hilltop top kills`, `/hilltop top crystals`\n");
+        md.append("- **注意事项**: 无参数或类型无效时会列出可用类型。`crystals` = 累计击杀获取的能量水晶榜。\n\n");
 
         md.append("### `/hilltop hammer`\n\n");
         md.append("- **功能**: 获取神圣之锤（Sacred Hammer）。\n");
@@ -343,7 +343,21 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: `<玩家>` — 在线玩家名；`[数量]` — 发放数量（默认 1，上限 6400）。\n");
         md.append("- **使用示例**: `/hilltop shop give Steve 64`\n");
-        md.append("- **注意事项**: 这是服主手工发放货币的**唯一正确方式**。货币靠物品内的 PDC 标记识别，用原版 `/give` 发放或用铁砧改名得到的绿宝石**不会**被商店当作货币，无法用于购买。背包放不下的部分会掉落在目标玩家脚下。\n\n");
+        md.append("- **注意事项**: 这是服主手工发放货币的**唯一正确方式**。货币靠物品内的 PDC 标记识别，用原版 `/give` 发放或用铁砧改名得到的绿宝石**不会**被商店当作货币，无法用于购买。背包放不下的部分会掉落在目标玩家脚下。**任何世界均可用（含大厅）** —— 目标玩家在大厅时同样可以收到货币，可用于活动奖励、补偿等场景。\n\n");
+
+        md.append("### `/hilltop wave clear [竞技场]`\n\n");
+        md.append("- **功能**: 强制清除当前波所有存活怪物并结束该波（进入休整期）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **使用示例**: `/hilltop wave clear`, `/hilltop wave clear arena2`\n");
+        md.append("- **注意事项**: 仅在波次进行中（RUNNING）有效；强制清除的怪物**不掉落货币、不计击杀统计**，并向全场广播说明。休整期执行会被拒绝并提示改用 `wave skip`。字段 `wave-timeout-seconds` 默认为 0（自动超时保险已禁用），本命令是卡怪时的手动兜底。\n\n");
+
+        md.append("### `/hilltop wave skip [竞技场]`\n\n");
+        md.append("- **功能**: 跳过休整期，立即开始下一波（一步到位）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **使用示例**: `/hilltop wave skip`, `/hilltop wave skip arena2`\n");
+        md.append("- **注意事项**: 休整期直接开新波；波次进行中执行则先强制清波再立即开始下一波。人数低于该竞技场下限时拒绝（不判负）。越过最后一波时正常走胜利结算。\n\n");
 
         md.append("---\n\n");
         md.append("## 配置中心命令\n\n");
@@ -367,7 +381,7 @@ public class CommandsDocumentGenerator {
         md.append("## 权限节点\n\n");
         md.append("| 权限节点 | 说明 |\n");
         md.append("|---|---|\n");
-        md.append("| `hilltopvillage.admin` | 管理员权限，包含 start/stop/deploy/help/reloadconfig/enable/disable/arenas/hammer/fireball/build/tps 等 |\n");
+        md.append("| `hilltopvillage.admin` | 管理员权限，包含 start/stop/deploy/help/reloadconfig/enable/disable/arenas/hammer/fireball/build/tps/wave 等 |\n");
         md.append("| `hilltopvillage.config.admin` | 配置中心管理员权限，包含 config 主命令 |\n");
         md.append("| `hilltopvillage.config.rules` | 游戏规则配置权限 |\n");
         md.append("| `hilltopvillage.config.items` | 锤子与物品参数配置权限 |\n");
@@ -378,7 +392,7 @@ public class CommandsDocumentGenerator {
         md.append("---\n\n");
         md.append("## 注意事项\n\n");
         md.append("1. **命令别名**: `/hilltop` 命令也可使用 `/hv` 或 `/htv` 作为别名。\n");
-        md.append("2. **控制台限制**: 采用黑名单模型——仅以下命令不可由控制台执行：`join` / `leave` / `lobby` / `gui` / `hammer` / `fireball` / `setup` / `deploy` / `config` / `manage` / `build`。其余命令（含 `status` / `reloadconfig` / `start` / `stop` / `enable` / `disable` / `arenas` / `list` / `stats`（带玩家名） / `top` / `tps` / `help` / `lang` / `shop reload` / `shop give`）均可在控制台执行（管理命令仍需 OP / `hilltopvillage.admin` 权限）。\n");
+        md.append("2. **控制台限制**: 采用黑名单模型——仅以下命令不可由控制台执行：`join` / `leave` / `lobby` / `gui` / `hammer` / `fireball` / `setup` / `deploy` / `config` / `manage` / `build`。其余命令（含 `status` / `reloadconfig` / `start` / `stop` / `enable` / `disable` / `arenas` / `list` / `stats`（带玩家名） / `top` / `tps` / `help` / `lang` / `shop reload` / `shop give` / `wave clear` / `wave skip`）均可在控制台执行（管理命令仍需 OP / `hilltopvillage.admin` 权限）。\n");
         md.append("3. **部署流程**: 建议按照 `setcore → addspawn → addmobspawn → reloadnodes → start` 的顺序操作（玩家出生点与怪物刷怪点两套均需至少 1 个）。\n");
         md.append("4. **配置保存**: 使用 GUI 关闭菜单时配置会自动保存，`/hilltop reloadconfig` 用于手动重载外部编辑的配置。\n");
         md.append("5. **粒子展示**: `/hilltop deploy showparticles` 仅展示当前已设置的玩家出生点对应粒子。若没有出生点则不会有任何效果。\n");

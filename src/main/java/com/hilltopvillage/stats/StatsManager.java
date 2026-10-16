@@ -63,6 +63,8 @@ public class StatsManager {
         private int kills;
         private int deaths;
         private int nodesRepaired;
+        /** 累计获取的能量水晶（fix4 反馈6 新增字段；旧数据文件缺此键时按 0 处理） */
+        private int crystalsCollected;
         private int wavesSurvived;
         private int bestWave;
         private long firstPlay;
@@ -75,6 +77,7 @@ public class StatsManager {
         public int getKills() { return kills; }
         public int getDeaths() { return deaths; }
         public int getNodesRepaired() { return nodesRepaired; }
+        public int getCrystalsCollected() { return crystalsCollected; }
         public int getWavesSurvived() { return wavesSurvived; }
         public int getBestWave() { return bestWave; }
         public long getFirstPlay() { return firstPlay; }
@@ -98,7 +101,8 @@ public class StatsManager {
         GAMES("games", Comparator.comparingInt(PlayerStats::getGamesPlayed)),
         BEST_WAVE("best-wave", Comparator.comparingInt(PlayerStats::getBestWave)),
         NODES("nodes", Comparator.comparingInt(PlayerStats::getNodesRepaired)),
-        DEATHS("deaths", Comparator.comparingInt(PlayerStats::getDeaths));
+        DEATHS("deaths", Comparator.comparingInt(PlayerStats::getDeaths)),
+        CRYSTALS("crystals", Comparator.comparingInt(PlayerStats::getCrystalsCollected));
 
         private final String key;
         private final Comparator<PlayerStats> comparator;
@@ -218,6 +222,9 @@ public class StatsManager {
             stats.kills += data.getKills();
             stats.deaths += data.getDeaths();
             stats.nodesRepaired += data.getNodesRepaired();
+            // fix4 反馈6：本局击杀获取的水晶同步进持久统计。
+            // 只统计「击杀掉落」口径——shop give 发放与大堂消费都不经此处。
+            stats.crystalsCollected += data.getCurrencyCollected();
         }
 
         stats.wavesSurvived += Math.max(0, wave);
@@ -287,6 +294,8 @@ public class StatsManager {
                 stats.kills = section.getInt("kills", 0);
                 stats.deaths = section.getInt("deaths", 0);
                 stats.nodesRepaired = section.getInt("nodes-repaired", 0);
+                // fix4 反馈6：旧数据文件没有 crystals-collected 键 —— getInt 缺省 0，天然兼容
+                stats.crystalsCollected = section.getInt("crystals-collected", 0);
                 stats.wavesSurvived = section.getInt("waves-survived", 0);
                 stats.bestWave = section.getInt("best-wave", 0);
                 stats.firstPlay = section.getLong("first-play", 0);
@@ -334,7 +343,8 @@ public class StatsManager {
             PlayerStats stats = entry.getValue();
             // 从未参与过对局且没有任何数据的空记录不落盘
             if (stats.gamesPlayed == 0 && stats.kills == 0 && stats.deaths == 0
-                    && stats.nodesRepaired == 0 && stats.wavesSurvived == 0) {
+                    && stats.nodesRepaired == 0 && stats.crystalsCollected == 0
+                    && stats.wavesSurvived == 0) {
                 continue;
             }
 
@@ -346,6 +356,7 @@ public class StatsManager {
             yaml.set(path + ".kills", stats.kills);
             yaml.set(path + ".deaths", stats.deaths);
             yaml.set(path + ".nodes-repaired", stats.nodesRepaired);
+            yaml.set(path + ".crystals-collected", stats.crystalsCollected);
             yaml.set(path + ".waves-survived", stats.wavesSurvived);
             yaml.set(path + ".best-wave", stats.bestWave);
             yaml.set(path + ".first-play", stats.firstPlay);

@@ -47,7 +47,7 @@ public class ConfigManager {
     private static final Set<String> KNOWN_TOP_LEVEL_KEYS = Set.of(
             "world-name", "core", "min-players", "max-players", "victory-waves",
             "wave-interval-seconds", "wave-timeout-seconds", "defeat-countdown-seconds",
-            "villager-health", "rejoin-timeout-seconds", "map-restore", "scoreboard",
+            "villager-health", "rejoin-timeout-seconds", "empty-arena-end-seconds", "map-restore", "scoreboard",
             "hammer", "fireball", "shop", "starter-kit", "nodes", "spawning",
             "monsters", "waves");
 
@@ -160,7 +160,7 @@ public class ConfigManager {
         // 会话内改动仍会胜出，不会被磁盘旧值吞掉。
         if (hasNumber(disk, "wave-timeout-seconds")
                 && activeConfig.getWaveTimeoutSeconds() == baseline.getWaveTimeoutSeconds()) {
-            activeConfig.setWaveTimeoutSeconds(disk.getInt("wave-timeout-seconds"));
+            activeConfig.setWaveTimeoutSeconds(normalizeWaveTimeout(disk.getInt("wave-timeout-seconds")));
         }
         if (hasNumber(disk, "defeat-countdown-seconds")
                 && activeConfig.getDefeatCountdownSeconds() == baseline.getDefeatCountdownSeconds()) {
@@ -173,6 +173,10 @@ public class ConfigManager {
         if (hasNumber(disk, "rejoin-timeout-seconds")
                 && activeConfig.getRejoinTimeoutSeconds() == baseline.getRejoinTimeoutSeconds()) {
             activeConfig.setRejoinTimeoutSeconds(disk.getInt("rejoin-timeout-seconds"));
+        }
+        if (hasNumber(disk, "empty-arena-end-seconds")
+                && activeConfig.getEmptyArenaEndSeconds() == baseline.getEmptyArenaEndSeconds()) {
+            activeConfig.setEmptyArenaEndSeconds(disk.getInt("empty-arena-end-seconds"));
         }
         if (hasBoolean(disk, "map-restore.enabled")
                 && activeConfig.isMapRestoreEnabled() == baseline.isMapRestoreEnabled()) {
@@ -226,9 +230,13 @@ public class ConfigManager {
                 && Double.compare(activeConfig.getCurrencyDropChance(), baseline.getCurrencyDropChance()) == 0) {
             activeConfig.setCurrencyDropChance(disk.getDouble("shop.currency-drop-chance"));
         }
-        if (hasNumber(disk, "shop.currency-drop-amount")
-                && activeConfig.getCurrencyDropAmount() == baseline.getCurrencyDropAmount()) {
-            activeConfig.setCurrencyDropAmount(disk.getInt("shop.currency-drop-amount"));
+        if (hasNumber(disk, "shop.currency-drop-min")
+                && activeConfig.getCurrencyDropMin() == baseline.getCurrencyDropMin()) {
+            activeConfig.setCurrencyDropMin(disk.getInt("shop.currency-drop-min"));
+        }
+        if (hasNumber(disk, "shop.currency-drop-max")
+                && activeConfig.getCurrencyDropMax() == baseline.getCurrencyDropMax()) {
+            activeConfig.setCurrencyDropMax(disk.getInt("shop.currency-drop-max"));
         }
         if (hasBoolean(disk, "starter-kit.enabled")
                 && activeConfig.isStarterKitEnabled() == baseline.isStarterKitEnabled()) {
@@ -275,6 +283,22 @@ public class ConfigManager {
         return parsedKit;
     }
 
+    /**
+     * fix4 反馈12：波次超时保险值的升级归一化。
+     *
+     * <p>旧版本（fix3 及更早）的默认值是 120；本版本起默认禁用（0）。存量服务器的
+     * {@code game-settings.yml} 磁盘上仍是 120，若直接沿用会把「已改为禁用」的新默认
+     * 又打开回去。此方法把恰好等于旧默认值 {@link GameConfig#LEGACY_WAVE_TIMEOUT_SECONDS}
+     * 的存量值归一化为 0（禁用）；其它值（含 <=0 与其它正数）原样保留——
+     * 管理员显式设定过的值不会被吞。</p>
+     *
+     * <p>代价：某服主若恰好在旧版本手写过 120，也会被一并视为「旧默认」而归零；
+     * 这是有意的取舍（作者反馈明确要求默认禁用，且 120 正是旧默认值本身）。</p>
+     */
+    private static int normalizeWaveTimeout(int raw) {
+        return raw == GameConfig.LEGACY_WAVE_TIMEOUT_SECONDS ? 0 : raw;
+    }
+
     public void saveToFile() {
         // M-15：save 前检测外部修改。文件 mtime 与上次读/写记录不一致 → 有人在游戏外
         // 手改过文件：① 对「无 GUI 编辑入口」的键做磁盘值合并（见 mergeExternalChanges）；
@@ -299,6 +323,7 @@ public class ConfigManager {
         settingsYaml.set("defeat-countdown-seconds", activeConfig.getDefeatCountdownSeconds());
         settingsYaml.set("villager-health", activeConfig.getVillagerHealth());
         settingsYaml.set("rejoin-timeout-seconds", activeConfig.getRejoinTimeoutSeconds());
+        settingsYaml.set("empty-arena-end-seconds", activeConfig.getEmptyArenaEndSeconds());
         settingsYaml.set("map-restore.enabled", activeConfig.isMapRestoreEnabled());
         settingsYaml.set("scoreboard.enabled", activeConfig.isScoreboardEnabled());
 
@@ -370,9 +395,10 @@ public class ConfigManager {
         settingsYaml.set("fireball.proximity-fuse", activeConfig.getFireballProximityFuse());
         settingsYaml.set("fireball.item-name", activeConfig.getFireballItemName());
 
-        // ---- 村民商店货币掉落 ----
+        // ---- 村民商店货币掉落（fix4：每杀必掉、数量浮动） ----
         settingsYaml.set("shop.currency-drop-chance", activeConfig.getCurrencyDropChance());
-        settingsYaml.set("shop.currency-drop-amount", activeConfig.getCurrencyDropAmount());
+        settingsYaml.set("shop.currency-drop-min", activeConfig.getCurrencyDropMin());
+        settingsYaml.set("shop.currency-drop-max", activeConfig.getCurrencyDropMax());
 
         // ---- 开局初始套装 (starter-kit, STORY-1.2) ----
         settingsYaml.set("starter-kit.enabled", activeConfig.isStarterKitEnabled());
@@ -490,10 +516,12 @@ public class ConfigManager {
         if (settingsYaml.contains("max-players")) activeConfig.setMaxPlayers(settingsYaml.getInt("max-players"));
         if (settingsYaml.contains("victory-waves")) activeConfig.setVictoryWaves(settingsYaml.getInt("victory-waves"));
         if (settingsYaml.contains("wave-interval-seconds")) activeConfig.setWaveIntervalSeconds(settingsYaml.getInt("wave-interval-seconds"));
-        if (settingsYaml.contains("wave-timeout-seconds")) activeConfig.setWaveTimeoutSeconds(settingsYaml.getInt("wave-timeout-seconds"));
+        if (settingsYaml.contains("wave-timeout-seconds")) activeConfig.setWaveTimeoutSeconds(
+                normalizeWaveTimeout(settingsYaml.getInt("wave-timeout-seconds")));
         if (settingsYaml.contains("defeat-countdown-seconds")) activeConfig.setDefeatCountdownSeconds(settingsYaml.getInt("defeat-countdown-seconds"));
         if (settingsYaml.contains("villager-health")) activeConfig.setVillagerHealth(settingsYaml.getDouble("villager-health"));
         if (settingsYaml.contains("rejoin-timeout-seconds")) activeConfig.setRejoinTimeoutSeconds(settingsYaml.getInt("rejoin-timeout-seconds"));
+        if (settingsYaml.contains("empty-arena-end-seconds")) activeConfig.setEmptyArenaEndSeconds(settingsYaml.getInt("empty-arena-end-seconds"));
         if (settingsYaml.contains("map-restore.enabled")) activeConfig.setMapRestoreEnabled(settingsYaml.getBoolean("map-restore.enabled"));
         if (settingsYaml.contains("scoreboard.enabled")) activeConfig.setScoreboardEnabled(settingsYaml.getBoolean("scoreboard.enabled"));
 
@@ -624,9 +652,61 @@ public class ConfigManager {
         if (settingsYaml.contains("fireball.proximity-fuse")) activeConfig.setFireballProximityFuse(settingsYaml.getDouble("fireball.proximity-fuse"));
         if (settingsYaml.contains("fireball.item-name")) activeConfig.setFireballItemName(settingsYaml.getString("fireball.item-name"));
 
-        // ---- 村民商店货币掉落 ----
+        // ---- 村民商店货币掉落（fix4 反馈6：每杀必掉、数量浮动） ----
         if (settingsYaml.contains("shop.currency-drop-chance")) activeConfig.setCurrencyDropChance(settingsYaml.getDouble("shop.currency-drop-chance"));
-        if (settingsYaml.contains("shop.currency-drop-amount")) activeConfig.setCurrencyDropAmount(settingsYaml.getInt("shop.currency-drop-amount"));
+        if (settingsYaml.contains("shop.currency-drop-min")) activeConfig.setCurrencyDropMin(settingsYaml.getInt("shop.currency-drop-min"));
+        if (settingsYaml.contains("shop.currency-drop-max")) activeConfig.setCurrencyDropMax(settingsYaml.getInt("shop.currency-drop-max"));
+
+        // 旧格式迁移：旧键 shop.currency-drop-amount（概率 × 固定数量）→ 新键 min/max（区间浮动）。
+        // 仅在「旧键存在且新键缺失」时做值迁移（与 nodes.repair-item 迁移同款，只发生一次）：
+        //  - 仍是旧默认对（chance 0.4 + amount 1，即服主未改过）→ 整体升级为新默认
+        //    （chance 1.0 必掉 + min 1 / max 2 浮动）——fix4 反馈6 的核心诉求；
+        //  - 服主改过任一值 → 保守保形：min = max = 旧 amount（每次击杀掉固定数量不变），
+        //    chance 保留（概率语义原样生效）。
+        // 迁移后写回新键并删除旧键 + 落盘，使第二次启动起不再残留旧键（仿 nodes.repair-item 迁移）。
+        // 旧键与 min 并存（手改过的新文件混写）时不做值迁移，仅把旧键从磁盘清掉防混淆。
+        if (settingsYaml.contains("shop.currency-drop-amount")) {
+            if (!settingsYaml.contains("shop.currency-drop-min")) {
+                // 旧世界的「生效概率」：文件写了 chance 用文件值；缺 chance 键时旧代码的默认是 0.4。
+                // 不能读 activeConfig.getCurrencyDropChance()——此刻它可能已是新默认 1.0（文件缺键时），
+                // 会让「只写了 amount 的旧文件」被误判为非旧默认对。
+                double legacyChance = settingsYaml.contains("shop.currency-drop-chance")
+                        ? settingsYaml.getDouble("shop.currency-drop-chance")
+                        : 0.4;
+                int legacyAmount = settingsYaml.getInt("shop.currency-drop-amount");
+                boolean oldDefaultPair = Double.compare(legacyChance, 0.4) == 0 && legacyAmount == 1;
+                if (oldDefaultPair) {
+                    activeConfig.setCurrencyDropChance(1.0);
+                    activeConfig.setCurrencyDropMin(1);
+                    activeConfig.setCurrencyDropMax(2);
+                    plugin.getLogger().warning("检测到旧配置键 shop.currency-drop-amount（旧默认 0.4 概率 × 1 个），"
+                            + "已升级为新默认：每杀必掉 1~2 个（shop.currency-drop-chance/min/max）");
+                } else {
+                    int qty = Math.max(1, legacyAmount);
+                    // 保形迁移：概率与固定数量都原样保留
+                    activeConfig.setCurrencyDropChance(legacyChance);
+                    activeConfig.setCurrencyDropMin(qty);
+                    activeConfig.setCurrencyDropMax(qty);
+                    plugin.getLogger().warning("检测到旧配置键 shop.currency-drop-amount，已迁移到 "
+                            + "shop.currency-drop-min / -max（原概率 " + legacyChance + " 保留，每次掉落数量 "
+                            + qty + " 不变）");
+                }
+                settingsYaml.set("shop.currency-drop-chance", activeConfig.getCurrencyDropChance());
+                settingsYaml.set("shop.currency-drop-min", activeConfig.getCurrencyDropMin());
+                settingsYaml.set("shop.currency-drop-max", activeConfig.getCurrencyDropMax());
+            } else {
+                plugin.getLogger().warning("检测到已废弃的配置键 shop.currency-drop-amount"
+                        + "（新键 shop.currency-drop-min/-max 已存在），该旧键将被忽略并移除");
+            }
+            settingsYaml.set("shop.currency-drop-amount", null);
+            try {
+                settingsYaml.save(settingsFile);
+                // M-15：本次写盘更新 mtime 记录，避免随后的保存误判为「外部修改」
+                settingsLastModified = settingsFile.lastModified();
+            } catch (IOException e) {
+                plugin.getLogger().severe("Failed to migrate legacy currency-drop keys in game-settings.yml: " + e.getMessage());
+            }
+        }
 
         // ---- 开局初始套装 (starter-kit, STORY-1.2) ----
         // 缺键 = 旧配置文件：保持 GameConfig 字段默认值（enabled=true + 石剑/面包/火把），不覆盖

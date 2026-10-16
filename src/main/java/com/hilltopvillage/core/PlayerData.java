@@ -14,6 +14,8 @@ public class PlayerData {
     private int kills;
     private int deaths;
     private int nodesRepaired;
+    /** 本局从击杀掉落中获取的能量水晶累计（fix4 反馈6；由 HilltopVillagePlugin#onMobDeath 按掉落返回值累加） */
+    private int currencyCollected;
     private boolean alive;
 
     public PlayerData(UUID playerId) {
@@ -24,6 +26,7 @@ public class PlayerData {
         this.kills = 0;
         this.deaths = 0;
         this.nodesRepaired = 0;
+        this.currencyCollected = 0;
         this.alive = true;
     }
 
@@ -83,6 +86,17 @@ public class PlayerData {
 
     public void addNodeRepaired() {
         this.nodesRepaired++;
+    }
+
+    public int getCurrencyCollected() {
+        return currencyCollected;
+    }
+
+    /** 累加本次击杀掉落的能量水晶数（amount ≤ 0 时忽略） */
+    public void addCurrencyCollected(int amount) {
+        if (amount > 0) {
+            this.currencyCollected += amount;
+        }
     }
 
     public boolean isAlive() {

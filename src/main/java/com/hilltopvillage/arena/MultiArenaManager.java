@@ -1019,6 +1019,17 @@ public class MultiArenaManager {
     }
 
     /**
+     * 把当前位置写为大厅出生点（fix4 反馈9，{@code /hilltop lobby setspawn}）。
+     * 写盘走定义管理器的「重读盘 + 只改 lobby.spawn 键」路径，写后即时生效。
+     *
+     * @param location 新的出生点（须位于大厅世界；世界校验由命令层完成）
+     * @return true = 已写入磁盘并同步内存；false = 写盘失败
+     */
+    public boolean setLobbySpawn(Location location) {
+        return definitionManager.updateLobbySpawn(location);
+    }
+
+    /**
      * 大厅世界（未配置或未加载返回 null）。
      */
     public World getLobbyWorld() {
@@ -1030,13 +1041,19 @@ public class MultiArenaManager {
      * Check if a world is a lobby world.
      * ✅ 用于监听器判断是否在大厅世界（需要保护）
      *
+     * <p>大小写不敏感比较（fix4 附带修复，仿 P2-29/C2-01）：Bukkit 的世界查找不区分大小写
+     * （{@code Bukkit.getWorld("lobby")} 能找到文件夹为 {@code Lobby} 的世界），若此处精确
+     * {@code equals} 而 arenas.yml 的 {@code lobby.world} 大小写与实际文件夹不符，大厅保护 /
+     * 大厅复活 / 准入判定会全部静默失效。{@link #getLobbySpawn()} 走的是大小写不敏感的
+     * Bukkit 查找，两边口径由此统一。</p>
+     *
      * @param worldName world name
      * @return true if it's the lobby world
      */
     public boolean isLobbyWorld(String worldName) {
         if (worldName == null) return false;
         String lobbyWorld = definitionManager.getLobbyWorldName();
-        return lobbyWorld != null && lobbyWorld.equals(worldName);
+        return lobbyWorld != null && lobbyWorld.equalsIgnoreCase(worldName);
     }
 
     /**

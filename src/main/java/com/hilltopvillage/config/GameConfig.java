@@ -23,14 +23,31 @@ public class GameConfig {
      * 波次超时保险（秒，P0-C 卡死软锁兜底）：某波持续超过此时长仍未清波时，
      * 先把全部残存怪物传送到最近玩家身边并高亮，再宽限一段时间后强制清除，
      * 打破任何形态的卡死（木桩怪 / 卡地形 / 不可达节点）。{@code <=0} 表示禁用该保险。
+     *
+     * <p>fix4 反馈12：保险默认<b>禁用</b>（0）——作者要求「去掉自动超时保险」的纯净体验。
+     * 代码路径与配置钩子保留：把本键设为 &gt;0 即可随时重新启用（例如未来遇到真卡死）。</p>
      */
-    private int waveTimeoutSeconds = 120;
+    private int waveTimeoutSeconds = 0;
+
+    /**
+     * fix4 反馈12 升级归一化用的旧默认值：fix3 及更早版本的 {@link #waveTimeoutSeconds} 默认是 120。
+     *
+     * <p>存量服务器的 {@code game-settings.yml} 磁盘上仍是 120（配置文件不会被升级覆盖），
+     * 为避免「改了默认值但老存档不生效」，ConfigManager 在加载与外部合并时把 120
+     * 一律归一化为 0（禁用）。如需重新启用自动保险，请设定为其它正数（如 121）。</p>
+     */
+    public static final int LEGACY_WAVE_TIMEOUT_SECONDS = 120;
     /** 失败结算倒计时（秒）：显示统计后传送回大厅的等待时间 */
     private int defeatCountdownSeconds = 20;
     /** 村民最大生命值 */
     private double villagerHealth = 20.0;
     /** 掉线重连窗口（秒），0 = 关闭重连（掉线即离开） */
     private int rejoinTimeoutSeconds = 60;
+    /**
+     * 空置自动结束（秒，G3d）：对局进行中（STARTING / RUNNING / WAVE_INTERMISSION）
+     * 在线成员为 0 持续此时长后自动走正常结束路径；{@code <=0} 表示禁用。
+     */
+    private int emptyArenaEndSeconds = 60;
     /** 是否启用地图恢复（对局结束回滚被破坏/放置的方块） */
     private boolean mapRestoreEnabled = true;
     /** 是否启用记分板侧边栏 */
@@ -107,10 +124,11 @@ public class GameConfig {
     private int airdropMaxPerDropper = 3;
 
     // ---- 村民商店货币掉落 (Shop) ----
-    // 击杀波次怪物的货币掉落概率（0~1，0=不掉）
-    private double currencyDropChance = 0.4;
-    // 每次掉落的货币数量（固定值，不做随机）
-    private int currencyDropAmount = 1;
+    // 击杀波次怪物的货币掉落概率（0~1；默认 1.0 = 每杀必掉，保留为兼容/加权开关）
+    private double currencyDropChance = 1.0;
+    // 每次掉落的货币数量区间 [min, max]（含两端，运行时随机取值）
+    private int currencyDropMin = 1;
+    private int currencyDropMax = 2;
 
     // ---- 开局初始套装 (starter-kit, STORY-1.2) ----
     // 开局时向每名在场玩家发放的物品；enabled=false 时不发放
@@ -503,6 +521,7 @@ public class GameConfig {
         snap.defeatCountdownSeconds = this.defeatCountdownSeconds;
         snap.villagerHealth = this.villagerHealth;
         snap.rejoinTimeoutSeconds = this.rejoinTimeoutSeconds;
+        snap.emptyArenaEndSeconds = this.emptyArenaEndSeconds;
         snap.mapRestoreEnabled = this.mapRestoreEnabled;
         snap.scoreboardEnabled = this.scoreboardEnabled;
         snap.hammerMaterial = this.hammerMaterial; snap.hammerItemsAdderId = this.hammerItemsAdderId;
@@ -559,7 +578,8 @@ public class GameConfig {
         snap.fireballProximityFuse = this.fireballProximityFuse;
         snap.fireballItemName = this.fireballItemName;
         snap.currencyDropChance = this.currencyDropChance;
-        snap.currencyDropAmount = this.currencyDropAmount;
+        snap.currencyDropMin = this.currencyDropMin;
+        snap.currencyDropMax = this.currencyDropMax;
         // starter-kit 深拷贝：每个条目独立拷贝（snapshot 与 activeConfig 完全隔离）
         snap.starterKitEnabled = this.starterKitEnabled;
         snap.starterKitItems = new ArrayList<>();
@@ -593,6 +613,8 @@ public class GameConfig {
     public void setVillagerHealth(double v) { this.villagerHealth = v; }
     public int getRejoinTimeoutSeconds() { return rejoinTimeoutSeconds; }
     public void setRejoinTimeoutSeconds(int v) { this.rejoinTimeoutSeconds = v; }
+    public int getEmptyArenaEndSeconds() { return emptyArenaEndSeconds; }
+    public void setEmptyArenaEndSeconds(int v) { this.emptyArenaEndSeconds = v; }
     public boolean isMapRestoreEnabled() { return mapRestoreEnabled; }
     public void setMapRestoreEnabled(boolean v) { this.mapRestoreEnabled = v; }
     public boolean isScoreboardEnabled() { return scoreboardEnabled; }
@@ -712,8 +734,10 @@ public class GameConfig {
 
     public double getCurrencyDropChance() { return currencyDropChance; }
     public void setCurrencyDropChance(double v) { this.currencyDropChance = v; }
-    public int getCurrencyDropAmount() { return currencyDropAmount; }
-    public void setCurrencyDropAmount(int v) { this.currencyDropAmount = v; }
+    public int getCurrencyDropMin() { return currencyDropMin; }
+    public void setCurrencyDropMin(int v) { this.currencyDropMin = v; }
+    public int getCurrencyDropMax() { return currencyDropMax; }
+    public void setCurrencyDropMax(int v) { this.currencyDropMax = v; }
 
     /** starter-kit 总开关（game-settings.yml 的 {@code starter-kit.enabled}） */
     public boolean isStarterKitEnabled() { return starterKitEnabled; }
@@ -753,6 +777,7 @@ public class GameConfig {
                 && defeatCountdownSeconds == other.defeatCountdownSeconds
                 && Double.compare(villagerHealth, other.villagerHealth) == 0
                 && rejoinTimeoutSeconds == other.rejoinTimeoutSeconds
+                && emptyArenaEndSeconds == other.emptyArenaEndSeconds
                 && mapRestoreEnabled == other.mapRestoreEnabled
                 && scoreboardEnabled == other.scoreboardEnabled
                 && hammerMaterial == other.hammerMaterial
@@ -804,7 +829,8 @@ public class GameConfig {
                 && spawnYOffset == other.spawnYOffset
                 && airdropMaxPerDropper == other.airdropMaxPerDropper
                 && Double.compare(currencyDropChance, other.currencyDropChance) == 0
-                && currencyDropAmount == other.currencyDropAmount
+                && currencyDropMin == other.currencyDropMin
+                && currencyDropMax == other.currencyDropMax
                 && starterKitEnabled == other.starterKitEnabled
                 && Objects.equals(starterKitItems, other.starterKitItems)
                 && fireballMaterial == other.fireballMaterial
@@ -822,7 +848,7 @@ public class GameConfig {
     public int hashCode() {
         return Objects.hash(worldName, coreX, coreY, coreZ, minPlayers, maxPlayers,
                 victoryWaves, waveIntervalSeconds, waveTimeoutSeconds, defeatCountdownSeconds,
-                villagerHealth, rejoinTimeoutSeconds, mapRestoreEnabled, scoreboardEnabled,
+                villagerHealth, rejoinTimeoutSeconds, emptyArenaEndSeconds, mapRestoreEnabled, scoreboardEnabled,
                 hammerMaterial, hammerItemsAdderId, hammerCustomModelData, hammerUseItemsAdder,
                 hammerBaseDamage, hammerEffectRadius, hammerAftershockTicks, hammerSmashTimeoutTicks,
                 hammerVisualDisplayTicks, hammerDamageLowThreshold, hammerDamageMediumThreshold,
@@ -835,7 +861,7 @@ public class GameConfig {
                 repairCostAmount, repairAmountPerCost, nodeBuffEffects, nodeBuffRefreshTicks,
                 nodeBuffStackCap, nodeBuffDurationTicks, monsters, waves, defaultWave,
                 spawnRadiusMin, spawnRadiusMax, spawnRadiusSpread, globalMobCap, mobCapPerPlayer,
-                spawnYOffset, airdropMaxPerDropper, currencyDropChance, currencyDropAmount,
+                spawnYOffset, airdropMaxPerDropper, currencyDropChance, currencyDropMin, currencyDropMax,
                 starterKitEnabled, starterKitItems, fireballMaterial, fireballSpeed, fireballDamage,
                 fireballExplosionRadius, fireballCooldownTicks, fireballMaxTravelTicks,
                 fireballKnockback, fireballProximityFuse, fireballItemName);

@@ -73,9 +73,13 @@ arenas:
     villagers: []
 
     # 生成设置
+    # spawn-radius-min/max：怪物在刷怪点周围这个半径内随机水平偏移（1/3 = 小范围随机）。
+    # 注意 min 必须 > 0 才会被读取（= 0 视为未配置，回退 game-settings.yml 的全局值）。
+    # 小半径 = 怪紧贴刷怪点附近刷新，适合任意地形；大半径需要配合开阔地形——
+    # 越界点会落进虚空/水面，被安全落点检测丢弃后重试，半径越大有效点越少。
     node-search-radius: 50
-    spawn-radius-min: 20
-    spawn-radius-max: 40
+    spawn-radius-min: 1
+    spawn-radius-max: 3
     spawn-y-offset: 0
 
     # 游戏设置
@@ -112,8 +116,9 @@ arenas:
     villagers: []
 
     node-search-radius: 50
-    spawn-radius-min: 25
-    spawn-radius-max: 45
+    # 小半径随机（1/3，min 须 > 0 才生效）：越界点会被安全落点检测丢弃，大半径请确认刷怪点周围是开阔安全地形
+    spawn-radius-min: 1
+    spawn-radius-max: 3
     spawn-y-offset: 0
 
     game:
@@ -146,8 +151,9 @@ arenas:
     villagers: []
 
     node-search-radius: 60
-    spawn-radius-min: 30
-    spawn-radius-max: 50
+    # 小半径随机（1/3，min 须 > 0 才生效）：越界点会被安全落点检测丢弃，大半径请确认刷怪点周围是开阔安全地形
+    spawn-radius-min: 1
+    spawn-radius-max: 3
     spawn-y-offset: 0
 
     game:

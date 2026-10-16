@@ -107,7 +107,7 @@ public class HilltopCommandHandler {
         //
         // 控制台可用（需 hilltopvillage.admin，行为变化见 README 命令表）：
         // start / stop / arenas / list / enable / disable / tps / shop reload /
-        // status / reloadconfig / lang / stats <玩家名> / top <类型>。
+        // status / reloadconfig / lang / stats <玩家名> / top <类型> / wave clear / wave skip。
         if (!isPlayer && CONSOLE_BLOCKED_COMMANDS.contains(sub)) {
             sender.sendMessage(lang.get("players-only"));
             return true;
@@ -386,7 +386,11 @@ public class HilltopCommandHandler {
                     sender.sendMessage(lang.get("players-only"));
                     return true;
                 }
-                handleLobbyCommand(player);
+                handleLobbyCommand(player, args);
+                break;
+
+            case "wave":
+                handleWaveCommand(sender, args, player);
                 break;
 
             case "enable":
@@ -846,7 +850,48 @@ public class HilltopCommandHandler {
      * /hilltop lobby
      * 返回大厅。若玩家在竞技场中则先正常离开（归还物品），否则直接传送。
      */
-    private void handleLobbyCommand(Player player) {
+    private void handleLobbyCommand(Player player, String[] args) {
+        // fix4 反馈9：/hilltop lobby setspawn —— 把当前位置写为大厅出生点（管理员）
+        if (args.length >= 2 && args[1].equalsIgnoreCase("setspawn")) {
+            if (!player.hasPermission("hilltopvillage.admin")) {
+                player.sendMessage(lang.getFor(player, "no-permission"));
+                return;
+            }
+            // 必须站在大厅世界内执行：否则会把竞技场/任意世界的坐标静默写成大厅出生点
+            // （与 deploy 系列的世界守卫同一理由，见 handleDeployCommand 的 must-be-in-arena-world）。
+            // 大小写不敏感比较（仿 C2-01）：Bukkit 世界查找不区分大小写，arenas.yml 里
+            // lobby.world 写成 Lobby 而实际文件夹小写时，精确 equals 会把站在正确世界里的
+            // 管理员误拒。大厅世界解析沿用 getLobbyWorld()（含未配置时回退主世界的同一口径）。
+            org.bukkit.World lobbyWorld = arenaManager.getLobbyWorld();
+            String lobbyWorldName = lobbyWorld != null ? lobbyWorld.getName() : null;
+            if (lobbyWorldName == null
+                    || !player.getWorld().getName().equalsIgnoreCase(lobbyWorldName)) {
+                player.sendMessage(lang.getFor(player, "lobby.setspawn-not-lobby-world",
+                        lobbyWorldName != null ? lobbyWorldName : "?"));
+                return;
+            }
+            if (arenaManager.setLobbySpawn(player.getLocation())) {
+                player.sendMessage(lang.getFor(player, "lobby.setspawn-done",
+                        String.format("%.1f", player.getLocation().getX()),
+                        String.format("%.1f", player.getLocation().getY()),
+                        String.format("%.1f", player.getLocation().getZ())));
+                player.sendMessage(lang.getFor(player, "lobby.setspawn-effect"));
+                player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
+                        player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
+            } else {
+                player.sendMessage(lang.getFor(player, "lobby.setspawn-failed"));
+            }
+            return;
+        }
+        if (args.length >= 2) {
+            player.sendMessage(lang.getFor(player, "usage-lobby"));
+            if (player.hasPermission("hilltopvillage.admin")) {
+                player.sendMessage(lang.getFor(player, "usage-lobby-setspawn"));
+            }
+            return;
+        }
+
         if (arenaManager.isInArena(player)) {
             arenaManager.leaveArena(player);
             lang.send(player, "arena-left");
@@ -998,6 +1043,67 @@ public class HilltopCommandHandler {
     }
 
     /**
+     * /hilltop wave <clear|skip> [竞技场]
+     * fix4 反馈12：管理员强制清怪 / 强制推进波次（替代已默认禁用的自动超时保险）。
+     *
+     * <ul>
+     *   <li>{@code clear}：清光当前波全部存活怪物并强制完成该波进入休整期。
+     *       仅对局进行中（RUNNING）有效；休整期执行会被拒绝并提示改用 {@code skip}。</li>
+     *   <li>{@code skip}：休整期跳过倒计时，立即开始下一波；对局进行中执行则
+     *       先强制清波再立即开始下一波（一步到位）。</li>
+     * </ul>
+     */
+    private void handleWaveCommand(CommandSender sender, String[] args, Player player) {
+        if (!sender.hasPermission("hilltopvillage.admin")) {
+            sender.sendMessage(lang.getFor(player, "no-permission"));
+            return;
+        }
+
+        if (args.length < 2) {
+            sender.sendMessage(lang.getFor(player, "usage-wave-clear"));
+            sender.sendMessage(lang.getFor(player, "usage-wave-skip"));
+            return;
+        }
+        String action = args[1].toLowerCase();
+        boolean skipIntermission = action.equals("skip");
+        if (!skipIntermission && !action.equals("clear")) {
+            sender.sendMessage(lang.getFor(player, "usage-wave-clear"));
+            sender.sendMessage(lang.getFor(player, "usage-wave-skip"));
+            return;
+        }
+
+        String waveArenaId = args.length >= 3 ? args[2] : null;
+        ArenaInstance waveArena = arenaManager.resolveArena(waveArenaId, player);
+        if (waveArena == null) {
+            sendArenaResolveFailure(sender, player, waveArenaId);
+            return;
+        }
+        GameManager waveGm = waveArena.getGameManager();
+
+        // clear 在休整期没有可清的东西：拒绝并引导到 skip（而非静默等效 skip，
+        // 让「cleared」消息始终真实，也避免把「清怪」命令变成意外的跳波按钮）
+        if (!skipIntermission && waveGm.getState() == GameState.WAVE_INTERMISSION) {
+            sender.sendMessage(lang.getFor(player, "wave-clear-intermission"));
+            return;
+        }
+
+        GameManager.ForceWaveResult result = waveGm.forceAdvanceWave();
+
+        // skip 且当前波刚被清完（原本 RUNNING）时，再推一步直接开始下一波
+        if (skipIntermission && result == GameManager.ForceWaveResult.WAVE_CLEARED
+                && waveGm.getState() == GameState.WAVE_INTERMISSION) {
+            result = waveGm.forceAdvanceWave();
+        }
+
+        switch (result) {
+            case WAVE_CLEARED -> sender.sendMessage(lang.getFor(player, "wave-clear-done"));
+            case WAVE_SKIPPED -> sender.sendMessage(lang.getFor(player, "wave-skip-done"));
+            case NOT_ENOUGH_PLAYERS -> sender.sendMessage(lang.getFor(player, "wave-skip-not-enough-players"));
+            case NOT_RUNNING -> sender.sendMessage(lang.getFor(player, "wave-not-running"));
+        }
+    }
+
+    /**
      * /hilltop stats [玩家名]
      * 查看自己或他人的持久统计。
      */
@@ -1048,6 +1154,7 @@ public class HilltopCommandHandler {
                 String.valueOf(target.getDeaths()),
                 formatRatio(target)));
         sender.sendMessage(lang.getFor(player, "stats.nodes", String.valueOf(target.getNodesRepaired())));
+        sender.sendMessage(lang.getFor(player, "stats.crystals", String.valueOf(target.getCrystalsCollected())));
         sender.sendMessage(lang.getFor(player, "stats.waves",
                 String.valueOf(target.getWavesSurvived()),
                 String.valueOf(target.getBestWave())));
@@ -1113,6 +1220,7 @@ public class HilltopCommandHandler {
             case BEST_WAVE -> stats.getBestWave();
             case NODES -> stats.getNodesRepaired();
             case DEATHS -> stats.getDeaths();
+            case CRYSTALS -> stats.getCrystalsCollected();
         };
     }
 

@@ -14,6 +14,11 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.entity.PlayerDeathEvent;
 import org.bukkit.event.player.PlayerRespawnEvent;
 
+import net.kyori.adventure.text.Component;
+import net.kyori.adventure.text.event.ClickEvent;
+import net.kyori.adventure.text.event.HoverEvent;
+import net.kyori.adventure.text.serializer.legacy.LegacyComponentSerializer;
+
 /**
  * 玩家死亡与重生处理（多竞技场路由）。
  *
@@ -37,6 +42,19 @@ public class PlayerLifecycleListener implements Listener {
     private GameManager gm(Player player) {
         ArenaInstance arena = plugin.getMultiArenaManager().getPlayerArena(player);
         return arena == null ? null : arena.getGameManager();
+    }
+
+    /**
+     * G3c：阵亡进入旁观后，快捷栏不会渲染、客户端也不会发送使用物品包，
+     * 因此「返回大厅」唯一可靠的入口是聊天里的可点击按钮（runCommand）。
+     */
+    private void sendLeaveHint(Player player) {
+        String msg = plugin.getLanguageManager().getFor(player, "hint.spectate-leave",
+                plugin.getLanguageManager().getFor(player, "btn.return-lobby"));
+        player.sendMessage(LegacyComponentSerializer.legacySection()
+                .deserialize(msg)
+                .clickEvent(ClickEvent.runCommand("/hilltop leave"))
+                .hoverEvent(HoverEvent.showText(Component.text("/hilltop leave"))));
     }
 
     /* ========== 死亡 ========== */
@@ -151,6 +169,7 @@ public class PlayerLifecycleListener implements Listener {
                     player.setGameMode(GameMode.SPECTATOR);
                     if (core != null) player.teleport(core);
                     plugin.getLanguageManager().send(player, "respawn-waiting");
+                    sendLeaveHint(player);
                 }
             });
             return;
@@ -176,6 +195,7 @@ public class PlayerLifecycleListener implements Listener {
             player.setGameMode(GameMode.SPECTATOR);
             if (core != null) player.teleport(core);
             plugin.getLanguageManager().send(player, "respawn-waiting");
+            sendLeaveHint(player);
         });
     }
 }

@@ -179,6 +179,8 @@ public class ArenaScoreboard {
         int totalVillagers = arena.getVillagerSystem().getTotalCount();
         int kills = data == null ? -1 : data.getKills();
         int deaths = data == null ? -1 : data.getDeaths();
+        // fix4 反馈6：本局获取的水晶数（击杀掉落口径）——让玩家不依赖地板掉落物也能看到进度
+        int crystals = data == null ? -1 : data.getCurrencyCollected();
 
         // 输入签名：记分板每一行都由这些整数派生，它们没变就整帧跳过。
         // 用 StringBuilder 而非字符串拼接：这里每秒每玩家只跑一次，
@@ -192,7 +194,7 @@ public class ArenaScoreboard {
         sig.append(wave).append(':').append(totalWaves).append(':').append(alive)
            .append(':').append(spectators).append(':').append(activeNodes).append(':').append(totalNodes)
            .append(':').append(aliveVillagers).append(':').append(totalVillagers)
-           .append(':').append(kills).append(':').append(deaths)
+           .append(':').append(kills).append(':').append(deaths).append(':').append(crystals)
            .append(':').append(lang.getPlayerLocale(player));
         String signature = sig.toString();
         if (signature.equals(state.signature)) return;
@@ -226,6 +228,7 @@ public class ArenaScoreboard {
         if (data != null) {
             lines.add(lang.getFor(player, "scoreboard.kills", String.valueOf(kills)));
             lines.add(lang.getFor(player, "scoreboard.deaths", String.valueOf(deaths)));
+            lines.add(lang.getFor(player, "scoreboard.crystals", String.valueOf(crystals)));
         }
 
         if (lines.size() > MAX_LINES) {

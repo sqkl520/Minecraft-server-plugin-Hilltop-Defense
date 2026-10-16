@@ -10,7 +10,7 @@ softdepend: []
 commands:
   hilltop:
     description: Main command for Hilltop Village plugin
-    usage: /hilltop <start|stop|join|leave|lobby|status|list|arenas|manage|enable|disable|hammer|fireball|help|setup|deploy|config|reloadconfig|shop|lang|tps|gui|build|stats|top>
+    usage: /hilltop <start|stop|join|leave|lobby|status|list|arenas|manage|enable|disable|hammer|fireball|help|setup|deploy|config|reloadconfig|shop|lang|tps|gui|build|stats|top|wave>
     aliases: [hv, htv]
 permissions:
   hilltopvillage.admin:

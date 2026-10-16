@@ -4,9 +4,11 @@ import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.ai.ExplodeBeetleGoal;
 import com.hilltopvillage.ai.HookClawHunterGoal;
 import com.hilltopvillage.ai.AirdropSpawnGoal;
+import com.hilltopvillage.ai.DropperAttackGoal;
 import com.hilltopvillage.ai.NodeAttackGoal;
 import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.shop.ShopManager;
+import com.hilltopvillage.util.SafeSpawnUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.Material;
@@ -55,6 +57,8 @@ public class WaveManager {
     /** PDC 标记：全部波次怪（普通/三特殊/空投小怪/抛投者，见 {@link #markWaveMobPersistent}） */
     private final NamespacedKey waveMobKey;
     private static final int SPAWN_BATCH_SIZE = 2;
+    /** 安全落点重试次数（fix4 G1b）：候选点扫到虚空/无地面时重抽坐标，全部失败则本只不刷或回退固定点 */
+    private static final int SPAWN_SAFE_RETRY_COUNT = 8;
     private static final int DEFAULT_WAVE_BASE_COUNT = 5;
     private static final int DEFAULT_WAVE_COUNT_PER_WAVE = 2;
     /** 空投分批节奏：每 10 tick 落 1 只（与历史手感一致） */
@@ -628,6 +632,13 @@ public class WaveManager {
             return;
         }
         markWaveMobPersistent(phantom);
+        // fix4 反馈2佐证：抛投者是「空投载具 + 骚扰者」的自定义单位，若保留幻翼原版的
+        // 白天日光焚烧（实测日志：滞空良久后 burned to death），它在白天对局中会未完成
+        // 空投就被烧死、完全失去功能。此处关闭日焚烧（仅对 Phantom 生效，entity-type
+        // 被配置改成其它类型时跳过）。
+        if (phantom instanceof Phantom vanillaPhantom) {
+            vanillaPhantom.setShouldBurnInDay(false);
+        }
         double health = mc != null ? mc.getHealth() : 80.0;
         phantom.getAttribute(Attribute.MAX_HEALTH).setBaseValue(health);
         phantom.setHealth(health);
@@ -645,6 +656,11 @@ public class WaveManager {
 
         Bukkit.getMobGoals().removeAllGoals(phantom);
         Bukkit.getMobGoals().addGoal(phantom, 1, new AirdropSpawnGoal(phantom, gameManager));
+        // fix4 反馈2：removeAllGoals 把幻翼原版俯冲攻击（PHANTOM_ATTACK_PLAYER）也清掉了，
+        // 抛投者此前只会空投、从不攻击玩家。补一个低优先级骚扰俯冲 Goal（优先级 2 低于空投的 1，
+        // 有空投任务时空投优先，间隙才俯冲），伤害取 ATTACK_DAMAGE（= monsters-config.yml
+        // 的 base-damage，管理员可调），并附带冷却压低骚扰 DPS。
+        Bukkit.getMobGoals().addGoal(phantom, 2, new DropperAttackGoal(phantom, gameManager));
 
         activeMobs.add(phantom);
     }
@@ -674,12 +690,20 @@ public class WaveManager {
                         + " 的 mob-spawn-points 与 spawn-points 均为空，已回退到「以核心为中心、半径 "
                         + radiusMin + "-" + radiusMax + "」的环形刷怪；建议用 /hilltop deploy addmobspawn 补部署刷怪点");
             }
-            double distance = randomRingDistance(radiusMin, radiusMax);
-            double angle = random.nextDouble() * 2 * Math.PI;
-            core.add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+            // fix4 G1b：环形候选同样必须过安全落点检测——候选落在虚空/水面上时怪会直接
+            // 掉出世界（作者实测：日志成片 fell out of the world）。8 次重试全部不安全则
+            // 本只不刷（调用方 null 守卫），比刷进虚空白送强。
             int yOffset = gameManager.getSpawnYOffset();
-            if (yOffset != 0) core.add(0, yOffset, 0);
-            return core;
+            for (int attempt = 0; attempt < SPAWN_SAFE_RETRY_COUNT; attempt++) {
+                Location candidate = core.clone();
+                double distance = randomRingDistance(radiusMin, radiusMax);
+                double angle = random.nextDouble() * 2 * Math.PI;
+                candidate.add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+                if (yOffset != 0) candidate.add(0, yOffset, 0);
+                Location safe = SafeSpawnUtil.findSafeGround(candidate);
+                if (safe != null) return safe;
+            }
+            return null;
         }
 
         // 只读视图而非 getMobSpawnPoints()：后者每次都 new ArrayList<>(...)，
@@ -687,30 +711,34 @@ public class WaveManager {
         // 不会改到 GameManager 内部的 Location 本体（视图的元素安全约束见该方法 Javadoc）。
         Location basePoint = fixedPoints.get(random.nextInt(fixedPoints.size())).clone();
 
-        // 以固定刷怪点为中心的随机水平偏移：距离取 [min,max]；max<=0 时用历史行为
-        // 3.0 兜底（GameConfig.spawnRadiusSpread，无 IO 的旧扩散常量），避免旧存档缺键时行为突变。
-        double distance;
-        if (radiusMax > 0) {
-            distance = randomRingDistance(radiusMin, radiusMax);
-        } else {
-            distance = random.nextDouble() * gameManager.getConfigManager().getActiveConfig().getSpawnRadiusSpread();
-        }
-
-        if (distance > 0) {
-            double angle = random.nextDouble() * 2 * Math.PI;
-            double offsetX = Math.cos(angle) * distance;
-            double offsetZ = Math.sin(angle) * distance;
-
-            basePoint.add(offsetX, 0, offsetZ);
-        }
-
-        // M-14：生成高度偏移（per-arena spawn-y-offset 优先、全局 spawning.spawn-y-offset 兜底）
+        // M-14：生成高度偏移（per-arena spawn-y-offset 优先、全局 spawning.spawn-y-offset 兜底）。
+        // fix4 G1b：yOffset 先叠加到基准点，之后它只影响安全扫描的起始高度（扫描会归位到地表）。
         int yOffset = gameManager.getSpawnYOffset();
         if (yOffset != 0) {
             basePoint.add(0, yOffset, 0);
         }
 
-        return basePoint;
+        // 以固定刷怪点为中心的随机水平偏移（距离语义不变：radius-max 配置了取 [min,max]，
+        // 否则退回无 IO 的历史扩散常量 spawnRadiusSpread，避免旧存档缺键时行为突变）。
+        // fix4 G1b：每个候选点都要过列扫描安全化——向下找实心非液体方块顶面；天空岛地图上
+        // 偏移出岛的候选会扫到虚空被丢弃，换下一个候选（每次重抽距离+角度）；全部失败再回退
+        // 「固定点本体的原地安全化」，仍有落脚点就刷，彻底无安全点才放弃本只。
+        for (int attempt = 0; attempt < SPAWN_SAFE_RETRY_COUNT; attempt++) {
+            Location candidate = basePoint.clone();
+            double distance = radiusMax > 0
+                    ? randomRingDistance(radiusMin, radiusMax)
+                    : random.nextDouble() * gameManager.getConfigManager().getActiveConfig().getSpawnRadiusSpread();
+            if (distance > 0) {
+                double angle = random.nextDouble() * 2 * Math.PI;
+                candidate.add(Math.cos(angle) * distance, 0, Math.sin(angle) * distance);
+            }
+            Location safe = SafeSpawnUtil.findSafeGround(candidate);
+            if (safe != null) return safe;
+        }
+
+        // 偏移候选全部不安全（如半径过大、点群贴在岛边缘）：回退到固定点本体原地安全化。
+        // 这保证「怪至少刷在刷怪点附近的安全表面」，而不是直接放弃。
+        return SafeSpawnUtil.findSafeGround(basePoint);
     }
 
     /** 在 [min,max] 中取随机距离（min 夹到非负；max 夹到不小于 min），半径为 0 时返回 0。 */
@@ -720,31 +748,69 @@ public class WaveManager {
         return min + random.nextDouble() * (max - min);
     }
 
-    public void onMobDeath(LivingEntity mob) {
+    public int onMobDeath(LivingEntity mob) {
         activeMobs.remove(mob);
-        dropCurrency(mob);
+        return dropCurrency(mob);
     }
 
     /**
-     * 波次怪物死亡时按概率掉落商店货币（能量水晶）。
-     * 仅游戏进行中（RUNNING / WAVE_INTERMISSION）掉落；ShopManager 未初始化时静默跳过。
+     * 波次怪物死亡时掉落商店货币（能量水晶）。fix4 起由「概率制 + 固定数量」改为
+     * <b>每杀必掉、数量浮动</b>：默认每次击杀掉落 {@code [shop.currency-drop-min, shop.currency-drop-max]}
+     * 个随机数（区间含两端）。{@code shop.currency-drop-chance} 保留为概率门
+     * （默认 1.0 = 必掉；旧格式文件在加载时已迁移为必掉）。仅游戏进行中
+     * （RUNNING / WAVE_INTERMISSION）掉落；ShopManager 未初始化时静默跳过。
+     *
+     * <p>性能口径：掉落物实体数与「怪物数 × 平均掉落堆数」成正比。默认区间 1~2 时每只怪
+     * 恰掉 1 堆（1 个 ItemStack），单波 80 只 ≈ 80 个实体，且原版会把同位置相邻的同类
+     * 掉落物自动合并 —— 与旧掉落机制同量级、无额外放大。若服主把区间调大（如 10~20），
+     * 仍然是每只怪 1 堆实体（数量体现在 ItemStack 的 amount 上，不增加实体数），
+     * 真正的量级风险来自「堆数 × 存活时间」：竞技场重置时
+     * {@code ArenaInstance.clearDroppedItems()} 会统一清理残留掉落物兜底。</p>
+     *
+     * @return 本次实际掉落的货币数量（0 = 未掉落：不满足条件 / 概率未命中 / 区间为 0）
      */
-    private void dropCurrency(LivingEntity mob) {
-        if (!gameManager.isGameRunning()) return;
-        if (mob.getLocation().getWorld() == null) return;
+    private int dropCurrency(LivingEntity mob) {
+        if (!gameManager.isGameRunning()) return 0;
+        if (mob.getLocation().getWorld() == null) return 0;
         // P0-D：空投小怪不掉货币 —— 抛投者可无限空投，若空投怪也掉币，玩家挂机即可刷钱，
         // 且会污染经济。空投怪在生成时打了 PDC 标记（见 markAirdropMob），此处据此跳过。
-        if (isAirdropMob(mob)) return;
+        if (isAirdropMob(mob)) return 0;
 
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
         ShopManager shopManager = gameManager.getPlugin().getShopManager();
-        if (shopManager == null || shopManager.getShopConfig() == null) return;
+        if (shopManager == null || shopManager.getShopConfig() == null) return 0;
 
-        if (random.nextDouble() < cfg.getCurrencyDropChance()) {
-            mob.getLocation().getWorld().dropItemNaturally(
-                    mob.getLocation(),
-                    shopManager.createCurrencyItem(cfg.getCurrencyDropAmount()));
+        // 概率门：默认 1.0（nextDouble ∈ [0,1)，恒 < 1.0 → 必掉）；
+        // 0 或负数 → nextDouble() >= 0 恒真 → 关闭掉落。越界值就地钳制，不依赖配置侧约束。
+        double chance = Math.min(1.0, Math.max(0.0, cfg.getCurrencyDropChance()));
+        if (random.nextDouble() >= chance) return 0;
+
+        int amount = rollCurrencyDropAmount(cfg);
+        if (amount <= 0) return 0;
+        mob.getLocation().getWorld().dropItemNaturally(
+                mob.getLocation(),
+                shopManager.createCurrencyItem(amount));
+        return amount;
+    }
+
+    /**
+     * 滚动本次掉落的货币数量：{@code [min, max]} 闭区间随机。
+     *
+     * <p>两端各自钳到 {@code [0, 64]}（64 = 单堆上限：{@code ItemStack} 虽然只校验
+     * amount > 0，但超上限堆会在拾取/背包操作时被拆分，钳制让掉落物始终是合法单堆）；
+     * min > max 时按 {@code [max, min]} 修正顺序，配置写反不会让掉落任务抛
+     * {@link IllegalArgumentException}（{@code nextInt} 要求参数为正）。</p>
+     */
+    private int rollCurrencyDropAmount(GameConfig cfg) {
+        int min = Math.max(0, Math.min(64, cfg.getCurrencyDropMin()));
+        int max = Math.max(0, Math.min(64, cfg.getCurrencyDropMax()));
+        if (min > max) {
+            int swap = min;
+            min = max;
+            max = swap;
         }
+        if (max <= 0) return 0;
+        return min + random.nextInt(max - min + 1);
     }
 
     /**

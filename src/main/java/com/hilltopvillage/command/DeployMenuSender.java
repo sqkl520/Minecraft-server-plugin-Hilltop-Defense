@@ -58,6 +58,9 @@ public class DeployMenuSender {
             sendClickableLine(sender, "usage-disable", "/hilltop disable ", hover);
             sendClickableLine(sender, "usage-shop-reload", "/hilltop shop reload", hover);
             sendClickableLine(sender, "usage-shop-give", "/hilltop shop give ", hover);
+            sendClickableLine(sender, "usage-lobby-setspawn", "/hilltop lobby setspawn", hover);
+            sendClickableLine(sender, "usage-wave-clear", "/hilltop wave clear ", hover);
+            sendClickableLine(sender, "usage-wave-skip", "/hilltop wave skip ", hover);
             sendClickableLine(sender, "usage-build", "/hilltop build", hover);
             sendClickableLine(sender, "usage-tps", "/hilltop tps", hover);
         }

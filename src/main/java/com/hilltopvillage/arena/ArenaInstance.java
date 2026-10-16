@@ -10,6 +10,7 @@ import com.hilltopvillage.mechanics.ArenaScoreboard;
 import com.hilltopvillage.mechanics.NodeSystem;
 import com.hilltopvillage.mechanics.VillagerSystem;
 import com.hilltopvillage.util.LanguageManager;
+import com.hilltopvillage.util.SafeSpawnUtil;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
 import org.bukkit.Location;
@@ -74,6 +75,17 @@ public class ArenaInstance implements IArena {
     private BukkitTask startCountdownTask;
     /** 结算倒计时任务句柄；中断结算（stop / reset / 关闭）时必须取消并置空 */
     private BukkitTask endSequenceTask;
+    /**
+     * 空置自动结束任务句柄（G3d）。
+     *
+     * <p>仅在 {@code config.empty-arena-end-seconds > 0} 且对局进行中
+     * （STARTING / RUNNING / WAVE_INTERMISSION）时运行；状态离开进行中或配置关闭后
+     * 任务下一 tick 自行退出（{@link #cancelEmptyArenaTask()} 兜底取消）。
+     * 显式取消点：{@link #stopGame()}（对局终结）、{@link #resetNow()}（实例终结/插件关闭）。</p>
+     */
+    private BukkitTask emptyArenaTask;
+    /** 已连续空置秒数（在线成员为 0 的持续时间），有人在场时清零 */
+    private int emptyArenaSeconds;
     /** 本局代号：每局开始时自增，用于让上一局残留的结算回调静默失效（不依赖 cancel 是否成功） */
     private int sessionId;
     private int countdown;
@@ -566,6 +578,8 @@ public class ArenaInstance implements IArena {
         cancelCountdown();
         // 结算倒计时属于被中断的这一局：必须取消，否则到点会把下一局玩家踢出
         cancelEndSequence();
+        // G3d：空置值守随本局终结一并取消（幂等；也防旧任务跨局残留）
+        cancelEmptyArenaTask();
 
         // Kick all players
         for (Player player : getPlayers()) {
@@ -703,7 +717,7 @@ public class ArenaInstance implements IArena {
 
     /**
      * 向所有在场玩家播报本局统计。
-     * 每人一行：玩家名 / 击杀 / 阵亡 / 修复节点（占位符顺序须与 messages.yml 一致）。
+     * 每人一行：玩家名 / 击杀 / 阵亡 / 修复节点 / 获取水晶（占位符顺序须与 messages.yml 一致）。
      */
     private void broadcastSessionStats() {
         broadcastI18n("defeat-stats-header", gameManager.getCurrentWave(), gameManager.getTotalWaves());
@@ -714,7 +728,8 @@ public class ArenaInstance implements IArena {
                     player.getName(),
                     String.valueOf(data.getKills()),
                     String.valueOf(data.getDeaths()),
-                    String.valueOf(data.getNodesRepaired())));
+                    String.valueOf(data.getNodesRepaired()),
+                    String.valueOf(data.getCurrencyCollected())));
         }
     }
 
@@ -969,6 +984,9 @@ public class ArenaInstance implements IArena {
                 countdown--;
             }
         }.runTaskTimer(plugin, 0L, 20L);
+
+        // G3d：进入 STARTING 后拉起空置值守（幂等；0/负数配置时内部直接跳过）
+        ensureEmptyArenaTaskRunning();
     }
 
     /**
@@ -979,6 +997,67 @@ public class ArenaInstance implements IArena {
             startCountdownTask.cancel();
             startCountdownTask = null;
         }
+    }
+
+    /* ========== 空置自动结束（G3d） ========== */
+
+    /**
+     * 确保「空置自动结束」值守任务在运行（幂等）。
+     *
+     * <p>由 {@link #startCountdown()} 与 {@link #onGameStart()} 在对局进入进行中状态时调用。
+     * 任务每个整秒检查一次：状态仍为 STARTING / RUNNING / WAVE_INTERMISSION 且
+     * {@link #getPlayers()}（在线成员）为空持续 {@code empty-arena-end-seconds} 秒时，
+     * 走与既有「全员退光」一致的 {@link #stopGame()} 正常收尾路径；有人在场（加入 / 重连）
+     * 则计时清零。配置为 0 或负数时不启动。</p>
+     *
+     * <p>取消点：状态离开进行中（任务下一 tick 自行退出）、{@link #stopGame()}、
+     * {@link #resetNow()} 与 {@link #completeResetAfterRestore()}。</p>
+     */
+    private void ensureEmptyArenaTaskRunning() {
+        if (emptyArenaTask != null) return;
+        // 插件禁用阶段（onDisable 同步收尾路径）不允许再调度 Bukkit 任务
+        if (!plugin.isEnabled()) return;
+        if (plugin.getConfigManager().getActiveConfig().getEmptyArenaEndSeconds() <= 0) return;
+
+        emptyArenaTask = new BukkitRunnable() {
+            @Override
+            public void run() {
+                // 状态离开进行中（结算 / 重置 / 回到等待）→ 任务自行退出并清空句柄
+                if (state != GameState.STARTING && state != GameState.RUNNING
+                        && state != GameState.WAVE_INTERMISSION) {
+                    cancelEmptyArenaTask();
+                    return;
+                }
+                // 热重载把配置改为 0/负数：计时清零、不再生效（任务随本局结束自行退出）
+                int limit = plugin.getConfigManager().getActiveConfig().getEmptyArenaEndSeconds();
+                if (limit <= 0) {
+                    emptyArenaSeconds = 0;
+                    return;
+                }
+                // 有人在场（加入 / 重连）→ 计时清零
+                if (!getPlayers().isEmpty()) {
+                    emptyArenaSeconds = 0;
+                    return;
+                }
+                emptyArenaSeconds++;
+                if (emptyArenaSeconds >= limit) {
+                    plugin.getLogger().info("竞技场 " + arenaId + " 空置 " + limit + "s，自动结束本局");
+                    // 沿用既有「全员退光」语义：stopGame()（其内部会取消本任务句柄）
+                    stopGame();
+                }
+            }
+        }.runTaskTimer(plugin, 20L, 20L);
+    }
+
+    /**
+     * 取消空置值守任务（幂等；须经本方法而非裸 {@code cancel()}，保证句柄置空可被重新拉起）。
+     */
+    private void cancelEmptyArenaTask() {
+        if (emptyArenaTask != null) {
+            emptyArenaTask.cancel();
+            emptyArenaTask = null;
+        }
+        emptyArenaSeconds = 0;
     }
 
     /**
@@ -1001,11 +1080,17 @@ public class ArenaInstance implements IArena {
 
         // ✅ Teleport all players from waiting area to game spawn points
         // STORY-1.2：此处仍读玩家出生点（getSpawnPoints 语义已固定为玩家出生），怪物刷怪点不影响传送
+        // fix4 G1b：传送前对出生点做「区块强制加载 + 地表安全化」——作者实测开局玩家下坠掉虚空
+        // （出生点下无地面/区块未加载），重生后正常。安全化失败时保持原坐标原样传送
+        // （宁可原样也不把玩家挪到别处）。
         List<Location> spawns = getSpawnPoints();
         if (!spawns.isEmpty()) {
             int index = 0;
             for (Player player : getPlayers()) {
-                player.teleport(spawns.get(index % spawns.size()));
+                Location target = safeTeleportTarget(spawns.get(index % spawns.size()));
+                if (target != null) {
+                    player.teleport(target);
+                }
                 player.setGameMode(GameMode.SURVIVAL);
                 // STORY-1.2 starter-kit：背包在 join 时已由 PlayerGoodsManager 快照并清空，
                 // 此时直接发放初始套装；背包满兜底掉脚下
@@ -1013,6 +1098,9 @@ public class ArenaInstance implements IArena {
                 index++;
             }
         }
+
+        // G3c：开局提示中途离开对局的命令入口（纯文本，观战按钮见 PlayerLifecycleListener）
+        broadcastI18n("hint.leave-command");
 
         // Load nodes from config
         nodeSystem.loadNodesFromConfig();
@@ -1033,6 +1121,27 @@ public class ArenaInstance implements IArena {
 
         // Start wave system（波次归零由 gameManager.startGame() 内部完成，本类不再另存副本）
         gameManager.startGame();
+
+        // G3d：手动 startGame() 未经 STARTING 倒计时时也拉起空置值守（幂等）
+        ensureEmptyArenaTaskRunning();
+    }
+
+    /**
+     * 把玩家出生点修正为可安全站立的位置（fix4 G1b）。
+     *
+     * <p>作者实测：进入游戏后「遁地掉虚空，重生以后就好了」——出生点脚下无地面或所在
+     * 区块未加载时，实体传送后会直接下坠。两层修正：① 强制加载出生点所在区块；
+     * ② 用 {@link SafeSpawnUtil} 向下扫描找地表安全落点并归位（保留 yaw/pitch）。
+     * 安全化失败（如整列无实心方块）保持原坐标原样传送——宁可原样也不把玩家挪到别处。</p>
+     */
+    private Location safeTeleportTarget(Location spawn) {
+        if (spawn == null) return null;
+        World world = spawn.getWorld();
+        if (world == null) return spawn;
+        // 强制加载出生点区块：未加载区块直接传送，实体将落在空中并持续下坠（掉虚空）
+        world.getChunkAt(spawn);
+        Location safe = SafeSpawnUtil.findSafeGround(spawn);
+        return safe != null ? safe : spawn;
     }
 
     /**
@@ -1148,6 +1257,8 @@ public class ArenaInstance implements IArena {
         // 终止分支置空，但无论经由哪条结算路径（自然结束 / stopGame）回到 WAITING，
         // 都在此兜底一次，保证 checkAutoStart() 的 startCountdownTask == null 守卫必然成立。
         cancelCountdown();
+        // G3d：同理兜底空置值守句柄（任务本身也会因状态离开进行中自行退出，这里显式清理）
+        cancelEmptyArenaTask();
         state = GameState.WAITING;
         plugin.getLogger().info("Arena " + arenaId + " has been reset");
     }
@@ -1159,6 +1270,8 @@ public class ArenaInstance implements IArena {
     public void resetNow() {
         cancelCountdown();
         cancelEndSequence();
+        // G3d：实例级终结（插件关闭 / 强制重置）必须停掉空置值守
+        cancelEmptyArenaTask();
         for (Player player : getPlayers()) {
             removePlayer(player);
         }
