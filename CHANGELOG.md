@@ -1,6 +1,63 @@
 # Changelog
 
 
+## [1.0.9-SNAPSHOT-fix4] - 2026-10-17
+
+> 1.0.9 的第四个修复版：作者第二轮实测反馈（12 条）的五路并行修复 + 装备与经济数值设计文档（纯设计）。
+> 原 `1.0.9-SNAPSHOT` / `-fix1` / `-fix2` / `-fix3` 的包与 GitHub Release 保留不动。
+> 反馈出处：作者 2026-10-15 实测（含服务器日志）；设计文档：`docs/03-analysis/equipment-economy-design-2026-10-15.md`。
+
+### Fixed（2026-10-17 — G1 刷怪安全落点（反馈 1/3/5，含 fix3 回归修复））
+
+- **反馈 1/3/5 的根因（fix3 自己引入的回归）**：fix3 把 arenas.yml 的 `spawn-radius-min/max`（作者服务器 = 20/40）接线生效后，`WaveManager.getRandomSpawnLocation()` 变成了"每个刷怪点周围 20~40 格随机偏移"——天空岛地图一偏移就飞出岛外，怪物刷在虚空随即下落出世界（日志成片 `fell out of the world`），第一波刷出的怪全部掉光 = "第一波一个怪也没有"
+- **新增 `util/SafeSpawnUtil.findSafeGround()`（安全落点工具）**：从参考点向下扫描找第一个实心非液体方块取顶面、x/z +0.5 居中、要求落点上方 2 格无实心（防卡墙/洞穴顶下）、贴近世界底部（`y < minHeight+2`）判不安全返 null——杜绝"落点在虚空 / 方块内部 / 头顶堵死"三类不安全情形
+- **`WaveManager.getRandomSpawnLocation()` 全面接入安全化**：固定刷怪点分支改为"偏移候选 ×8 次安全重试 → 失败回退基准点原地安全化 → 再失败返 null（调用方已有守卫）"；环形回退分支（无固定点时以核心为中心）同样接入；多点随机语义未动
+- **出厂模板半径改小**：`arenas.yml` 三个竞技场的 `spawn-radius-min/max` 由 20/40、25/45、30/50 统一改为 **1/3**（注：不能配 0——`GameManager.getSpawnRadiusMin()` 的 per-arena 判定是 `>0 才生效`，配 0 会静默回退全局值）。**作者服务器上的实际 arenas.yml 需手动改小，或依赖安全落点检测兜底**
+- **玩家出生点传送安全（反馈 5 "遁地掉虚空"）**：`ArenaInstance.onGameStart()` 传送改为经 `safeTeleportTarget()`——`world.getChunkAt()` 强制加载区块 + 安全化修正 y（保留 yaw/pitch）；安全化失败保持原坐标原样传送
+- **反馈 3（第一波无怪）额外排查结论**：核实 `spawnWave` 三条路径入口无独立问题，"第一波无怪"完全由掉虚空解释
+
+### Fixed（2026-10-17 — G2 抛投者 AI + 超时保险 + 波次命令（反馈 2/12））
+
+- **反馈 2（飞行抛投者不会攻击玩家）**：根因是 `spawnFlyingDropper` 的 `removeAllGoals` 把幻翼原版俯冲攻击一并清掉、只留空投 AI，导致它只会空投且长时间滞空（日志实证白天被日光烧死）。新增 `ai/DropperAttackGoal`（优先级 2，低于空投的 1——空投抢占优先、间隙才俯冲）：锁定 30 格内最近的本场玩家、向头顶 +2 俯冲、命中造成一次 `ATTACK_DAMAGE`（= monsters-config 的 `flying-dropper.base-damage`，可调）伤害后 50 tick 冷却压低 DPS；不触碰空投状态机
+- **顺带修**：抛投者 `setShouldBurnInDay(false)`（白天对局不再自焚烧死）
+- **反馈 12 前半（去掉自动超时保险）**：`wave-timeout-seconds` 默认值改为 **0（禁用）**，代码路径与配置钩子全保留（真遇到卡死时可调回）；`ConfigManager` 新增**升级归一化**——存量服务器磁盘上仍是旧默认 120 的值会被自动归一化为 0（显式设过其它值的不受影响）
+- **反馈 12 后半（管理员强制清怪/跳波命令）**：新增 `/hilltop wave clear [竞技场]`（RUNNING 时强制清除本波所有怪物并结束本波进入休整期；不掉落、不计击杀；休整期执行会被拒绝并引导用 skip）与 `/hilltop wave skip [竞技场]`（任何相位可用——RUNNING 时等效清波+跳休整、休整期立即开下一波；人数不足拒绝不判负）；权限 `hilltopvillage.admin`、控制台可用；Tab 补全/部署菜单/命令文档/plugin.yml usage 全同步；9 个新 i18n 键
+
+### Fixed（2026-10-17 — G3c 返回大厅入口（反馈 8））
+
+- **技术核查结论**：旁观（SPECTATOR）模式下快捷栏不渲染、客户端不发送使用物品数据包——"观战者右键物品按钮"方案技术上不可行，改用旁观模式唯一可靠的通道：聊天可点击按钮
+- **阵亡观战**：置旁观时发送带 `[返回大厅]` 可点击按钮的消息（`ClickEvent.runCommand("/hilltop leave")` + hover 说明），接入 `PlayerLifecycleListener` 的 2 处置旁观位置（含幽灵态兜底分支）
+- **开局提示**：`ArenaInstance.onGameStart()` 传送后广播"想中途离开：/hilltop leave"提示
+- 新 i18n 键 3 个：`hint.leave-command` / `hint.spectate-leave`（`{0}` 为按钮文字）/ `btn.return-lobby`
+
+### Fixed（2026-10-17 — G3d 空局自动结束（反馈 11））
+
+- **现状**：最后一名玩家 quit 时（RUNNING/WAVE_INTERMISSION 且重连窗口开启）走重连保留逻辑，`players` 集合保留离线 UUID、对局空转无收尾
+- **新增"空置超时"出口**：`ArenaInstance` 新增每秒（20 tick）值守任务 —— 状态 ∈ STARTING/RUNNING/WAVE_INTERMISSION 且在线成员为空持续 `empty-arena-end-seconds` 秒 → info 日志 + 沿用现有 `stopGame()` 收尾路径（与"全员退光"同一语义）；有人加入/重连自动清零；`<=0` 禁用
+- **新配置键 `empty-arena-end-seconds: 60`**（game-settings.yml 顶层；0 = 禁用）：四件套全接线（GameConfig 字段/getter/setter/snapshot/equals/hashCode、ConfigManager load/save/mergeExternalChanges 白名单/KNOWN_TOP_LEVEL_KEYS）；任务句柄取消点：`stopGame()`/`resetNow()`/`completeResetAfterRestore()` + 状态离开进行中自停
+
+### Changed（2026-10-17 — G4 能量水晶与经济（反馈 6/9/10））
+
+- **反馈 6 前半（掉率太低）**：掉币机制由"概率制"改为"**每杀必掉、数量浮动**"——新增 `shop.currency-drop-min/max`（默认 1/2，闭区间随机）；`currency-drop-chance` 保留为概率门、默认改 **1.0（必掉）**；旧键 `currency-drop-amount` 由 ConfigManager 自动迁移（服主改过则保形为新 min=max=旧值）并删键落盘（仿 nodes.repair-item 迁移先例）；空投怪不掉币的反挂机规则原样保留
+- **性能说明**：每杀恰 1 堆 ItemStack（数量在 amount 上、不增加实体数），原版相邻同类掉落物自动合并，竞技场重置时既有清理机制兜底——与旧机制同量级，配大数量也不会膨胀实体
+- **反馈 6 后半（排行榜展示水晶）**：`PlayerData.currencyCollected` 计数器（击杀掉落口径）+ `StatsManager` 新增 `crystals-collected` 持久化字段（旧文件缺省 0 兼容）；展示于 `/hilltop stats` 新行、侧边栏、结算战报（`defeat-stats-line` 占位符 3→4）、新增 `/hilltop top crystals` 榜单
+- **反馈 9（如何设置大厅出生点）**：新增 `/hilltop lobby setspawn`——须站在大厅世界内执行，把当前位置（含朝向）写为大厅出生点；写盘遵守"重读盘+只改 lobby.spawn 五键"纪律；**立即生效**（新登录/大厅复活/`/hilltop lobby` 即时使用新点，无需重启）；Tab 补全同步
+- **反馈 10（大厅可否发币）**：核实 `shop give` 本就无世界限制（在大厅一样可用）；已把"任何世界均可用（含大厅）"落到 `shop.give-usage`/`shop.give-success`/`usage-shop-give` 文案与命令文档
+- **额外修复（G4 自发现）**：`MultiArenaManager.isLobbyWorld` 大小写敏感比较改为 `equalsIgnoreCase`（lobby.world 大小写与实际文件夹不一致时大厅保护/复活曾全部静默失效）
+
+### Docs（2026-10-17 — 装备与经济数值设计（反馈 4/7，纯设计未动代码））
+
+- 新增 `docs/03-analysis/equipment-economy-design-2026-10-15.md`（416 行/11 节）：武器线 4 档（铁剑+锋利I=10 → 铁剑+锋利III=22 → 钻石剑+锋利IV=38 → 下界合金+锋利IV+火焰附加=60，每档附清怪刀数对照）；护甲散件 3 档（皮革 2/件 → 铁+保护I 6/件 → 钻石+保护III 14/件）；掉落按怪种建议（甲虫 1 / 猎手 1~2 / 抛投者 2 / 空投僵尸 0）；收入账本（单人 20 波期望 305 水晶）与毕业支出（158~250）校验；弓+箭强烈建议（补"唯一远程打不了 +8 高度抛投者"的缺口）；实现成本：带附魔装备需新 `EQUIPMENT` shop type（现 `MATERIAL` type 发货 `new ItemStack` 不支持附魔）；9 项待作者拍板事项列于第十一节
+- 该设计**尚未实现**；实现与否与档位取舍待作者拍板后进行
+
+### ⚠️ 升级提示（升级到 fix4 的服主必读）
+
+- `messages.yml` 只补缺键：fix4 **修改**了 5 个旧键——`usage-top` / `usage-shop-give` / `shop.give-usage` / `shop.give-success` / `defeat-stats-line`（占位符 3→4，旧盘文案不显示水晶数但不报错）；需要看到新文案的话删掉这些键后 `/hilltop reloadconfig`
+- **`arenas.yml` 需手动动作**：你服务器上的 `spawn-radius-min/max`（若仍是 20/40 等大值）建议改为 1/3；不改也会被安全落点检测兜住，但小值更符合"围绕刷怪点小范围随机"的设计（**改后需重启**，reloadconfig 不重读 arenas.yml）
+- **`wave-timeout-seconds` 升级归一化**：磁盘上仍是旧默认 `120` 的会被自动改写为 `0`（禁用）；如果你手工设过其它值则保持
+- **`game-settings.yml` 新键**：`empty-arena-end-seconds: 60`（空局自动结束秒数，0 禁用）会自动补写；`shop.currency-drop-*` 三键变更如上述
+
+
 ## [1.0.9-SNAPSHOT-fix3] - 2026-10-14
 
 > 1.0.9 的第三个修复版：13 路全维度审查（P0=0 / P1=20 / P2=40）后的七路并行修复 + 修复后命令逻辑五通道专项审查与修补。
