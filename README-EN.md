@@ -31,7 +31,7 @@ A cooperative PvE tower defense plugin for Minecraft servers. Players must work 
 - **Map Restore** — Block changes made during a match are rolled back on reset, so maps don't degrade game after game
 - **Graphical Config Center** — Configure game rules, waves, monsters, items and nodes through an intuitive GUI
 - **8-Step Setup Wizard** — `/hilltop setup` walks you through core/player-spawns+mob-spawns/nodes/villagers/shop, auto-saving each step
-- **Multi-language Support** — Built-in Chinese and English; players can switch with `/hilltop lang <en|zh>`
+- **Multi-language Support** — Built-in Chinese and English; players can switch with `/hilltop lang <en|zh>` (the preference lasts for the session; admins can change the server default)
 - **Location Particle Preview** — Trigger a 30-second particle animation from the setup wizard / management GUI / commands; each of the five location types has its own color: player spawn=green, mob spawn=red, node=blue, villager=yellow, shop=gold
 
 ## Energy Nodes Explained
@@ -492,7 +492,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths/crystals) | ✅ |
 | `/hilltop hammer` | Get the Sacred Hammer (Admin; players buy from the shop) | ❌ |
 | `/hilltop fireball` | Get a Fireball (Admin; players buy from the shop) | ❌ |
-| `/hilltop lang <en\|zh>` | Switch language | ✅ |
+| `/hilltop lang <en\|zh>` | Switch language (players change their own session language; admins/console change the server default and persist it) | ✅ |
 | `/hilltop start [arena]` | Start the game (Admin) | ✅ |
 | `/hilltop stop [arena]` | Force stop the game (Admin) | ✅ |
 | `/hilltop wave clear [arena]` | Force-clear all mobs of the current wave and finish it (enters intermission; cleared mobs produce no drops and don't count as kills) (Admin, `hilltopvillage.admin`) | ✅ |

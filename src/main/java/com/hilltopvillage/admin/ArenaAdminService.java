@@ -596,7 +596,7 @@ public final class ArenaAdminService {
      * <ul>
      *   <li>列表写法 {@code spawn-points: [{x,y,z}, ...]} —— {@link AdminDeployManager} 与出厂
      *       arenas.yml 用的形式，优先识别；</li>
-     *   <li>索引键写法 {@code spawn-points.0.x: ...} —— {@code ArenaManager#writeDefinition} 的形式，
+     *   <li>索引键写法 {@code spawn-points.0.x: ...} —— 旧版 ArenaManager 写盘格式的形式，
      *       仅在列表写法读不到内容时回退识别（键按数字升序）。</li>
      * </ul>
      *

@@ -473,10 +473,16 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         // fix5 M-16：重生点落在竞技场世界且玩家不是该场成员 → 覆写重生点为大厅，
         // 并清掉床 spawn（防下次死亡再走同一条路）。成员与旁观者的正常重生不经过这里
         //（上面 isInArena 已放行成员；在竞技场世界内的成员重生由 PlayerLifecycleListener 处理）。
+        // fix5 锐评 C-21（X4-F2）：判定改查「实例或定义」两库——disableArena 不卸载世界，
+        // 场退役为 DISABLED 后其世界仍可被床 spawn 落回（respawn 不经准入传送拦截、
+        // WAITING 期床不入回滚记账）；只查活动实例会漏掉这一姿态。定义库覆盖含已禁用/
+        // 未部署的场（与 ArenaAccessListener 传送链的 getArenaByWorld 定义侧口径一致）。
         Location target = event.getRespawnLocation();
         if (target != null && target.getWorld() != null
                 && !multiArenaManager.isLobbyWorld(target.getWorld().getName())
-                && multiArenaManager.getArenaByWorld(target.getWorld().getName()) != null) {
+                && (multiArenaManager.getArenaByWorld(target.getWorld().getName()) != null
+                        || multiArenaManager.getDefinitionManager()
+                                .getArenaByWorld(target.getWorld().getName()) != null)) {
             if (lobby != null) {
                 event.setRespawnLocation(lobby);
             }

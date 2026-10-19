@@ -819,7 +819,7 @@ public class ArenaInstance implements IArena {
      * <p><b>空值说明（已核实）：</b>{@link GameManager#getCoreLocation()} 的实现是
      * {@code coreLocation.clone()}，核心为 null 时会 NPE，所以「先取再判空」的写法在这里无效
      * （NPE 在调用内部就抛出了）。但活动实例的 core 不可能为 null：
-     * {@code MultiArenaManager} 的两条构建路径（启用队列 / {@code startArena}）都在
+     * {@code MultiArenaManager} 的实例构建路径（启用队列 {@code processEnableQueue}）在
      * {@code new ArenaInstance(...)} 之前拒绝未部署核心，{@link ArenaInstance} 构造函数本身也会
      * 解引用 core，且全项目唯一写点 {@code AdminDeployManager.saveSpawnPoints()} 仅在非空时才向
      * {@code gameManager.setCoreLocation(...)} 转发。因此这里直接读取，不用 try/catch 掩盖异常；
@@ -1126,6 +1126,18 @@ public class ArenaInstance implements IArena {
 
         // G3c：开局提示中途离开对局的命令入口（纯文本，观战按钮见 PlayerLifecycleListener）
         broadcastI18n("hint.leave-command");
+
+        // fix5 锐评 C-20（X4-F1）：刷怪点区块一次性预加载——M-15 的 isChunkLoaded 短路把
+        // 「未加载区块」从同步加载（主线程停顿）改为返回 null；首局开局瞬间、刷怪点距出生点
+        // ≥视距且异步加载未完成时，安全落点整批为 null → 少怪/空波闪烁（区块加载完成后自愈）。
+        // 此处对全部刷怪点做一次 getChunkAt 强制加载（有界集合 1~6 点、仅开局一次），
+        // 与上方玩家出生点 safeTeleportTarget 的预加载同模式；之后 isChunkLoaded 恒真，
+        // 短路不再触发、M-15 的防停顿收益保持。
+        for (Location mobSpawn : gameManager.getMobSpawnPointsView()) {
+            if (mobSpawn != null && mobSpawn.getWorld() != null) {
+                mobSpawn.getWorld().getChunkAt(mobSpawn);
+            }
+        }
 
         // Load nodes from config
         nodeSystem.loadNodesFromConfig();

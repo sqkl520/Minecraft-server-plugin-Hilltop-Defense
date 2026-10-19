@@ -619,7 +619,7 @@ public class MultiArenaManager {
      * 查找占用了同一世界的另一个竞技场（已就绪实例或启用队列中的定义）。
      *
      * <p>加载阶段已拒绝「一个世界对应多个竞技场」的配置（见 {@code ArenaManager.load()}），
-     * 这里做运行期兜底：避免通过 {@code /hilltop enable} 或直接 {@code startArena} 造出
+     * 这里做运行期兜底：避免通过 {@code /hilltop enable}（启用队列）造出
      * 两个共享世界的活动实例（共享世界会让地图回滚互相破坏）。</p>
      *
      * @return 冲突的竞技场 ID；无冲突返回 null

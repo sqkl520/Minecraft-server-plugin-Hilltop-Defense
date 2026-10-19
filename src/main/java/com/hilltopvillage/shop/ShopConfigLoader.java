@@ -133,9 +133,11 @@ public class ShopConfigLoader {
             // fix5 M-17：1.1.0 新模板按 54 格分区布局（护甲区槽位 27-53）；旧盘若仍是
             // gui.size: 27，按新模板补加的商品会全部落在这里被跳过。warning 补上升级指引，
             // 让「为什么全被跳过」在日志里自答。
+            // fix5 锐评 C-18：升级指引仅在 gui.size 确实小于 54 时附加——gui.size 已是 54
+            // 却 slot 越界（如 slot 60）是配置写错而非旧盘升级场景，提示旧值只会误导。
             plugin.getLogger().warning("shop.yml: item '" + id + "' slot " + slot
                     + " out of GUI size " + guiSize + ", skipped"
-                    + " (1.1.0 的完整商品布局需要 gui.size: 54，请检查本文件头部 gui.size 是否为旧值)");
+                    + (guiSize < 54 ? " (1.1.0 的完整商品布局需要 gui.size: 54，请检查本文件头部 gui.size 是否为旧值)" : ""));
             return null;
         }
 

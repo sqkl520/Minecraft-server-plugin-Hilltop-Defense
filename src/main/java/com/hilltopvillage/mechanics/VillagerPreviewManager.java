@@ -167,7 +167,9 @@ public class VillagerPreviewManager implements Listener {
      * <p>预览的生命周期只在「向导第 5 步」窗口内（设计三约束之一）：区块加载时出现的
      * 预览实体必然已跨出该窗口（正常路径下切步/退出/开局都会经内存列表清掉）。因此
      * 这里不判别会话状态、直接移除——代价是第 5 步期间管理员远离后返回可能发现预览消失，
-     * 重进管理界面 / 增删村民会经 {@code syncPreviews} 重新生成，属可接受的降级。</p>
+     * 可经「重新进入第 5 步 / goto 5 / 聊天栏 [添加村民] / GUI 增删村民」触发
+     * {@code syncPreviews} 重新生成（fix5 锐评 C-02：单开 villagersgui 或翻页只渲染列表、
+     * 不重建预览），属可接受的降级。</p>
      */
     @EventHandler
     public void onEntitiesLoad(EntitiesLoadEvent event) {

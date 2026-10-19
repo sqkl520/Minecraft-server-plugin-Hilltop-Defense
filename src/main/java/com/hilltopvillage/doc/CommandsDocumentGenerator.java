@@ -71,8 +71,8 @@ public class CommandsDocumentGenerator {
         md.append("### `/hilltop status`\n\n");
         md.append("- **功能**: 查看当前游戏状态。\n");
         md.append("- **权限**: 无（所有玩家可用）。\n");
-        md.append("- **参数**: 无。\n");
-        md.append("- **使用示例**: `/hilltop status`\n");
+        md.append("- **参数**: 可选 `[竞技场]` — 不填时按你所在的场 → 默认场依次解析。\n");
+        md.append("- **使用示例**: `/hilltop status`, `/hilltop status arena2`\n");
         md.append("- **注意事项**: 显示内容包括游戏状态、当前波次、在线玩家数、存活怪物数、能量节点状态等。\n\n");
 
         md.append("### `/hilltop stats [玩家名]`\n\n");
@@ -112,10 +112,10 @@ public class CommandsDocumentGenerator {
 
         md.append("### `/hilltop lang <en|zh>`\n\n");
         md.append("- **功能**: 切换插件语言显示。\n");
-        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **权限**: 无（所有玩家可用；改**全服默认**并落盘需 `hilltopvillage.admin`）。\n");
         md.append("- **参数**: `<en|zh>` — 目标语言代码，en = English，zh = 中文。\n");
         md.append("- **使用示例**: `/hilltop lang en`, `/hilltop lang zh`\n");
-        md.append("- **注意事项**: 切换后所有命令返回的消息将以所选语言显示。语言偏好会持久化保存到 config.yml。消息文本可在 `plugins/HilltopVillage/messages.yml` 中自定义编辑。\n\n");
+        md.append("- **注意事项**: 切换后你收到的消息将以所选语言显示。普通玩家的偏好是**本次会话有效**（重登后回到全服默认）；管理员/控制台执行则同时更新全服默认并保存到 config.yml。消息文本可在 `plugins/HilltopVillage/messages.yml` 中自定义编辑。\n\n");
 
         md.append("---\n\n");
         md.append("## 管理命令\n\n");
@@ -124,14 +124,14 @@ public class CommandsDocumentGenerator {
         md.append("### `/hilltop start`\n\n");
         md.append("- **功能**: 启动游戏。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时按你所在的场 → 默认场依次解析；`enable`/`disable` 才是按所在世界）。\n");
         md.append("- **使用示例**: `/hilltop start`\n");
         md.append("- **注意事项**: 需已完成部署——玩家出生点与怪物刷怪点两套坐标各至少 1 个（用 `/hilltop setup` 向导或 `/hilltop deploy addspawn` / `addmobspawn` 配置），且人数达到本场下限。\n\n");
 
         md.append("### `/hilltop stop`\n\n");
         md.append("- **功能**: 停止当前游戏。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时按你所在的场 → 默认场依次解析；`enable`/`disable` 才是按所在世界）。\n");
         md.append("- **使用示例**: `/hilltop stop`\n");
         md.append("- **注意事项**: 强制结束游戏，所有进行中的波次和怪物将被清除，如需重新开始请再次执行 start 命令。\n\n");
 
@@ -355,14 +355,14 @@ public class CommandsDocumentGenerator {
         md.append("### `/hilltop wave clear [竞技场]`\n\n");
         md.append("- **功能**: 强制清除当前波所有存活怪物并结束该波（进入休整期）。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时按你所在的场 → 默认场依次解析）。\n");
         md.append("- **使用示例**: `/hilltop wave clear`, `/hilltop wave clear arena2`\n");
         md.append("- **注意事项**: 仅在波次进行中（RUNNING）有效；强制清除的怪物**不掉落货币、不计击杀统计**，并向全场广播说明。休整期执行会被拒绝并提示改用 `wave skip`。字段 `wave-timeout-seconds` 默认为 0（自动超时保险已禁用），本命令是卡怪时的手动兜底。\n\n");
 
         md.append("### `/hilltop wave skip [竞技场]`\n\n");
         md.append("- **功能**: 跳过休整期，立即开始下一波（一步到位）。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时按你所在的场 → 默认场依次解析）。\n");
         md.append("- **使用示例**: `/hilltop wave skip`, `/hilltop wave skip arena2`\n");
         md.append("- **注意事项**: 休整期直接开新波；波次进行中执行则先强制清波再立即开始下一波。人数低于该竞技场下限时拒绝（不判负）。越过最后一波时正常走胜利结算。\n\n");
 

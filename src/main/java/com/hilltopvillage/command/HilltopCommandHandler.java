@@ -640,6 +640,7 @@ public class HilltopCommandHandler {
                     int index = Integer.parseInt(args[2]);
                     if (deploy.removeSpawnPoint(index)) {
                         admin.sendMessage(lang.getFor(admin, "deploy.delspawn-deleted", index));
+                        reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
                         admin.sendMessage(lang.getFor(admin, "deploy.delspawn-not-found", index));
                     }
@@ -668,6 +669,7 @@ public class HilltopCommandHandler {
                     int count = deploy.getSpawnPoints().size();
                     deploy.clearSpawnPoints();
                     admin.sendMessage(lang.getFor(admin, "deploy.confirmclear-done", count));
+                    reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                 } else {
                     admin.sendMessage(lang.getFor(admin, "deploy.confirmclear-no-pending"));
                 }
@@ -713,6 +715,7 @@ public class HilltopCommandHandler {
                     int index = Integer.parseInt(args[2]);
                     if (deploy.removeMobSpawnPoint(index)) {
                         admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-deleted", index));
+                        reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
                         admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-not-found", index));
                     }
@@ -742,6 +745,7 @@ public class HilltopCommandHandler {
                     int count = deploy.getMobSpawnPoints().size();
                     deploy.clearMobSpawnPoints();
                     admin.sendMessage(lang.getFor(admin, "deploy.confirmclearmob-done", count));
+                    reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                 } else {
                     admin.sendMessage(lang.getFor(admin, "deploy.confirmclearmob-no-pending"));
                 }
@@ -798,6 +802,7 @@ public class HilltopCommandHandler {
                     int index = Integer.parseInt(args[2]);
                     if (deploy.removeVillager(index)) {
                         admin.sendMessage(lang.getFor(admin, "deploy.delvillager-deleted", index));
+                        reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
                         admin.sendMessage(lang.getFor(admin, "deploy.delvillager-not-found", index));
                     }
@@ -828,6 +833,7 @@ public class HilltopCommandHandler {
                     int clearedVillagers = deploy.getVillagers().size();
                     deploy.clearVillagers();
                     admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-done", clearedVillagers));
+                    reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                 } else {
                     admin.sendMessage(lang.getFor(admin, "deploy.confirmclearvillagers-no-pending"));
                 }

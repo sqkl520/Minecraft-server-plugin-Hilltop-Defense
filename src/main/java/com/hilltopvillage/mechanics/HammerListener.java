@@ -344,6 +344,16 @@ public class HammerListener implements Listener {
     /* ========== 猛击执行 ========== */
 
     private void executeSmash(Player player, PlayerData data, double fallDistance) {
+        // fix5 锐评 C-24（X2 收割 P2）：落地瞬间主手必须仍是锤——蓄力态按玩家存（不绑物品），
+        // 蓄力中换手/丢弃后落地若照常结算，consumeUse 读到非锤直接 return true（被当作
+        // 「无计数语义」）→ max-uses 计数被跳过，30 次上限形同虚设（无限锤残余通道；
+        // M-01 已封零成本伪造通道，此处补封真锤绕限通道）。语义收紧：换手即放弃本次蓄力
+        // ——不结算伤害、不进冷却、不扣次数（与「未达落差自动取消」同款静默放弃）。
+        if (!isHammer(player.getInventory().getItemInMainHand())) {
+            data.deactivateSmash();
+            removeChargeBar(player);
+            return;
+        }
         data.deactivateSmash();
         recentlyLanded.add(player.getUniqueId());
 

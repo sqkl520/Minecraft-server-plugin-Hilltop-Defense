@@ -48,7 +48,10 @@ public final class SafeSpawnUtil {
         // 本工具是防御性安全化——区块未加载时直接判该列不安全（返回 null，调用方按
         // "不安全"语义重试其它候选 / 本只不刷），绝不因安全化把主线程拖进同步加载。
         // ArenaInstance.safeTeleportTarget 调用点已自行 getChunkAt 强制加载 → 行为不变；
-        // 刷怪路径在区块未加载的罕见情形下少刷一只怪，优于主线程停顿。
+        // 刷怪路径：开局时 ArenaInstance.onGameStart 已对全部刷怪点做一次性预加载
+        // （fix5 锐评 C-20），此后恒为已加载；对局中区块由玩家视距保持加载。
+        // 残余触发面 = 极端情形下整批候选同区块未加载，最坏少刷一批/一波（加载完成后自愈），
+        // 替代语义是按列同步加载造成的成片主线程停顿（fix5 锐评 C-22：此前注释量词偏轻）。
         if (!world.isChunkLoaded(x >> 4, z >> 4)) return null;
         int maxY = world.getMaxHeight() - 1;
         int minY = world.getMinHeight();
