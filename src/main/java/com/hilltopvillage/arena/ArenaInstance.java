@@ -261,6 +261,12 @@ public class ArenaInstance implements IArena {
 
     @Override
     public boolean addPlayer(Player player) {
+        // fix5 M-20 双保险：同场重复 add 幂等早退——现有入口（命令 / GUI）都先离场再入，
+        // 此处纯防未来新入口或绕行路径造成重复入场（重复传送 / 广播 / 快照覆盖）。
+        if (players.contains(player.getUniqueId())) {
+            return false;
+        }
+
         // Check if arena is available
         if (!isEnabled()) {
             plugin.getLanguageManager().send(player, "arena-disabled");
@@ -435,24 +441,33 @@ public class ArenaInstance implements IArena {
     /**
      * 掉线玩家重连回竞技场。
      *
-     * <p>存活状态 → 恢复到核心并以生存模式继续；
-     * 阵亡等待复活状态 → 恢复到核心并以旁观模式继续等待波次刷新。</p>
+     * <p>存活状态 → 对局进行中恢复到核心并以生存模式继续；等待/倒计时阶段恢复到等待区
+     * 并以冒险模式等待开局；阵亡等待复活状态 → 恢复到核心并以旁观模式继续等待波次刷新。</p>
      *
-     * @return true 表示重连成功；false 表示该玩家已不在本竞技场或对局已结束
+     * @return true 表示重连成功；false 表示该玩家已不在本竞技场或对局已结束（含结算/重置中）
      */
     public boolean rejoin(Player player) {
         UUID uuid = player.getUniqueId();
         if (!players.contains(uuid)) return false;
 
-        // 对局已结束：交回调用方走正常离开流程
+        // 对局已结束（ENDING 及重置屏障）：交回调用方走正常离开流程。
+        // fix5 M-05：WAITING 放行——auto-leave-on-quit=false 时 handleQuit 对等待阶段
+        // 也保留位置（其注释承诺“等待/倒计时阶段也不例外”），此前 WAITING 被判失败
+        // 会走 removePlayer 完整离场，与承诺矛盾并可能误触发倒计时取消。
         if (state != GameState.RUNNING && state != GameState.WAVE_INTERMISSION
-                && state != GameState.STARTING) {
+                && state != GameState.STARTING && state != GameState.WAITING) {
             return false;
         }
 
         PlayerData data = gameManager.getPlayerData(uuid);
         boolean alive = data == null || data.isAlive();
         Location core = gameManager.getCoreLocation();
+
+        // fix5 M-05：落点分档——对局进行中回核心（战斗现场）；等待/倒计时回等待区。
+        // 等待区落点缺省（未部署等待位置）时退回核心，避免传送到 null。
+        boolean inCombat = state == GameState.RUNNING || state == GameState.WAVE_INTERMISSION;
+        Location waiting = getLobbySpawn();
+        Location dest = inCombat ? core : (waiting != null ? waiting : core);
 
         // 跨 lane（约定#1）：重连时先清锤/蛋的残留玩家态（蓄力 BossBar / 蓄力标记 / 冷却）。
         // 退服时的 quit 清理已清过 BossBar，但 PlayerData 的蓄力标记可能仍在，若不清理，
@@ -463,8 +478,11 @@ public class ArenaInstance implements IArena {
         plugin.getFireballListener().cleanupPlayer(player);
 
         if (alive) {
-            player.setGameMode(GameMode.SURVIVAL);
-            if (core != null) player.teleport(core);
+            // fix5 M-05：等待/倒计时阶段与 addPlayer 保持同一状态（ADVENTURE）：防止倒计时期间
+            // 无记账（MapRestore 不记录 STARTING/WAITING）的方块破坏；开局时 onGameStart
+            // 统一转 SURVIVAL 并发放初始套装，重连者同样在 getPlayers() 里被覆盖。
+            player.setGameMode(inCombat ? GameMode.SURVIVAL : GameMode.ADVENTURE);
+            if (dest != null) player.teleport(dest);
             player.setHealth(player.getMaxHealth());
             player.setFoodLevel(20);
             spectators.remove(uuid);
@@ -1008,7 +1026,7 @@ public class ArenaInstance implements IArena {
      * 任务每个整秒检查一次：状态仍为 STARTING / RUNNING / WAVE_INTERMISSION 且
      * {@link #getPlayers()}（在线成员）为空持续 {@code empty-arena-end-seconds} 秒时，
      * 走与既有「全员退光」一致的 {@link #stopGame()} 正常收尾路径；有人在场（加入 / 重连）
-     * 则计时清零。配置为 0 或负数时不启动。</p>
+     * 或仍有本竞技场的重连窗口未决（fix5 M-04）则计时清零。配置为 0 或负数时不启动。</p>
      *
      * <p>取消点：状态离开进行中（任务下一 tick 自行退出）、{@link #stopGame()}、
      * {@link #resetNow()} 与 {@link #completeResetAfterRestore()}。</p>
@@ -1036,6 +1054,13 @@ public class ArenaInstance implements IArena {
                 }
                 // 有人在场（加入 / 重连）→ 计时清零
                 if (!getPlayers().isEmpty()) {
+                    emptyArenaSeconds = 0;
+                    return;
+                }
+                // fix5 M-04：仍有玩家处于重连窗口内 → 空置计时清零。
+                // 全员离线时重连窗口的过期任务（MAM.expirePendingRejoins → 判负/清理链）
+                // 是唯一收尾出口，两条出口不再竞争/翻转统计口径；窗口全部清空后才开始空置计时。
+                if (plugin.getMultiArenaManager().hasPendingRejoinForArena(arenaId)) {
                     emptyArenaSeconds = 0;
                     return;
                 }
@@ -1193,18 +1218,25 @@ public class ArenaInstance implements IArena {
         // 集合中残留的每一名成员都必然未结算过（reset 期间处于 ENDING 硬屏障，不可能再 addPlayer）。
         // 波次口径用 sessionWave 快照（getCurrentWave 已被上面的 stopGame 归零）。
         for (UUID uuid : new ArrayList<>(players)) {
-            Player online = Bukkit.getPlayer(uuid);
-            if (online != null && online.isOnline()) {
-                // 防御：理论上各收尾踢人循环已把所有在线玩家移出；极端时序下若仍有在线
-                // 残留，走完整离场流程（结算统计 + 归还物品 + 送回大厅）
-                removePlayer(online);
-                continue;
-            }
-            PlayerData leftoverData = gameManager.getPlayerData(uuid);
-            if (leftoverData != null) {
-                OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
-                String name = offline != null ? offline.getName() : null;
-                plugin.getStatsManager().recordOffline(uuid, name, leftoverData, sessionVictory, sessionWave);
+            try {
+                Player online = Bukkit.getPlayer(uuid);
+                if (online != null && online.isOnline()) {
+                    // 防御：理论上各收尾踢人循环已把所有在线玩家移出；极端时序下若仍有在线
+                    // 残留，走完整离场流程（结算统计 + 归还物品 + 送回大厅）
+                    removePlayer(online);
+                    continue;
+                }
+                PlayerData leftoverData = gameManager.getPlayerData(uuid);
+                if (leftoverData != null && plugin.getStatsManager() != null) {
+                    OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
+                    String name = offline != null ? offline.getName() : null;
+                    plugin.getStatsManager().recordOffline(uuid, name, leftoverData, sessionVictory, sessionWave);
+                }
+            } catch (Throwable t) {
+                // 任何单玩家补录异常都不得阻断后续的 restoreWithResult——
+                // 否则 restoreStarted 无复位、ENDING 硬屏障卡死（fix5 M-02）
+                plugin.getLogger().warning("Arena " + arenaId + " reset 补录玩家 " + uuid
+                        + " 统计失败（已跳过）：" + t);
             }
             // 同步清掉「玩家 → 竞技场」映射（L06-04 / P2-11 同一收口）：残留映射会让下次
             // 登录的 isInArena 判定为 true，推迟物品快照归还

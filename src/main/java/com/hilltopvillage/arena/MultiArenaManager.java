@@ -3,6 +3,7 @@ package com.hilltopvillage.arena;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.GameState;
+import com.hilltopvillage.core.PlayerGoodsManager;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -198,16 +199,23 @@ public class MultiArenaManager {
      * 归还被跳过。restore 幂等，无快照时为无害空操作。</p>
      */
     private void restoreGoodsOnFailedRejoin(Player player) {
-        if (plugin.getPlayerGoodsManager().has(player)) {
-            if (plugin.getPlayerGoodsManager().restore(player)) {
+        // fix5 M-03：管理器可能因初始化失败为 null（主类 catch Throwable 置 null），
+        // null 时静默返回——与快照功能整体禁用的语义一致（此时本来就不会生成快照）
+        PlayerGoodsManager goods = plugin.getPlayerGoodsManager();
+        if (goods == null) return;
+        if (goods.has(player)) {
+            if (goods.restore(player)) {
                 plugin.getLanguageManager().send(player, "goods-restored");
             }
         }
     }
 
-    /** 该玩家当前是否处于重连窗口内 */
-    public boolean isPendingRejoin(Player player) {
-        return pendingRejoins.containsKey(player.getUniqueId());
+    /** 该竞技场当前是否仍有玩家处于重连窗口内（fix5 M-04：空置倒计时的前置守卫） */
+    public boolean hasPendingRejoinForArena(String arenaId) {
+        for (PendingRejoin pending : pendingRejoins.values()) {
+            if (pending.arenaId().equals(arenaId)) return true;
+        }
+        return false;
     }
 
     /**
@@ -443,64 +451,6 @@ public class MultiArenaManager {
     }
 
     /**
-     * 保留旧接口：直接创建一个已就绪的竞技场实例（不走队列）。
-     * 供需要同步就绪的场景使用。
-     *
-     * <p>⚠️ 已弃用（P2-35）：本方法绕过「启用队列」状态机——不登记 {@code enableQueue}、
-     * 不更新 {@code statuses} 的全部语义（{@code startAllArenas()} 同样零调用方），
-     * 与队列路径并存会让 {@code getStatus()} / {@code disableArena} / {@code canReset()}
-     * 得到与实际不符的判断。正常启用请走 {@code enableAllConfiguredArenas()} / 启用队列。
-     * 实测除 {@link #startAllArenas()}（同样零外部调用方）外无其它调用方。</p>
-     *
-     * @deprecated 绕过启用队列状态机的旧接口；请走启用队列路径（enableArena / enableAllConfiguredArenas）。
-     */
-    @Deprecated(forRemoval = true)
-    public boolean startArena(String arenaId) {
-        if (activeArenas.containsKey(arenaId)) {
-            return false;
-        }
-        ArenaDefinition definition = definitionManager.getArena(arenaId);
-        if (definition == null) {
-            plugin.getLogger().warning("Arena definition not found: " + arenaId);
-            return false;
-        }
-        if (!definition.isEnabled()) {
-            plugin.getLogger().warning("Arena " + arenaId + " is disabled");
-            return false;
-        }
-        // 未部署核心（arenas.yml 无 core）时不能启动：ArenaInstance 构造会调用 coreLocation.getWorld()
-        if (definition.getCore() == null) {
-            plugin.getLogger().warning("拒绝启动竞技场 " + arenaId
-                    + "：尚未部署核心（arenas.yml 中该竞技场缺少 core 配置）");
-            return false;
-        }
-
-        // 一个世界只能对应一个竞技场（运行期兜底，避免共享世界导致地图回滚互相破坏）
-        String conflict = findWorldConflict(arenaId, definition.getWorldName());
-        if (conflict != null) {
-            plugin.getLogger().severe("拒绝启动竞技场 " + arenaId + "：世界 " + definition.getWorldName()
-                    + " 已被竞技场 " + conflict + " 占用（一个世界只能对应一个竞技场）");
-            return false;
-        }
-        if (isWorldQuarantined(definition.getWorldName())) {
-            plugin.getLogger().warning("拒绝启动竞技场 " + arenaId + "：世界 " + definition.getWorldName()
-                    + " 仍处于上一个实例的延迟 reset 隔离窗口内，请稍后重试");
-            return false;
-        }
-
-        if (!ensureWorldLoaded(definition.getWorldName())) {
-            plugin.getLogger().warning("Arena " + arenaId + " world could not be loaded");
-            return false;
-        }
-
-        ArenaInstance arena = new ArenaInstance(plugin, definition);
-        activeArenas.put(arenaId, arena);
-        statuses.put(arenaId, ArenaStatus.READY);
-        plugin.getLogger().info("Started arena: " + arenaId);
-        return true;
-    }
-
-    /**
      * 停止并移除竞技场实例（不走「禁用」语义，供插件关闭/重置使用）。
      *
      * @param arenaId arena ID
@@ -688,32 +638,6 @@ public class MultiArenaManager {
             if (queued != null && worldName.equals(queued.getWorldName())) return queuedId;
         }
         return null;
-    }
-
-    /**
-     * Start all enabled arenas.
-     * Called on plugin enable.
-     *
-     * <p>⚠️ 已弃用（P2-35）：与 {@link #startArena(String)} 同款旧接口——实测全仓库零调用方
-     * （插件启动实际走 {@code enableAllConfiguredArenas()} 的启用队列）。
-     * 与之同弃用可顺便抑制内部调用的 deprecation 警告（javac 不警告「弃用实体内部」的使用）。</p>
-     *
-     * @deprecated 死接口；请走启用队列路径（enableAllConfiguredArenas / enableArena）。
-     */
-    @Deprecated(forRemoval = true)
-    public void startAllArenas() {
-        List<ArenaDefinition> definitions = definitionManager.getRegistry().list();
-        int started = 0;
-
-        for (ArenaDefinition definition : definitions) {
-            if (definition.isEnabled()) {
-                if (startArena(definition.getId())) {
-                    started++;
-                }
-            }
-        }
-
-        plugin.getLogger().info("Started " + started + " arenas");
     }
 
     /**

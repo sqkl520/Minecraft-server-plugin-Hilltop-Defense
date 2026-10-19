@@ -97,12 +97,22 @@ public class DeployMenuSender {
                 lang.getFor(player, "deploy.desc-listmobspawns"));
         sendClickableLine(player, "deploy.cmd-delmobspawn", "/hilltop deploy delmobspawn ", hover,
                 lang.getFor(player, "deploy.desc-delmobspawn"));
+        sendClickableLine(player, "deploy.cmd-clearmobspawns", "/hilltop deploy clearmobspawns", hover,
+                lang.getFor(player, "deploy.desc-clearmobspawns"));
+        sendClickableLine(player, "deploy.cmd-confirmclearmob", "/hilltop deploy confirmclearmob", hover,
+                lang.getFor(player, "deploy.desc-confirmclearmob"));
         sendClickableLine(player, "deploy.cmd-reloadnodes", "/hilltop deploy reloadnodes", hover,
                 lang.getFor(player, "deploy.desc-reloadnodes"));
         sendClickableLine(player, "deploy.cmd-addvillager", "/hilltop deploy addvillager", hover,
                 lang.getFor(player, "deploy.desc-addvillager"));
         sendClickableLine(player, "deploy.cmd-listvillagers", "/hilltop deploy listvillagers", hover,
                 lang.getFor(player, "deploy.desc-listvillagers"));
+        sendClickableLine(player, "deploy.cmd-delvillager", "/hilltop deploy delvillager ", hover,
+                lang.getFor(player, "deploy.desc-delvillager"));
+        sendClickableLine(player, "deploy.cmd-clearvillagers", "/hilltop deploy clearvillagers", hover,
+                lang.getFor(player, "deploy.desc-clearvillagers"));
+        sendClickableLine(player, "deploy.cmd-confirmclearvillagers", "/hilltop deploy confirmclearvillagers", hover,
+                lang.getFor(player, "deploy.desc-confirmclearvillagers"));
         sendClickableLine(player, "deploy.cmd-setshop", "/hilltop deploy setshop", hover,
                 lang.getFor(player, "deploy.desc-setshop"));
         sendClickableLine(player, "deploy.cmd-clearshop", "/hilltop deploy clearshop", hover,

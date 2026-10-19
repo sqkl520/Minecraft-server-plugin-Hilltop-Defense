@@ -14,6 +14,7 @@ import org.bukkit.event.Listener;
 import org.bukkit.event.block.Action;
 import org.bukkit.event.block.BlockBreakEvent;
 import org.bukkit.event.block.BlockExplodeEvent;
+import org.bukkit.event.entity.EntityDamageEvent;
 import org.bukkit.event.entity.EntityExplodeEvent;
 import org.bukkit.event.player.PlayerInteractEvent;
 import org.bukkit.inventory.EquipmentSlot;
@@ -125,6 +126,34 @@ public class NodeListener implements Listener {
         filterNodeBlocks(event.blockList(), event.getBlock() == null ? null : event.getBlock().getWorld());
     }
 
+    /**
+     * fix5 M-08：节点充能爆炸（重生锚/床 → BlockExplodeEvent）的实体伤害过滤。
+     *
+     * <p>方块面已经由 {@link #filterNodeBlocks} 保住节点不被炸毁，但爆炸对旁站玩家的原版
+     * 伤害/击退没有任何处理——队友被牵连伤害，与「零友伤」承诺（STORY-1.8）矛盾。
+     * 竞技场世界内本场成员受到 {@code BLOCK_EXPLOSION} 伤害一律取消（静默，与
+     * FriendlyFireListener 同语义）。</p>
+     *
+     * <p>覆盖的已知爆炸源：节点锚充能爆炸（本类的主要防务对象）。怪物爆炸（爬行者等）
+     * 走 {@code ENTITY_EXPLOSION}（来源为实体），不在本过滤内、行为不变。爆炸对怪物
+     * 的伤害同样保留（本过滤只涉及玩家受害者）。</p>
+     *
+     * <p>监听超类 {@link EntityDamageEvent}：床/锚爆炸在 Paper 各版本上可能以
+     * {@code EntityDamageByBlockEvent} 或裸 {@code EntityDamageEvent} 形态派发，
+     * 超类监听对两者一网打尽。</p>
+     */
+    @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
+    public void onBlockExplosionDamage(EntityDamageEvent event) {
+        if (event.getCause() != EntityDamageEvent.DamageCause.BLOCK_EXPLOSION) return;
+        if (!(event.getEntity() instanceof Player player)) return;
+
+        var arena = plugin.getMultiArenaManager().getArenaByWorld(player.getWorld().getName());
+        if (arena == null) return;
+        if (!arena.isPlayer(player)) return;
+
+        event.setCancelled(true);
+    }
+
     /** 从爆炸 blockList 中剔除本竞技场世界的节点方块（EntityExplode / BlockExplode 共用） */
     private void filterNodeBlocks(List<Block> blockList, org.bukkit.World world) {
         if (world == null) return;
@@ -211,26 +240,25 @@ public class NodeListener implements Listener {
     /**
      * 是否修复汁液：PDC {@code hilltopvillage:item-kind = repair} 命中 → true（材质不再参与判定，
      * 与蛋/锤口径一致；工厂产物材质恒为 {@link #repairItemMaterial()}，管理员热改材质后旧
-     * PDC 道具仍可用）；否则回退旧路径「材质匹配 + 显示名精确比较」——
-     * 迁移兼容：fix3 之前发放的旧汁液无 PDC，下个大版本可删此分支。
+     * PDC 道具仍可用）。
+     *
+     * <p>fix5 M-01：显示名回退已删除（同 isHammer 理由，防铁砧伪造）；旧道具逾期多个版本，
+     * 直接停用识别。</p>
      */
     private boolean isRepairItem(ItemStack item) {
         if (item == null) return false;
         if (!item.hasItemMeta()) return false;
         ItemMeta meta = item.getItemMeta();
-        // D-3：PDC 为准
+        // D-3：PDC 为准（唯一口径）
         String kind = meta.getPersistentDataContainer().get(itemKindKey, PersistentDataType.STRING);
-        if (KIND_REPAIR.equals(kind)) return true;
-        // 迁移兼容（旧道具无 PDC：材质 + 精确显示名）
-        if (item.getType() != repairItemMaterial()) return false;
-        return meta.hasDisplayName() && meta.getDisplayName().equals(repairItemName());
+        return KIND_REPAIR.equals(kind);
     }
 
     public ItemStack createRepairItem(int amount) {
         ItemStack item = new ItemStack(repairItemMaterial(), amount);
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(repairItemName());
-        // D-3：PDC 防伪标记（识别器以 PDC 为准；显示名仅作旧道具迁移兼容）
+        // D-3：PDC 防伪标记（识别器以 PDC 为唯一口径）
         meta.getPersistentDataContainer().set(itemKindKey, PersistentDataType.STRING, KIND_REPAIR);
 
         List<String> lore = new java.util.ArrayList<>();

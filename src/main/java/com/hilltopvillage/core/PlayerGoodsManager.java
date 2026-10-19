@@ -249,9 +249,12 @@ public final class PlayerGoodsManager {
         try {
             yaml.loadFromString(Files.readString(goodsFile.toPath(), StandardCharsets.UTF_8));
         } catch (Exception exception) {
+            // fix5 M-12：隔离结果决定日志措辞——原实现在隔离可能失败时仍无条件宣称
+            // “已重命名为 .corrupt”，与紧随的失败 warning 自相矛盾。
+            boolean quarantined = quarantineCorruptFile();
             plugin.getLogger().log(Level.SEVERE, FILE_NAME + " 解析失败，"
-                    + "已重命名为 " + FILE_NAME + ".corrupt 并跳过加载（本次以空快照启动）", exception);
-            quarantineCorruptFile();
+                    + (quarantined ? "已重命名为 " + FILE_NAME + ".corrupt" : "隔离失败（原文件保留）")
+                    + "并跳过加载（本次以空快照启动）", exception);
             return;
         }
         ConfigurationSection root = yaml.getConfigurationSection("players");
@@ -301,18 +304,25 @@ public final class PlayerGoodsManager {
     }
 
     /**
-     * 把损坏的存档文件重命名为 {@code *.corrupt} 保留现场（P2-34）。
+     * 把损坏的存档文件重命名为 {@code *.corrupt} 保留现场（P2-34 / fix5 M-12）。
      *
-     * <p>重命名失败时退化为「不删除、直接留原文件」：下一次写盘会原子替换它，
-     * 至少本次启动不会因为旧文件反复解析失败而卡死。</p>
+     * <p>fix5 M-12：原实现用 {@link File#renameTo} —— Windows（MoveFile 语义）不能覆盖
+     * 已存在的目标，上一轮生成的 {@code .corrupt} 会让二次隔离永远失败；改用
+     * {@link Files#move} + {@link StandardCopyOption#REPLACE_EXISTING}（与写盘路径同款），
+     * 目标已存在也能替换。返回值供调用方如实播报隔离结果。</p>
+     *
+     * @return 是否成功隔离
      */
-    private void quarantineCorruptFile() {
+    private boolean quarantineCorruptFile() {
         File corrupt = new File(goodsFile.getParentFile(), goodsFile.getName() + ".corrupt");
-        if (goodsFile.renameTo(corrupt)) {
+        try {
+            Files.move(goodsFile.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
             plugin.getLogger().warning("损坏的 " + FILE_NAME + " 已重命名为 " + corrupt.getName());
-        } else {
-            plugin.getLogger().warning("无法重命名损坏的 " + FILE_NAME + "（文件被占用？），"
-                    + "本次跳过加载；下次写盘会原子替换该文件");
+            return true;
+        } catch (IOException moveException) {
+            plugin.getLogger().warning("无法隔离损坏的 " + FILE_NAME + "（" + moveException.getMessage()
+                    + "），本次跳过加载；下次写盘会原子替换该文件");
+            return false;
         }
     }
 

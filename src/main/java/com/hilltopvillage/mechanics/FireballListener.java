@@ -167,7 +167,7 @@ public class FireballListener implements Listener {
 
         ItemMeta meta = item.getItemMeta();
         meta.setDisplayName(fireballName());
-        // D-3：PDC 防伪标记（识别器以 PDC 为准；显示名仅作旧道具迁移兼容）。必须写在任何
+        // D-3：PDC 防伪标记（识别器以 PDC 为唯一口径）。必须写在任何
         // 提前 return（如后续新增分支）之前，保证所有工厂产物都带标记。
         meta.getPersistentDataContainer().set(itemKindKey, PersistentDataType.STRING, KIND_FIREBALL);
         List<String> lore = new ArrayList<>();
@@ -185,17 +185,17 @@ public class FireballListener implements Listener {
     }
 
     /**
-     * 是否烈焰蛋：PDC {@code hilltopvillage:item-kind = fireball} 命中 → true；
-     * 否则回退显示名比较（迁移兼容：fix3 之前发放的旧蛋无 PDC，下个大版本可删此分支）。
+     * 是否烈焰蛋：PDC {@code hilltopvillage:item-kind = fireball} 命中 → true。
+     *
+     * <p>fix5 M-01：显示名回退已删除（同 isHammer 理由，防铁砧伪造）；旧道具逾期多个版本，
+     * 直接停用识别。</p>
      */
     public boolean isFireball(ItemStack item) {
         if (item == null || !item.hasItemMeta()) return false;
         ItemMeta meta = item.getItemMeta();
-        // D-3：PDC 为准
+        // D-3：PDC 为准（唯一口径）
         String kind = meta.getPersistentDataContainer().get(itemKindKey, PersistentDataType.STRING);
-        if (KIND_FIREBALL.equals(kind)) return true;
-        // 迁移兼容（旧道具无 PDC，仅按精确显示名识别）
-        return meta.hasDisplayName() && meta.getDisplayName().equals(fireballName());
+        return KIND_FIREBALL.equals(kind);
     }
 
     /* ========== 右键投掷 ========== */

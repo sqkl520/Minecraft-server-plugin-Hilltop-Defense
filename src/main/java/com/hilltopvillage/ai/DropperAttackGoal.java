@@ -157,7 +157,16 @@ public class DropperAttackGoal implements Goal<Mob> {
         dropper.getWorld().playSound(dropper.getLocation(), Sound.ENTITY_PHANTOM_BITE, 1.0f, 0.8f);
         dropper.getWorld().spawnParticle(Particle.CRIT, victim.getLocation().add(0, 1.0, 0),
                 8, 0.3, 0.3, 0.3, 0.05);
+
+        // fix5 M-07：原版近战击退（hurt 内 knockback）方向 = 远离怪物、强度固定 0.5，
+        // 俯冲时怪物水平投影可能位于玩家与岛心之间 → 击退恰把玩家推离天空岛坠入虚空。
+        // 语义收敛为「只咬不推」：记录伤害前的水平速度，伤害后退回它（保留垂直分量——
+        // 原版上抛 0.4 的受击反馈仍在），彻底消除不可控的水平击退位移。
+        // 注：damage() 调用同步返回时击退已应用完毕，此处覆写即刻生效。
+        org.bukkit.util.Vector before = victim.getVelocity();
         victim.damage(resolveAttackDamage(), dropper);
+        org.bukkit.util.Vector after = victim.getVelocity();
+        victim.setVelocity(new org.bukkit.util.Vector(before.getX(), after.getY(), before.getZ()));
     }
 
     /** 读取怪物的攻击伤害属性（与 NodeAttackGoal 同范式：即其对玩家的伤害）。 */

@@ -29,7 +29,7 @@
 
 ### ⚠️ 升级提示（升级到 1.1.0 的服主必读）
 
-- **`shop.yml` 需手动更新**：商店配置是"文件存在即不释放模板"——**新商品（装备/弓/箭）不会自动出现**。用新版模板替换服务器的 `plugins/HilltopVillage/shop.yml`（注意备份你改过的商品）或手动加条目，然后 `/hilltop shop reload`
+- **`shop.yml` 需手动更新**：商店配置是"文件存在即不释放模板"——**新商品（装备/弓/箭）不会自动出现**。用新版模板替换服务器的 `plugins/HilltopVillage/shop.yml`（注意备份你改过的商品）或手动加条目，然后 `/hilltop shop reload`。**注意**：本版商品按 54 格布局（护甲区槽位 27-53），旧文件的 `shop.gui.size: 27` 必须同步改为 `54`——否则超出 27 格的商品会被跳过并在控制台看到 `out of GUI size` 警告
 - **皮革套自动生效**：starter-kit 的升级归一化会在你未改过旧默认时自动加入皮革四件套；改过则保留你的列表
 - 掉落表新键（`monsters.<id>.drop-min/drop-max`）会自动补写；三特殊怪默认值（1/1、1/2、2/3）在缺省时由 GameConfig 播种
 - 服务端无需其它动作；`/hilltop reloadconfig` 即可让掉落表与 starter-kit 变更生效

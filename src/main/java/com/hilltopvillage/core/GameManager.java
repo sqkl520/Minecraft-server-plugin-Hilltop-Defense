@@ -41,7 +41,7 @@ public class GameManager {
      * <p>{@code haltGame()} 刻意不改变 {@link GameState}（结算期间玩家留在场上查看战报），
      * 于是 {@link #isGameRunning()} 在结算窗口内仍返回 true，锤/修节点等门控因此放行。
      * 本标志把「停止波次调度但仍在结算倒计时」这一段单独标出来，供
-     * {@link #isGameActive()} / {@link #isSettlementPhase()} 做统一口径的门控。</p>
+     * {@link #isSettlementPhase()} 做统一口径的门控。</p>
      *
      * <p>置位：{@link #haltGame()}；复位：{@link #endGame(boolean)} / {@link #stopGame()} /
      * {@link #startGame()}（新局开始）。若全部收尾路径都未走到（异常），保持 true 是保守方向
@@ -619,7 +619,6 @@ public class GameManager {
         state = GameState.WAITING;
         settlementPhase = false;
         currentWave = 0;
-        settlementPhase = false;
         if (waveCheckTask != null) {
             waveCheckTask.cancel();
             waveCheckTask = null;
@@ -781,23 +780,11 @@ public class GameManager {
      * <p>此窗口内 {@link #isGameRunning()} 仍可能返回 true，但一切玩法动作
      * （开锤 / 修节点 / 投掷等）都应被拒绝——结算已定，操作只会虚增战报或产生幽灵效果。</p>
      *
-     * <p>P2-13 统一门控口径：技能 / 修节点门控应写「{@code !isGameActive()} 拒绝」
-     * （或等价的 {@code !isGameRunning() || isSettlementPhase()}）。</p>
+     * <p>P2-13 统一门控口径：技能 / 修节点门控应写「{@code !isGameRunning() || isSettlementPhase()} 拒绝」
+     * （fix5 X6-④ 起为唯一推荐口径）。</p>
      */
     public boolean isSettlementPhase() {
         return settlementPhase;
-    }
-
-    /**
-     * 对局玩法是否仍可交互：RUNNING / WAVE_INTERMISSION 且<b>未进入结算窗口</b>。
-     *
-     * <p>与 {@link #isGameRunning()} 的区别只在于结算窗口：{@code triggerDefeat()} 先调
-     * {@link #haltGame()}（状态不变）再切竞技场状态，期间 {@code isGameRunning()} 仍为 true。
-     * 需要「进行中且非结算」语义的门控（技能 / 修节点 / 掉落 / 统计）应统一用本方法，
-     * 口径 = {@link #isGameRunning()} 且非 {@link #isSettlementPhase()}。</p>
-     */
-    public boolean isGameActive() {
-        return isGameRunning() && !settlementPhase;
     }
 
     /**

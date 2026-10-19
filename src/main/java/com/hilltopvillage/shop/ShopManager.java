@@ -103,7 +103,7 @@ public class ShopManager {
      * HAMMER 固定 1 个（忽略 amount）；FIREBALL / REPAIR_ITEM / MATERIAL 按 amount；
      * EQUIPMENT 固定 1 个（发货材质 = icon.material，带 name/lore/unbreakable）。
      */
-    public ItemStack deliverItem(ShopItem item, Player player) {
+    public ItemStack deliverItem(ShopItem item) {
         if (item == null) return null;
         int amount = Math.max(1, item.getAmount());
 

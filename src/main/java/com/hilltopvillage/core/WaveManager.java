@@ -487,7 +487,11 @@ public class WaveManager {
         Material mainHand = mc.getMainHandItem();
         if (mainHand != null && mainHand != Material.AIR) {
             equip.setItem(EquipmentSlot.HAND, new ItemStack(mainHand));
-            equip.setDropChance(EquipmentSlot.HAND, 0.05f);
+            // fix5 M-09：弓是商店付费商品（15 水晶）——猎人主手为 BOW 时若按 5% 掉落，
+            // 默认波次单人 20 波累计约 60 只猎人，95% 的玩家免费拿到弓，商店定价被架空。
+            // 弓视作怪物「职能装备」：主手为 BOW 一律零掉落（含管理员自配的持弓怪）；
+            // 其余物品与其余五部位保持 0.05 掉落面不变。
+            equip.setDropChance(EquipmentSlot.HAND, mainHand == Material.BOW ? 0f : 0.05f);
         }
 
         // 副手物品（如盾牌）

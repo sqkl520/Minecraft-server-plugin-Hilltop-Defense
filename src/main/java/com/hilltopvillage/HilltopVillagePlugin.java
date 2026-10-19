@@ -33,6 +33,7 @@ import com.hilltopvillage.doc.CommandsDocumentGenerator;
 import com.hilltopvillage.gui.ArenaSelectionGUI;
 import com.hilltopvillage.mechanics.ArenaAccessListener;
 import com.hilltopvillage.mechanics.FireballListener;
+import com.hilltopvillage.mechanics.FriendlyFireListener;
 import com.hilltopvillage.mechanics.HammerListener;
 import com.hilltopvillage.mechanics.LobbyProtectionListener;
 import com.hilltopvillage.mechanics.MapRestoreManager;
@@ -174,6 +175,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(hammerListener, this);
         Bukkit.getPluginManager().registerEvents(nodeListener, this);
         Bukkit.getPluginManager().registerEvents(fireballListener, this);
+        Bukkit.getPluginManager().registerEvents(new FriendlyFireListener(this), this);
         Bukkit.getPluginManager().registerEvents(playerLifecycleListener, this);
         Bukkit.getPluginManager().registerEvents(lobbyProtectionListener, this);
         // 竞技场世界准入防护（P2-41 / D-4）：非成员（管理员豁免）传送进竞技场世界被拦
@@ -459,14 +461,30 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         multiArenaManager.applyLobbyState(player);
     }
 
-    /** 大厅内死亡（掉虚空等）时在大厅出生点复活 */
+    /** 大厅内死亡（掉虚空等）时在大厅出生点复活；fix5 M-16：非成员的重生点若指向
+     *  竞技场世界（床 spawn 绕过准入的残余路径），同样改指大厅并清掉床 spawn。 */
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerRespawn(org.bukkit.event.player.PlayerRespawnEvent event) {
         Player player = event.getPlayer();
         if (multiArenaManager.isInArena(player)) return;
-        if (!multiArenaManager.isLobbyWorld(player.getWorld().getName())) return;
 
         Location lobby = multiArenaManager.getLobbySpawn();
+
+        // fix5 M-16：重生点落在竞技场世界且玩家不是该场成员 → 覆写重生点为大厅，
+        // 并清掉床 spawn（防下次死亡再走同一条路）。成员与旁观者的正常重生不经过这里
+        //（上面 isInArena 已放行成员；在竞技场世界内的成员重生由 PlayerLifecycleListener 处理）。
+        Location target = event.getRespawnLocation();
+        if (target != null && target.getWorld() != null
+                && !multiArenaManager.isLobbyWorld(target.getWorld().getName())
+                && multiArenaManager.getArenaByWorld(target.getWorld().getName()) != null) {
+            if (lobby != null) {
+                event.setRespawnLocation(lobby);
+            }
+            player.setBedSpawnLocation(null, true);
+            return;
+        }
+
+        if (!multiArenaManager.isLobbyWorld(player.getWorld().getName())) return;
         if (lobby != null) {
             event.setRespawnLocation(lobby);
         }

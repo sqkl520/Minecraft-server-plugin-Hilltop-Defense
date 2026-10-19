@@ -31,6 +31,9 @@ public final class SafeSpawnUtil {
      * 落点上方 2 格内有实心方块或无向下可用表面、落点贴近世界底部
      * （{@code y < 世界最低高度 + 2}，紧邻虚空层）。</p>
      *
+     * <p>fix5 M-15：入口先以 {@code isChunkLoaded} 短路——区块未加载时返回 null（不安全），
+     * 不触发同步区块加载。</p>
+     *
      * @param base 参考坐标（不会被修改；yaw/pitch 原样保留）
      * @return 修正后的安全落点；不安全时返回 null
      */
@@ -41,6 +44,12 @@ public final class SafeSpawnUtil {
 
         int x = base.getBlockX();
         int z = base.getBlockZ();
+        // fix5 M-15：未加载区块的 getBlockAt 会触发同步区块加载（主线程停顿）。
+        // 本工具是防御性安全化——区块未加载时直接判该列不安全（返回 null，调用方按
+        // "不安全"语义重试其它候选 / 本只不刷），绝不因安全化把主线程拖进同步加载。
+        // ArenaInstance.safeTeleportTarget 调用点已自行 getChunkAt 强制加载 → 行为不变；
+        // 刷怪路径在区块未加载的罕见情形下少刷一只怪，优于主线程停顿。
+        if (!world.isChunkLoaded(x >> 4, z >> 4)) return null;
         int maxY = world.getMaxHeight() - 1;
         int minY = world.getMinHeight();
         // base.y 异常低（低于世界底部）时从 minY 起扫，而不是直接放弃整列

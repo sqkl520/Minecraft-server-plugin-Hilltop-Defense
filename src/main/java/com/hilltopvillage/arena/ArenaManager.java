@@ -187,33 +187,6 @@ public final class ArenaManager {
         }
     }
 
-    /**
-     * Saves canonical arena fields while retaining unrelated YAML data.
-     *
-     * <p>⚠️ 危险（P2-35 死代码地雷）：本方法会用 registry 里<b>固化的旧值</b>整份覆写
-     * {@code core / spawn-points / mob-spawn-points} 等字段——{@code AdminDeployManager} 刚写进
-     * 磁盘的生成点 / 村民 / 商店位置会被改回旧值。实测全仓库<b>零调用方</b>（只为保持历史兼容
-     * 保留方法本体）。写入任何竞技场数据必须走「先重读磁盘、只改目标键」的路径
-     * （{@link #updateGameParams}、{@code AdminDeployManager.saveSpawnPoints}、
-     * {@code ArenaAdminService} 各写方），<b>勿调用本方法</b>。</p>
-     *
-     * @deprecated 死代码地雷，用固化旧值整份覆写 arenas.yml；勿调用。写入请走
-     *             {@link #updateGameParams} / {@code AdminDeployManager} / {@code ArenaAdminService}。
-     */
-    @Deprecated(forRemoval = true)
-    public void save() {
-        configuration.set("schema-version", SCHEMA_VERSION);
-        configuration.set("default-arena", registry.getDefaultArenaId());
-        for (ArenaDefinition arena : registry.list()) {
-            writeDefinition(configuration, arena);
-        }
-        try {
-            configuration.save(arenasFile);
-        } catch (IOException exception) {
-            plugin.getLogger().log(Level.WARNING, "Could not save arenas.yml.", exception);
-        }
-    }
-
     public void reload() {
         load();
     }
@@ -302,8 +275,8 @@ public final class ArenaManager {
      * x/y/z/yaw/pitch 五键。
      *
      * <p><b>遵守「重读盘 + 只改目标键」纪律</b>（与 {@link #clearDeploymentData}、
-     * {@link #updateGameParams} 同款）：{@link #save()} 是死代码地雷（会用 registry 里
-     * 固化的旧值整份覆写），这里重新读盘 → 只写 {@code lobby.spawn.*} →
+     * {@link #updateGameParams} 同款）：旧 save()（fix5 X6-④ 已删除，曾是「用固化旧值
+     * 整份覆写」的死代码地雷），这里重新读盘 → 只写 {@code lobby.spawn.*} →
      * save。<b>不调用 {@link #load()}</b> 也无必要：本方法只改 lobby 段，
      * arena 定义不受影响（且大厅出生点每次 {@link #getLobbySpawn()} 都实时从
      * {@code configuration} 字段读——该字段指向磁盘加载的同一份 YamlConfiguration，
@@ -527,41 +500,6 @@ public final class ArenaManager {
         }
     }
 
-    private void writeDefinition(YamlConfiguration yaml, ArenaDefinition arena) {
-        String path = "arenas." + arena.getId();
-        yaml.set(path + ".display-name", arena.getDisplayName());
-        yaml.set(path + ".enabled", arena.isEnabled());
-        yaml.set(path + ".world", arena.getWorldName());
-        writeLocation(yaml, path + ".waiting-location", arena.getWaitingLocation());  // ✅ 保存等待区位置
-        writeLocation(yaml, path + ".core", arena.getCore());
-        writeLocation(yaml, path + ".shop-npc", arena.getShopNpc());
-        yaml.set(path + ".spawn-points", null);
-        List<Location> points = arena.getSpawnPoints();
-        for (int i = 0; i < points.size(); i++) writeLocation(yaml, path + ".spawn-points." + i, points.get(i));
-        yaml.set(path + ".mob-spawn-points", null);
-        List<Location> mobPoints = arena.getMobSpawnPoints();
-        for (int i = 0; i < mobPoints.size(); i++) writeLocation(yaml, path + ".mob-spawn-points." + i, mobPoints.get(i));
-        yaml.set(path + ".node-search-radius", arena.getNodeSearchRadius());
-        yaml.set(path + ".spawn-radius-min", arena.getSpawnRadiusMin());
-        yaml.set(path + ".spawn-radius-max", arena.getSpawnRadiusMax());
-        yaml.set(path + ".spawn-y-offset", arena.getSpawnYOffset());
-        yaml.set(path + ".game.min-players", arena.getMinPlayers());
-        yaml.set(path + ".game.max-players", arena.getMaxPlayers());
-        yaml.set(path + ".game.victory-waves", arena.getVictoryWaves());
-        yaml.set(path + ".game.wave-interval-seconds", arena.getWaveIntervalSeconds());
-    }
-
-    /** 写入位置节点；location 为 null 时删除整个节点（未部署 = 不写半截坐标） */
-    private void writeLocation(YamlConfiguration yaml, String path, Location location) {
-        if (location == null) {
-            yaml.set(path, null);
-            return;
-        }
-        yaml.set(path + ".world", location.getWorld() == null ? null : location.getWorld().getName());
-        yaml.set(path + ".x", location.getX()); yaml.set(path + ".y", location.getY()); yaml.set(path + ".z", location.getZ());
-        yaml.set(path + ".yaw", location.getYaw()); yaml.set(path + ".pitch", location.getPitch());
-    }
-
     /**
      * 清空某个竞技场的全部部署数据（管理员在竞技场管理 GUI 上执行「重置竞技场」）。
      *
@@ -569,8 +507,8 @@ public final class ArenaManager {
      * game.* / 半径与偏移），<b>保留</b> world / waiting-location / enabled / display-name，
      * 使竞技场仍留在 registry 中并显示为「未部署」，可以重新走一次部署流程。</p>
      *
-     * <p><b>必须基于磁盘最新内容操作</b>：{@link #save()} 是「用 registry 里的旧值整份覆写」，
-     * 调用它会把刚删掉的 spawn-points / core 原样写回去（撤销本次清理）。
+     * <p><b>必须基于磁盘最新内容操作</b>：旧 save()（fix5 X6-④ 已删除，曾是「用 registry
+     * 里的旧值整份覆写」）会把刚删掉的 spawn-points / core 原样写回去（撤销本次清理）。
      * 因此这里重新读盘 → 只删目标键 → save → {@link #load()} 重建 registry。</p>
      *
      * @param arenaId 竞技场 ID
@@ -622,10 +560,10 @@ public final class ArenaManager {
      * 写入某个竞技场的 4 个游戏参数（{@code arenas.<id>.game.*}），供竞技场管理 GUI 的参数编辑页使用。
      *
      * <p><b>必须基于磁盘最新内容操作</b>，理由同 {@link #clearDeploymentData(String)}：
-     * {@link #save()} 会用 registry 里的旧值整份覆写，把 {@code AdminDeployManager} 刚写进去的
+     * 旧 save()（fix5 X6-④ 已删除）会用 registry 里的旧值整份覆写，把 {@code AdminDeployManager} 刚写进去的
      * 生成点/村民一并改回旧值。因此这里重新读盘 → 只写目标键 → save → {@link #load()}。</p>
      *
-     * <p><b>刻意不调用 {@link #save()}</b>：它是死代码地雷（会用固化的旧值覆写 core / spawn-points）。</p>
+     * <p><b>刻意不调用旧 save()</b>：它是死代码地雷（会用固化的旧值覆写 core / spawn-points），已在 fix5 X6-④ 删除。</p>
      *
      * <p>注意本方法只负责磁盘与 registry；已存在的 {@code ArenaInstance} 持有自己的定义副本，
      * 需要调用方另外通过 {@code ArenaInstance#applyGameParams} 推送（见

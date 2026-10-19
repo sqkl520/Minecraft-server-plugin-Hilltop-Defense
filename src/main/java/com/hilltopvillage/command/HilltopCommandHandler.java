@@ -191,6 +191,23 @@ public class HilltopCommandHandler {
                         break;
                     }
 
+                    // fix5 M-20：同场重入预检——显式 ID 解析到当前场（大小写归一化后比对），
+                    // 或无参 join 时玩家已在某场（现守卫已放行的等待/倒计时阶段成员），
+                    // 都直接按「已在场内」处理。否则 leave→join 同场会触发人数跌破检查
+                    //（ArenaInstance 取消倒计时）+ checkAutoStart 的重开倒计时，
+                    // 反复执行即可无限拖延开局（R4-02）。想换场请显式指定目标场 ID。
+                    // 注：current == null（映射指向已退役实例的残留态）时不拦，交给下方流程自愈。
+                    boolean sameArena = args.length < 2 && current != null;
+                    if (!sameArena && args.length >= 2 && current != null) {
+                        ArenaInstance target = arenaManager.resolveArena(args[1], player);
+                        sameArena = target != null
+                                && target.getArenaId().equals(current.getArenaId());
+                    }
+                    if (sameArena) {
+                        lang.send(player, "already-in-arena");
+                        break;
+                    }
+
                     arenaManager.leaveArena(player);
                     lang.send(player, "arena-auto-left");
                 }
@@ -483,6 +500,23 @@ public class HilltopCommandHandler {
         gui.open();
     }
 
+    /**
+     * fix5 X6-②：命令路径写盘结果收口——消费「最近一次写盘失败」标记并如实播报。
+     *
+     * <p>背景（C2-04 + R8-07）：部署命令的写操作经 AdminDeployManager.saveSpawnPoints 落盘，
+     * 失败时只进控制台 severe；命令路径此前从不消费该标记 →（a）管理员被"已添加"字样误导，
+     * 重启后改动丢失；（b）标记悬挂，后续向导 autoSave 的 consumeSaveFailure 会误报上一笔
+     * 命令的失败（假警报）。命令每次写盘后立即消费即同时关闭两方向。</p>
+     *
+     * <p>消费语义安全：saveSpawnPoints 每次写入都无条件重设标记为「本次结果」，
+     * 主线程内紧接着消费得到的就是本次写入的准确结果。</p>
+     */
+    private void reportDeploySaveFailure(Player admin, AdminDeployManager deploy) {
+        if (deploy.consumeSaveFailure()) {
+            admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
+        }
+    }
+
     private void handleDeployCommand(CommandSender sender, String[] args) {
         if (!(sender instanceof Player)) {
             sender.sendMessage(lang.get("players-only"));
@@ -560,6 +594,7 @@ public class HilltopCommandHandler {
                         String.format("%.1f", admin.getLocation().getX()),
                         String.format("%.1f", admin.getLocation().getY()),
                         String.format("%.1f", admin.getLocation().getZ())));
+                reportDeploySaveFailure(admin, deploy);   // fix5 X6-②
                 admin.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                         admin.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
@@ -573,6 +608,7 @@ public class HilltopCommandHandler {
                         String.format("%.1f", admin.getLocation().getX()),
                         String.format("%.1f", admin.getLocation().getY()),
                         String.format("%.1f", admin.getLocation().getZ())));
+                reportDeploySaveFailure(admin, deploy);   // fix5 X6-②
                 admin.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,
                         admin.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
@@ -645,6 +681,7 @@ public class HilltopCommandHandler {
                         String.format("%.1f", admin.getLocation().getX()),
                         String.format("%.1f", admin.getLocation().getY()),
                         String.format("%.1f", admin.getLocation().getZ())));
+                reportDeploySaveFailure(admin, deploy);   // fix5 X6-②
                 admin.getWorld().spawnParticle(Particle.ELECTRIC_SPARK,
                         admin.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0.05);
                 admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
@@ -729,6 +766,7 @@ public class HilltopCommandHandler {
                         String.format("%.1f", admin.getLocation().getX()),
                         String.format("%.1f", admin.getLocation().getY()),
                         String.format("%.1f", admin.getLocation().getZ())));
+                reportDeploySaveFailure(admin, deploy);   // fix5 X6-②
                 admin.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                         admin.getLocation().add(0, 1, 0), 10, 0.3, 0.3, 0.3, 0);
                 admin.playSound(admin.getLocation(), Sound.ENTITY_VILLAGER_YES, 1.0f, 1.0f);
@@ -821,6 +859,7 @@ public class HilltopCommandHandler {
                         String.format("%.1f", shopLocation.getX()),
                         String.format("%.1f", shopLocation.getY()),
                         String.format("%.1f", shopLocation.getZ())));
+                reportDeploySaveFailure(admin, deploy);   // fix5 X6-②
                 admin.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                         admin.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
@@ -1293,7 +1332,13 @@ public class HilltopCommandHandler {
             return;
         }
 
-        lang.setLocale(locale);
+        // fix5 M-14：分离「个人偏好」与「全服默认」——普通玩家只能改自己的会话语言偏好
+        // （不落盘）；全服默认语言（含 config.yml 落盘）仅管理员 / 控制台可改。
+        // （R9-11：此前任意玩家可通过 /hilltop lang 改写全服默认并 saveConfig。）
+        boolean canChangeDefault = !isPlayer || sender.hasPermission("hilltopvillage.admin");
+        if (canChangeDefault) {
+            lang.setLocale(locale);
+        }
         if (isPlayer) {
             lang.setPlayerLocale(player, locale);
         }

@@ -108,7 +108,7 @@ public class HammerListener implements Listener {
 
         ItemMeta meta = hammer.getItemMeta();
         meta.setDisplayName(hammerName());
-        // D-3：PDC 防伪标记（识别器以 PDC 为准；显示名仅作旧道具迁移兼容）
+        // D-3：PDC 防伪标记（识别器以 PDC 为唯一口径）
         meta.getPersistentDataContainer().set(itemKindKey, PersistentDataType.STRING, KIND_HAMMER);
         List<String> lore = new ArrayList<>();
         lore.add(lang.get("hammer.lore1"));
@@ -153,18 +153,19 @@ public class HammerListener implements Listener {
     }
 
     /**
-     * 是否重锤：PDC {@code hilltopvillage:item-kind = hammer} 命中 → true；
-     * 否则回退显示名比较（迁移兼容：fix3 之前发放的旧锤无 PDC，下个大版本可删此分支）。
+     * 是否重锤：PDC {@code hilltopvillage:item-kind = hammer} 命中 → true。
+     *
+     * <p>fix5 M-01：显示名回退已删除——旧迁移分支（fix3 前发放的 PDC-less 旧锤）经字节码
+     * 验证可被铁砧逐字符复现（去码配置下），构成伪造/无限锤入口；旧道具逾期多个版本，
+     * 直接停用识别。此后改名不影响识别（R3-04 同分支副面一并关闭）。</p>
      */
     public boolean isHammer(ItemStack item) {
         if (item == null) return false;
         if (!item.hasItemMeta()) return false;
         ItemMeta meta = item.getItemMeta();
-        // D-3：PDC 为准
+        // D-3：PDC 为准（唯一口径）
         String kind = meta.getPersistentDataContainer().get(itemKindKey, PersistentDataType.STRING);
-        if (KIND_HAMMER.equals(kind)) return true;
-        // 迁移兼容（旧道具无 PDC，仅按精确显示名识别）
-        return meta.hasDisplayName() && meta.getDisplayName().equals(hammerName());
+        return KIND_HAMMER.equals(kind);
     }
 
     /* ========== 右键蓄力激活 ========== */
@@ -471,6 +472,7 @@ public class HammerListener implements Listener {
         ItemMeta meta = item.getItemMeta();
         Integer left = meta.getPersistentDataContainer().get(
                 new NamespacedKey(plugin, HAMMER_USES_KEY), PersistentDataType.INTEGER);
+        // max-uses=0（创建时未写入计数器）→ 无计数语义，永不碎裂（fix5 M-01 后唯一合法 null 来源）
         if (left == null) return true;
         int remain = left - 1;
         if (remain <= 0) return false;

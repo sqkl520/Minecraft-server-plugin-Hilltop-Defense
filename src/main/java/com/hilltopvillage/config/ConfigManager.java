@@ -178,6 +178,8 @@ public class ConfigManager {
                 && activeConfig.getEmptyArenaEndSeconds() == baseline.getEmptyArenaEndSeconds()) {
             activeConfig.setEmptyArenaEndSeconds(disk.getInt("empty-arena-end-seconds"));
         }
+        // fix5 M-04：合并后两个阈值键均已就绪，检查交叉告警（仅告警、不改值）
+        warnIfEmptyArenaThresholdCollision();
         if (hasBoolean(disk, "map-restore.enabled")
                 && activeConfig.isMapRestoreEnabled() == baseline.isMapRestoreEnabled()) {
             activeConfig.setMapRestoreEnabled(disk.getBoolean("map-restore.enabled"));
@@ -330,6 +332,24 @@ public class ConfigManager {
      */
     private static int normalizeWaveTimeout(int raw) {
         return raw == GameConfig.LEGACY_WAVE_TIMEOUT_SECONDS ? 0 : raw;
+    }
+
+    /**
+     * fix5 M-04：空置自动结束与重连超时的阈值交叉告警。
+     *
+     * <p>两者都对「全员离线」场景计时。代码层已让「有重连窗口时空置出口让位」（见
+     * {@code ArenaInstance} 空置任务的 {@code hasPendingRejoinForArena} 守卫），
+     * 此处仅提示管理员把两个阈值错开（empty-arena-end-seconds &gt; rejoin-timeout-seconds），
+     * 使两条出口的先后顺序按意图可预期。</p>
+     */
+    private void warnIfEmptyArenaThresholdCollision() {
+        int empty = activeConfig.getEmptyArenaEndSeconds();
+        int rejoin = activeConfig.getRejoinTimeoutSeconds();
+        if (empty > 0 && rejoin > 0 && empty <= rejoin) {
+            plugin.getLogger().warning("empty-arena-end-seconds (" + empty
+                    + ") 不大于 rejoin-timeout-seconds (" + rejoin
+                    + ")：全员离线时两套计时口径重叠，建议把空置阈值调为大于重连超时（fix5 M-04）");
+        }
     }
 
     public void saveToFile() {
@@ -558,6 +578,8 @@ public class ConfigManager {
         if (settingsYaml.contains("villager-health")) activeConfig.setVillagerHealth(settingsYaml.getDouble("villager-health"));
         if (settingsYaml.contains("rejoin-timeout-seconds")) activeConfig.setRejoinTimeoutSeconds(settingsYaml.getInt("rejoin-timeout-seconds"));
         if (settingsYaml.contains("empty-arena-end-seconds")) activeConfig.setEmptyArenaEndSeconds(settingsYaml.getInt("empty-arena-end-seconds"));
+        // fix5 M-04：两个阈值键均已就绪，检查交叉告警（仅告警、不改值）
+        warnIfEmptyArenaThresholdCollision();
         if (settingsYaml.contains("map-restore.enabled")) activeConfig.setMapRestoreEnabled(settingsYaml.getBoolean("map-restore.enabled"));
         if (settingsYaml.contains("scoreboard.enabled")) activeConfig.setScoreboardEnabled(settingsYaml.getBoolean("scoreboard.enabled"));
 

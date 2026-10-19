@@ -7,6 +7,13 @@ import java.nio.charset.StandardCharsets;
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
 
+/**
+ * 运行时命令文档生成器（启动时异步写出 {@code commands.md}）。
+ *
+ * <p>维护义务：本类内容为硬编码文本，修正命令行为/文案时必须与 README 命令表、
+ * {@code plugin.yml} usage 同步核对（fix5 M-18 教训：leave 击杀口径、start 前置、
+ * 三命令的可选参数行曾与实现脱节）。</p>
+ */
 public class CommandsDocumentGenerator {
 
     private final JavaPlugin plugin;
@@ -29,7 +36,7 @@ public class CommandsDocumentGenerator {
         md.append("### `/hilltop join`\n\n");
         md.append("- **功能**: 加入游戏等待队列。\n");
         md.append("- **权限**: 无（所有玩家可用）。\n");
-        md.append("- **参数**: 无。\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时自动选择可用竞技场）。\n");
         md.append("- **使用示例**: `/hilltop join`\n");
         md.append("- **注意事项**: 需在游戏状态为 WAITING 或 STARTING 时使用，游戏开始后无法加入。\n\n");
 
@@ -38,7 +45,7 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: 无（所有玩家可用）。\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop leave`\n");
-        md.append("- **注意事项**: 游戏进行中退出将视为放弃，已获得的积分和击杀数将丢失。\n\n");
+        md.append("- **注意事项**: 中途离开只累计击杀/阵亡/修复节点数与获取水晶，不计胜负（胜/负场与场次需要打到结算）。撤离后物品快照原样归还。\n\n");
 
         md.append("### `/hilltop gui`\n\n");
         md.append("- **功能**: 打开竞技场选择菜单（带状态与人数）。\n");
@@ -117,14 +124,14 @@ public class CommandsDocumentGenerator {
         md.append("### `/hilltop start`\n\n");
         md.append("- **功能**: 启动游戏。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: 无。\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
         md.append("- **使用示例**: `/hilltop start`\n");
-        md.append("- **注意事项**: 需确保核心位置已设置（通过 `/hilltop deploy setcore`），游戏将从等待状态进入运行状态。\n\n");
+        md.append("- **注意事项**: 需已完成部署——玩家出生点与怪物刷怪点两套坐标各至少 1 个（用 `/hilltop setup` 向导或 `/hilltop deploy addspawn` / `addmobspawn` 配置），且人数达到本场下限。\n\n");
 
         md.append("### `/hilltop stop`\n\n");
         md.append("- **功能**: 停止当前游戏。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: 无。\n");
+        md.append("- **参数**: `[竞技场]` — 可选，竞技场 ID（不填时优先按管理员所在世界解析）。\n");
         md.append("- **使用示例**: `/hilltop stop`\n");
         md.append("- **注意事项**: 强制结束游戏，所有进行中的波次和怪物将被清除，如需重新开始请再次执行 start 命令。\n\n");
 

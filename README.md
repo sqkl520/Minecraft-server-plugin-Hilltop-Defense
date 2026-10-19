@@ -209,7 +209,8 @@ arenas:
 > 向导会提示 `你当前不在任何已配置的竞技场世界里` 并告诉你如何传送进去。部署走完第 8 步后，该竞技场会
 > **自动放进启用队列**（`enabled: true` 时），加载完成后玩家即可 `/hilltop join`、管理员可 `/hilltop start`；
 > 若该场在 `arenas.yml` 中为 `enabled: false`（`arena2` / `arena3` 默认如此），请先改为 `true` 并**重启服务器**
-> （启动时自动入队），或用 `/hilltop enable <竞技场>` 手动入队。
+> （启动时自动入队）。注意 `/hilltop enable <竞技场>` **无法绕过该开关**——`enabled: false` 的场用 enable 会被拒绝；
+> 手动入队仅适用于已部署且 `enabled: true` 的场。
 
 | 步骤 | 内容 | 操作 |
 |------|------|------|

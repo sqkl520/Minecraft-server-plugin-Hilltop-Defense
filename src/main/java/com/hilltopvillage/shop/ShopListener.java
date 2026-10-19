@@ -124,7 +124,7 @@ public class ShopListener implements Listener {
             return;
         }
 
-        ItemStack product = shopManager.deliverItem(item, player);
+        ItemStack product = shopManager.deliverItem(item);
         if (product == null) {
             // 类型异常：退回货币（deliverItem 已 warning 日志）。
             // price > 0 才退：createCurrencyItem 已对 amount 钳制（P2-26），price=0 时若照退

@@ -135,7 +135,9 @@ public class HilltopTabCompleter implements TabCompleter {
             String input = args[1].toLowerCase();
             for (String sub : Arrays.asList("confirm-world", "confirm-core", "addspawn", "overview", "spawngui", "spawns-done",
                     "addmobspawn", "mobspawngui",
+                    "addnode", "nodesgui", "show-particles",
                     "confirm-nodes", "rescan", "villagers-done", "confirm-shop", "showshopparticles", "clear-shop",
+                    "addvillager", "villagersgui", "saveexit",
                     "preview", "goto")) {
                 if (sub.startsWith(input)) completions.add(sub);
             }

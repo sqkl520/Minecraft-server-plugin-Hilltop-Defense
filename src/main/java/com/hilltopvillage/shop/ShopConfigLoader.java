@@ -25,6 +25,9 @@ public class ShopConfigLoader {
     /** GUI 允许的尺寸（Bukkit 箱子行数：9/18/27/36/45/54） */
     private static final List<Integer> VALID_GUI_SIZES = Arrays.asList(9, 18, 27, 36, 45, 54);
 
+    /** fix5 M-10：本次加载已占用的 GUI 槽位（id → slot），重复槽位检测用 */
+    private final java.util.Map<Integer, String> occupiedSlots = new java.util.HashMap<>();
+
     private final HilltopVillagePlugin plugin;
 
     public ShopConfigLoader(HilltopVillagePlugin plugin) {
@@ -73,6 +76,7 @@ public class ShopConfigLoader {
         int guiSize = clampGuiSize(yaml.getInt("shop.gui.size", 27));
 
         // ---- 商品列表 ----
+        occupiedSlots.clear();
         List<ShopItem> items = new ArrayList<>();
         ConfigurationSection itemsSection = yaml.getConfigurationSection("shop.items");
         if (itemsSection != null) {
@@ -126,9 +130,22 @@ public class ShopConfigLoader {
 
         int slot = yaml.getInt(path + ".slot", -1);
         if (slot < 0 || slot >= guiSize) {
+            // fix5 M-17：1.1.0 新模板按 54 格分区布局（护甲区槽位 27-53）；旧盘若仍是
+            // gui.size: 27，按新模板补加的商品会全部落在这里被跳过。warning 补上升级指引，
+            // 让「为什么全被跳过」在日志里自答。
             plugin.getLogger().warning("shop.yml: item '" + id + "' slot " + slot
-                    + " out of GUI size " + guiSize + ", skipped");
+                    + " out of GUI size " + guiSize + ", skipped"
+                    + " (1.1.0 的完整商品布局需要 gui.size: 54，请检查本文件头部 gui.size 是否为旧值)");
             return null;
+        }
+
+        String occupiedBy = occupiedSlots.putIfAbsent(slot, id);
+        if (occupiedBy != null) {
+            // fix5 M-10：槽位冲突会让 ShopGUI 的 setItem/bySlot 静默覆盖（后者胜出），
+            // 先到的商品在 GUI 上完全消失且无日志。这里明确告警指出双方 id，
+            // 保留两件商品（GUI 最终行为仍为后者覆盖），服主据此修正配置。
+            plugin.getLogger().warning("shop.yml: item '" + id + "' slot " + slot
+                    + " conflicts with item '" + occupiedBy + "' (later item wins in GUI), please fix slots");
         }
 
         int price = yaml.getInt(path + ".price", 1);

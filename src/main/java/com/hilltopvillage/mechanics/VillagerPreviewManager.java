@@ -14,6 +14,7 @@ import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
 import org.bukkit.event.entity.EntityDamageEvent;
+import org.bukkit.event.world.EntitiesLoadEvent;
 import org.bukkit.persistence.PersistentDataType;
 
 import java.util.List;
@@ -115,7 +116,9 @@ public class VillagerPreviewManager implements Listener {
                 villager.remove();
             }
         }
-        // 同步丢弃：null / 已失效 / 属于本世界（已移除）的引用一律剔除，避免列表无限增长
+        // 同步丢弃：null / 已失效 / 属于本世界（已移除）的引用一律剔除，避免列表无限增长。
+        // fix5 X6-①：isValid=false 的区块卸载实体由 onEntitiesLoad 兜底在重载时清除，
+        // 这里照旧只维护内存列表。
         previews.removeIf(villager -> villager == null || !villager.isValid()
                 || world.equals(villager.getWorld()));
     }
@@ -150,6 +153,29 @@ public class VillagerPreviewManager implements Listener {
         previews.clear();
         if (removed > 0) {
             plugin.getLogger().info("村民预览实体清理：已移除 " + removed + " 个残留实体");
+        }
+    }
+
+    /**
+     * fix5 X6-①：区块实体加载兜底——带预览标记的实体在任何区块加载时一律清除。
+     *
+     * <p>背景（fix3 结转项）：预览实体是 persistent + 不远离消失的永久实体；区块卸载后
+     * 原内存引用失效并从 {@link #previews} 被剔除，但实体本体留在存档里，区块重载产生的
+     * 新对象不再被任何清理路径覆盖（{@link #clearInWorld} 只扫内存列表），运行期即脱管，
+     * 可能残留进对局世界直到下次开服（{@link #cleanupOrphans} 仅启动时跑一次）。</p>
+     *
+     * <p>预览的生命周期只在「向导第 5 步」窗口内（设计三约束之一）：区块加载时出现的
+     * 预览实体必然已跨出该窗口（正常路径下切步/退出/开局都会经内存列表清掉）。因此
+     * 这里不判别会话状态、直接移除——代价是第 5 步期间管理员远离后返回可能发现预览消失，
+     * 重进管理界面 / 增删村民会经 {@code syncPreviews} 重新生成，属可接受的降级。</p>
+     */
+    @EventHandler
+    public void onEntitiesLoad(EntitiesLoadEvent event) {
+        for (Entity entity : event.getEntities()) {
+            if (entity instanceof Villager
+                    && entity.getPersistentDataContainer().has(previewKey, PersistentDataType.BYTE)) {
+                entity.remove();
+            }
         }
     }
 
