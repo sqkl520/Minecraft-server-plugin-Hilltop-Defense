@@ -1,6 +1,77 @@
 # Changelog
 
 
+## [1.1.0-SNAPSHOT-fix1] - 2026-10-20
+
+> 1.1.0 的第一个修复版：fix5 审查轮（10 专家通道 + 2 验证角色，合并清单 48 条：P0=0/P1=1/P2=19/P3=28）的六路并行修复 + 结转清理 + 六路锐评轮（与执行同数量的对抗审查）的裁定修正。
+> 审查产物：`docs/01-reviews/fix5/`（fix5-MASTER-BACKLOG.md 总报告）；修复规格书：`fix5-REPAIR-PLAN.md`；锐评报告：`docs/01-reviews/fix5-critique/`（fix5-CRIT-MASTER.md 汇总）。
+> 原 `1.0.9-SNAPSHOT` / `-fix1`~`-fix4` / `1.1.0-SNAPSHOT` 的包与 GitHub Release 保留不动。
+
+### Fixed（2026-10-20 — X2 战斗与安全（含唯一 P1））
+
+- **【安全·P1】铁砧伪造链封堵**：商店道具（锤/烈焰蛋/汁液）的识别器删除「显示名回退」迁移分支，PDC 成为唯一口径——修复「服主将物品名去色码自定义后，玩家可用铁砧逐字符复现名称伪造锤/蛋/汁液」的漏洞；伪造锤曾可绕过 max-uses=30 变成无限锤、整条消耗品商店线（5/3/2 币）被绕过。字节码级验证依据见 fix5-VERIFY-P1b.md
+- **零友伤补齐（弓/弩/近战）**：新增 `FriendlyFireListener`——对局内同场成员之间的原版伤害（箭矢/弩箭/三叉戟/挥砍）一律取消，与既有技能零友伤（火焰蛋/重锤只弹飞）口径一致，兑现 README「零友伤」承诺
+- **抛投者俯冲击退收敛**：`DropperAttackGoal` 俯冲命中后取消水平击退位移（保留垂直受击反馈），修复「站在岛边缘被撞下虚空」
+- **节点充能爆炸实体伤害过滤**：床/锚爆炸（BLOCK_EXPLOSION）对本场成员的伤害取消（方块面保节点逻辑不变；怪物受伤照常）
+
+### Fixed（2026-10-20 — X1 状态机与判空）
+
+- **reset 补录加固**：结算重置的离线玩家补录循环加判空 + try/catch 兜底——任何单玩家记录异常不再打断 reset（原可能导致竞技场卡死在 ENDING 需管理员 disable→enable）
+- **登录链判空**：重连失败恢复物品路径加 PlayerGoodsManager 空值守卫（同族契约裂缝）
+- **空置结束 vs 重连超时竞态收敛**：空置自动结束任务在「本场仍有玩家处于重连窗口」时计时清零/让位——全员离线场景的收尾出口唯一化（消除双任务对撞导致的战绩口径翻转）；`empty-arena-end-seconds` ≤ `rejoin-timeout-seconds` 时控制台启动告警（仅提示不改值）
+- **重连落点分档**：WAITING 阶段重连放行（不再被移出对局，与 auto-leave-on-quit=false 的承诺对齐）；STARTING/WAITING 重连落等待区 + 冒险模式（与入场态一致），对局进行中落核心 + 生存模式
+
+### Fixed（2026-10-20 — X3 商店与经济）
+
+- **弓掉落归零**：持弓怪（钩爪猎手）主手装备不再按 5% 掉落——修复「20 波内约 95% 玩家免费掉到弓、商店 15 水晶定价被架空」
+- **shop.yml slot 重复检测**：同槽位两条商品从「静默覆盖」改为控制台 warning（含双方 id）；`/hilltop shop reload` 支持重复检测
+- **slot 超 gui.size warning 补升级指引**：提示文本补「1.1.0 完整商品布局需要 gui.size: 54」
+- **kit-received 文案**：开局套装提示补「皮革四件套」
+- **`.corrupt` 坏文件隔离修复**：`renameTo` → `Files.move(REPLACE_EXISTING)`（StatsManager + PlayerGoodsManager 两处同构）——修复「Windows 上目标已存在时隔离必败、坏文件永不替换、每次开服重复告警、日志自相矛盾」
+- **enable 指引三触点修正**：`arena-not-deployed-hint` / `arena-enable-failed` / README 双语——「enabled: false 需改 true 并重启服务器（启动时自动入队）」替代原「直接用 /hilltop enable」（该命令对 enabled:false 的场必定拒绝）
+
+### Fixed（2026-10-20 — X4 数据/权限/性能）
+
+- **`/hilltop lang` 权限分离**：管理员/控制台改全服默认语言并落盘；普通玩家只改自己的会话语言偏好（不再改写全服默认）
+- **SafeSpawnUtil 区块加载防御**：落点扫描入口加 isChunkLoaded 短路——未加载区块不再触发同步加载（纯防御，杜绝最坏 20-180ms 主线程停顿）
+- **重生准入兼容层**：非成员的重生点若指向竞技场世界（床 spawn 绕过准入的残余路径），重生时改指大厅 + 清床 spawn
+
+### Fixed（2026-10-20 — X5 文档与生成器）
+
+- **commands.md 生成器五处失实修正**：leave 注意事项（「丢失击杀」→「只累计增量不计胜负」）、start 注意事项（指向两套生成点）、join/start/stop 参数补 `[竞技场]`；生成器类头加维护义务注释
+- **README-EN 补齐六块中文独有章节**：竞技场维护（启用队列/隔离窗口）/世界唯一性/per-arena min-players/商店 NPC 管理/生命周期状态表/四必填提示
+- **join 同场重入预检**：等待/倒计时阶段对同场重复 join 直接提示已在场内（不再 leave→join 重置倒计时，堵住「反复重入无限拖延开局」）；addPlayer 加幂等早退双保险
+- **CHANGELOG 1.1.0 升级提示补 gui.size 54 提醒**（已有段落内补写）
+
+### Fixed（2026-10-20 — X6 结转与死代码清理）
+
+- **预览村民脱管（fix3 漏修结转项）**：`VillagerPreviewManager` 增加 EntitiesLoadEvent 兜底——区块卸载后重新加载时自动清除脱管的预览村民（原 removeIf 清理只覆盖显式调用路径）
+- **写盘失败播报**：deploy 的 addspawn/addmobspawn/addvillager 等路径在 arenas.yml 写入失败时聊天栏明确提示「改动仅存在内存、重启丢失」（新增 `deploy.save-failed` 键）；修复失败标记残留导致的后续假警报
+- **Tab/部署菜单补全**：`/hilltop setup` Tab 补 6 子命令（addnode/nodesgui/show-particles/addvillager/villagersgui/saveexit）；`/hilltop deploy help` 菜单补 5 条（delvillager/clearmobspawns/confirmclearmob/clearvillagers/confirmclearvillagers；10 个新 i18n 键 en/zh 对称）
+- **死代码清理**：删除零调用方法族（isGameActive / MAM.isPendingRejoin / startArena / startAllArenas / ArenaManager.save 等，删除前全库 grep 零调用复核）；`deliverItem` 未用参数签名收窄
+- **stopGame 重复赋值清理**（GameManager settlementPhase 冗余行）
+
+### Fixed（2026-10-20 — 锐评轮快修（6 路对抗审查的裁定修正））
+
+- **commands.md 生成器文案全面校准**（存疑口号「不填时按所在世界解析」修正）：start/stop 改为实际解析链（所在场 → 默认场）；wave clear/skip 同步修正；status 参数行补 `[竞技场]`；lang 注意事项改为 M-14 后的双语义（玩家会话偏好 / 管理员落盘）；enable/disable 两行核实属实保留
+- **`arena-issue-flag-disabled` 提示修正**：`/hilltop list` 的故障行不再指引用 `/hilltop enable`（enabled: false 未重启时该命令仍被拒），改为「改为 true 并重启服务器（启动时自动入队）」
+- **删除类部署命令补写盘失败播报**：delspawn/delmobspawn/delvillager/confirmclear/confirmclearmob/confirmclearvillagers 六条路径补齐「写入失败」提示（与 set 类五路径口径一致）
+- **重锤换手绕限封堵（锐评 P2）**：蓄力中换手/丢弃落地不再跳过 max-uses 计数——`executeSmash` 入口校验主手仍持锤，非锤即静默放弃本次蓄力（修复「30 次上限形同虚设」的无限锤残余通道）
+- **开局刷怪点区块预加载（锐评 P3→根治）**：`onGameStart` 对全部刷怪点做一次性 getChunkAt——修复「重启后首局、刷怪点距出生点≥视距且区块未加载时首波少怪/空波」的条件性回归（区块加载完成后自愈的闪烁）
+- **重生判定双库查询（锐评 P3→根治）**：非成员重生覆写改查「活动实例 or 定义」两库——封闭「已被 disable 的场（世界仍加载）床 spawn 落回」残余路径
+- **shop.yml slot 越界 warning 条件化**：仅 gui.size < 54 时才附加升级指引（54 格下 slot 越界是配置错误而非旧盘升级）
+- **陈旧 javadoc 三处清理**（已删方法的引用：MAM/ArenaInstance/ArenaAdminService）；预览村民兜底注释与实际重建路径对齐
+- **README 双语**：`/hilltop lang` 命令行与特性行同步 M-14 双语义
+
+### ⚠️ 升级提示（升级到本版必读）
+
+- **fix3 之前发放的旧道具失效**：无 PDC 标记的旧锤/烈焰蛋/世界树汁液不再被识别（显示名回退已删除，属反伪造安全取舍；旧道具已逾期多个版本）。商店/命令新发的道具不受影响
+- **重连语义变化**：WAITING 等待期掉线重连现在回到等待区（此前被移出对局）——与 `auto-leave-on-quit: false` 的承诺对齐
+- **空置与重连阈值**：建议 `empty-arena-end-seconds` > `rejoin-timeout-seconds`（如前者 60、后者可保持默认），启动时若有交叉会看到提示
+- **持弓怪不掉弓**：弓的获取恢复为「商店购买」单渠道（服主如需掉落可自行在 monsters-config 调整怪种武器或等后续配置面）
+- **重锤蓄力中换手（含按 F/滚轮/Q）会放弃本次猛击**：修复换手绕限的语义收紧；正常流程不受影响
+- 服务端无需其它动作；命令文档 commands.md 重启后自动重生成
+
 ## [1.1.0-SNAPSHOT] - 2026-10-17
 
 > 首个 Minor 版本：装备成长线（作者拍板"弓+箭做、附魔下版本再加"）+ 怪种掉落表 + 商店 GUI 扩容。
