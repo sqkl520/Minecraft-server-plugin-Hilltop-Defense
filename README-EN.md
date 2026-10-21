@@ -497,7 +497,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop stop [arena]` | Force stop the game (Admin) | ✅ |
 | `/hilltop wave clear [arena]` | Force-clear all mobs of the current wave and finish it (enters intermission; cleared mobs produce no drops and don't count as kills) (Admin, `hilltopvillage.admin`) | ✅ |
 | `/hilltop wave skip [arena]` | Skip the intermission and start the next wave now (while RUNNING it equals clear-wave + skip in one step; refused without judging a loss if there aren't enough players) (Admin, `hilltopvillage.admin`) | ✅ |
-| `/hilltop help` | Show command help (Admin) | ✅ |
+| `/hilltop help` | Show command help (available to all players; content is tiered by permission) | ✅ |
 | `/hilltop list` | List all arenas | ✅ |
 | `/hilltop arenas` | Detailed arena status (Admin) | ✅ |
 | `/hilltop manage` | Open the arena management GUI: inspect any arena, delete a single node/player-spawn/mob-spawn/villager/shop NPC (right-click the shop entry on the detail page), edit game parameters, restore initial state (Admin) | ❌ |

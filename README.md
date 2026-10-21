@@ -495,7 +495,7 @@ arenas:
 | `/hilltop stop [竞技场]` | 强制停止游戏（管理员） | ✅ |
 | `/hilltop wave clear [竞技场]` | 强制清除当前波所有怪物并结束本波（进入休整期；被清怪物不产生掉落、不计击杀）（管理员 `hilltopvillage.admin`） | ✅ |
 | `/hilltop wave skip [竞技场]` | 跳过休整期立即开始下一波（RUNNING 时等效"清波 + 跳过"一步到位；人数不足会拒绝且不判负）（管理员 `hilltopvillage.admin`） | ✅ |
-| `/hilltop help` | 查看命令帮助（管理员） | ✅ |
+| `/hilltop help` | 查看命令帮助（所有玩家可用；内容按权限分档） | ✅ |
 | `/hilltop list` | 列出所有竞技场 | ✅ |
 | `/hilltop arenas` | 查看详细竞技场状态与故障原因（管理员） | ✅ |
 | `/hilltop manage` | 打开竞技场管理 GUI：查看任意竞技场、删除单个节点/出生点/刷怪点/村民/商店（详情页右键商店条目）、编辑游戏参数、恢复初始状态（管理员） | ❌ |

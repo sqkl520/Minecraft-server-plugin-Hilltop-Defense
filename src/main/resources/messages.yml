@@ -33,7 +33,7 @@ en:
   game-defeat: "&cAll players have fallen. &4DEFEAT!"
   game-start-need-players: "&cCannot start: &f{0}&c/&f{1}&c players. More players needed (edit &earenas.yml&c game.min-players, or &e/hilltop config&c for arenas without an explicit value)."
   game-start-already-running: "&cA game is already in progress. Use /hilltop stop first."
-  game-start-restoring: "&cArena &f{0} &cis restoring its map right now. Please wait a few seconds and try again."
+  game-start-restoring: "&cArena &f{0} &cis restoring its map right now (or the last restore failed and needs a check). Please wait a moment; if it persists, check the console log."
 
   # === 多竞技场系统 ===
   player-joined: "&a{0} &ejoined the arena! &7(&f{1}&7/&f{2}&7)"
@@ -1251,7 +1251,7 @@ zh:
   game-defeat: "&c所有玩家已阵亡。&4失败！"
   game-start-need-players: "&c无法开始游戏：当前 &f{0}&c/&f{1}&c 名玩家。需要更多玩家加入（请改 &earenas.yml&c 的 game.min-players；未显式配置的竞技场才走 &e/hilltop config&c 的全局值）。"
   game-start-already-running: "&c游戏已在进行中。请先使用 /hilltop stop 结束当前游戏。"
-  game-start-restoring: "&c竞技场 &f{0} &c正在回滚地图，请等几秒后再试。"
+  game-start-restoring: "&c竞技场 &f{0} &c正在回滚地图（若长时间无变化，可能是上次回滚失败需排查控制台日志）。"
 
   # === 游戏状态显示 ===
   status-header: "&6=== 村民守卫战 状态 ==="

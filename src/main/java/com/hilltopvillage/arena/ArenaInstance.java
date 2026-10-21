@@ -98,9 +98,11 @@ public class ArenaInstance implements IArena {
      *
      * <p>收尾链上 {@code GameManager.stopGame()} 会把 currentWave 归零，而 reset 里补录
      * 离线残留玩家统计（recordOffline 的 wavesSurvived）时已读不到真实波次；因此在
-     * {@link #onGameEnd()}（归零前）与 {@link #reset()} 开头各用 {@code Math.max} 捕获一次
-     * 快照（幂等，两处互补覆盖所有收尾路径），与在线玩家踢出时记录的波次取值一致。
-     * 跨局在 completeResetAfterRestore / onGameStart 归零。</p>
+     * {@link #onGameEnd()}（归零前）、{@link #reset()} 开头与 fix6 新增的
+     * {@link #stopGame()} / {@link #resetNow()}（踢人前，先捕获再归零）各处用
+     * {@code Math.max} 捕获快照（幂等，互补覆盖所有收尾路径），与在线玩家踢出时记录的
+     * 波次取值一致。跨局在 completeResetAfterRestore / onGameStart 归零。
+     * （fix6 锐评 Y1-N3：同步「多处捕获」现状，勿再写死数字。）</p>
      */
     private int sessionWave;
 

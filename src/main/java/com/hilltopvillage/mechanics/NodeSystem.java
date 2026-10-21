@@ -209,7 +209,10 @@ public class NodeSystem {
         if (existing != null) {
             for (Map<?, ?> nodeMap : existing) {
                 String worldName = entryWorldName(nodeMap);
-                if (worldName != null && arenaWorlds.contains(worldName)) continue;
+                // fix6 锐评 Y1-N1：contains 为大小写敏感精确比较——服主改 arenas.yml 世界名
+                // 大小写后，旧名条目会失配而永不被过滤（删除节点不落盘、下次加载幽灵复活）。
+                // 与读取侧（:109 等 equalsIgnoreCase）统一口径：逐项忽略大小写匹配。
+                if (worldName != null && arenaWorlds.stream().anyMatch(w -> w.equalsIgnoreCase(worldName))) continue;
                 nodeList.add(copyNodeEntry(nodeMap));
             }
         }
