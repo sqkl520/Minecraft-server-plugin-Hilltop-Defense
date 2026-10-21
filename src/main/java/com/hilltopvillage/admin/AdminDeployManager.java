@@ -3,7 +3,6 @@ package com.hilltopvillage.admin;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.arena.ArenaManager;
 import com.hilltopvillage.core.GameManager;
-import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.*;
 import org.bukkit.configuration.ConfigurationSection;
@@ -166,13 +165,6 @@ public class AdminDeployManager {
                 ticksElapsed++;
             }
         }.runTaskTimer(plugin, 0L, PREVIEW_PERIOD_TICKS).getTaskId();
-    }
-
-    public void stopParticleShow() {
-        if (showParticlesTaskId != -1) {
-            Bukkit.getScheduler().cancelTask(showParticlesTaskId);
-            showParticlesTaskId = -1;
-        }
     }
 
     /* ========== 数据持久化 ========== */
@@ -495,10 +487,6 @@ public class AdminDeployManager {
         return savedCoreLocation != null ? savedCoreLocation.clone() : null;
     }
 
-    public boolean hasFixedSpawnPoints() {
-        return !savedSpawnPoints.isEmpty();
-    }
-
     /**
      * M-02 兜底：坐标世界与竞技场世界一致性校验。
      *
@@ -566,10 +554,6 @@ public class AdminDeployManager {
     /** 已部署的怪物刷怪点（只读视图；旧存档返回空列表，刷怪双用回退到玩家出生点） */
     public List<Location> getMobSpawnPoints() {
         return Collections.unmodifiableList(savedMobSpawnPoints);
-    }
-
-    public boolean hasMobSpawnPoints() {
-        return !savedMobSpawnPoints.isEmpty();
     }
 
     public void addMobSpawnPoint(Location location) {
@@ -662,80 +646,5 @@ public class AdminDeployManager {
     public boolean setShopNpcLocation(Location location) {
         savedShopNpcLocation = (location != null) ? location.clone() : null;
         return saveSpawnPoints();
-    }
-
-    /* ========== 部署菜单 ========== */
-
-    public void openDeployMenu(Player admin, LanguageManager lang) {
-        if (!admin.hasPermission("hilltopvillage.admin")) {
-            admin.sendMessage(lang.getFor(admin, "deploy.menu-no-permission"));
-            return;
-        }
-
-        admin.sendMessage("");
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-title-line1"));
-        admin.sendMessage("");
-
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-status-label"));
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-state", getStateDisplay(admin, lang, gameManager.getState())));
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-core-coords", formatCoreLocation(admin, lang)));
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-spawn-count",
-                savedSpawnPoints.size(),
-                savedSpawnPoints.isEmpty() ? lang.getFor(admin, "deploy.menu-random-yes") : lang.getFor(admin, "deploy.menu-random-no")));
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-mobspawn-count", savedMobSpawnPoints.size()));
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-nodes", gameManager.getNodeSystem().getTotalCount()));
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-villagers", savedVillagerPositions.size()));
-        admin.sendMessage("");
-
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-operations-label"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy setcore" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-setcore"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy addspawn" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-addspawn"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy listspawns" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-listspawns"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy delspawn <id>" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-delspawn"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy showparticles" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-showparticles"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy clearspawns" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-clearspawns"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy addmobspawn" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-addmobspawn"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy listmobspawns" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-listmobspawns"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy delmobspawn <id>" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-delmobspawn"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy clearmobspawns" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-clearmobspawns"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy reloadnodes" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-reloadnodes"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy confirmclear" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-confirmclear"));
-        admin.sendMessage("");
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-villager-label"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy addvillager" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-addvillager"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy listvillagers" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-listvillagers"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy delvillager <id>" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-delvillager"));
-
-        admin.sendMessage("");
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-shop-label"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy setshop" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-setshop"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop deploy clearshop" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-clearshop"));
-
-        admin.sendMessage("");
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-game-control-label"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop start" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-start"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop stop" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-stop"));
-        admin.sendMessage(ChatColor.AQUA + "/hilltop status" + ChatColor.GRAY + " — " + lang.getFor(admin, "deploy.menu-hint-status"));
-
-        admin.sendMessage("");
-        admin.sendMessage(lang.getFor(admin, "deploy.menu-tip"));
-    }
-
-    private String getStateDisplay(Player admin, LanguageManager lang, GameState state) {
-        switch (state) {
-            case WAITING: return lang.getFor(admin, "state.waiting");
-            case STARTING: return lang.getFor(admin, "state.starting");
-            case RUNNING: return lang.getFor(admin, "state.running");
-            case WAVE_INTERMISSION: return lang.getFor(admin, "state.wave-intermission");
-            case VICTORY: return lang.getFor(admin, "state.victory");
-            case DEFEAT: return lang.getFor(admin, "state.defeat");
-            default: return state.name();
-        }
-    }
-
-    private String formatCoreLocation(Player admin, LanguageManager lang) {
-        Location core = savedCoreLocation != null ? savedCoreLocation : gameManager.getCoreLocation();
-        if (core == null) return lang.getFor(admin, "deploy.menu-core-unset");
-        return ChatColor.WHITE + String.format("%.1f, %.1f, %.1f", core.getX(), core.getY(), core.getZ());
     }
 }

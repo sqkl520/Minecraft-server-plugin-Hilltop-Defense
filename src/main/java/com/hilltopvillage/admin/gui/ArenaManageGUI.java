@@ -11,6 +11,7 @@ import com.hilltopvillage.admin.ArenaResetService.ReinstateSkip;
 import com.hilltopvillage.admin.LocationParticlePreview;
 import com.hilltopvillage.admin.PointKind;
 import com.hilltopvillage.arena.ArenaDefinition;
+import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.arena.ArenaStatus;
 import com.hilltopvillage.arena.MultiArenaManager;
 import com.hilltopvillage.core.GameState;
@@ -610,6 +611,8 @@ public class ArenaManageGUI extends AbstractAdminMenu {
                                 arena.minPlayers(), arena.maxPlayers(),
                                 arena.victoryWaves(), arena.waveIntervalSeconds()),
                         lang.getFor(admin, "manage.params.edit-hint"),
+                        // fix6 Y3-M-04：预披露「对局中提交会被拒」（拒绝文案已有，此前不预告）
+                        lang.getFor(admin, "manage.params.blocked-hint"),
                         lang.getFor(admin, "manage.detail.params-inert")));
 
         setClickableItem(SLOT_BACK, Material.ARROW, lang.getFor(admin, "manage.back"),
@@ -666,9 +669,21 @@ public class ArenaManageGUI extends AbstractAdminMenu {
             case WAVE_INTERVAL -> interval = value;
         }
 
+        // fix6 Y3-M-04：调低 min-players 在等待期可能经 applyGameParams → checkAutoStart 立即
+        // 触发开局倒计时（预期副作用但此前无披露）。写盘前记录状态、写盘后对比：
+        // WAITING → STARTING 的跃迁即代表「顺带开局」，补一句提示（含竞技场 ID）。
+        ArenaInstance before = multiArenaManager().getArena(arena.arenaId());
+        GameState stateBefore = before == null ? null : before.getState();
         ParamUpdate result = adminService().updateGameParams(arena.arenaId(), min, max, waves, interval);
         switch (result) {
-            case OK -> lang.send(admin, "manage.params.saved", label, value);
+            case OK -> {
+                lang.send(admin, "manage.params.saved", label, value);
+                ArenaInstance after = multiArenaManager().getArena(arena.arenaId());
+                if (stateBefore == GameState.WAITING && after != null
+                        && after.getState() == GameState.STARTING) {
+                    lang.send(admin, "manage.params.auto-started", arena.arenaId());
+                }
+            }
             case ARENA_NOT_FOUND -> lang.send(admin, "manage.reset.blocked-not-found");
             case INVALID_VALUE -> lang.send(admin, "manage.params.invalid");
             // 专用文案：manage.reset.blocked-game-progress 写着「先 /hilltop stop」，对局进行中才成立

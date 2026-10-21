@@ -13,6 +13,7 @@ import org.bukkit.plugin.Plugin;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * Monster attribute editor menu (54-slot large chest).
@@ -142,7 +143,7 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
                                     if (v == null || v.isEmpty()) {
                                         mc.setOffHandItem(null);
                                     } else {
-                                        Material m = Material.getMaterial(v.toUpperCase());
+                                        Material m = Material.getMaterial(v.toUpperCase(Locale.ROOT));
                                         if (m != null) mc.setOffHandItem(m);
                                     }
                                     reopen();
@@ -259,7 +260,7 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
                                     if (v == null || v.isEmpty()) {
                                         setter.accept(null);
                                     } else {
-                                        Material m = Material.getMaterial(v.toUpperCase());
+                                        Material m = Material.getMaterial(v.toUpperCase(Locale.ROOT));
                                         if (m != null) setter.accept(m);
                                     }
                                     reopen();
@@ -317,9 +318,9 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
     /** Translate material name using i18n, falling back to English name. */
     private String translateMaterial(Material mat) {
         if (mat == null) return lang.getFor(admin, "config.menu.common.none");
-        String key = "config.menu.mat." + mat.name().toLowerCase().replace('_', '-');
+        String key = "config.menu.mat." + mat.name().toLowerCase(Locale.ROOT).replace('_', '-');
         String translated = lang.getFor(admin, key);
-        return translated.equals(key) ? mat.name().toLowerCase().replace('_', ' ') : translated;
+        return translated.equals(key) ? mat.name().toLowerCase(Locale.ROOT).replace('_', ' ') : translated;
     }
 
     /** Cycle to next material in preset list. null means clear. */

@@ -14,6 +14,7 @@ import org.bukkit.event.inventory.InventoryClickEvent;
 import org.bukkit.event.inventory.InventoryDragEvent;
 import org.bukkit.inventory.ItemStack;
 
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
@@ -124,19 +125,21 @@ public class ShopListener implements Listener {
             return;
         }
 
-        ItemStack product = shopManager.deliverItem(item);
+        ItemStack product;
+        try {
+            product = shopManager.deliverItem(item);
+        } catch (RuntimeException ex) {
+            // fix6 Y2-04 纵深：任何工厂构造异常都不允许吃掉玩家货币——先退全款再把异常降级为日志。
+            // 现有 product == null 退款分支只接「返回 null」，接不住「构造必抛」的材质配置
+            //（如节点修复物品被配成 WATER：new ItemStack 抛 IllegalArgumentException 穿透
+            // onInventoryClick，币已扣、货无、无退款、无消息）。此处把抛面收敛为退款面。
+            plugin.getLogger().warning("Shop deliver failed for '" + item.getId() + "': " + ex);
+            refundCurrency(player, item);
+            return;
+        }
         if (product == null) {
-            // 类型异常：退回货币（deliverItem 已 warning 日志）。
-            // price > 0 才退：createCurrencyItem 已对 amount 钳制（P2-26），price=0 时若照退
-            // 会发出 1 个水晶（0 价商品刷钱）；price=0 本就未扣款，无需退款。
-            // 退款同样处理背包溢出（与正常发货分支一致），避免退款静默丢失。
-            if (item.getPrice() > 0) {
-                java.util.Map<Integer, ItemStack> refundOverflow =
-                        player.getInventory().addItem(shopManager.createCurrencyItem(item.getPrice()));
-                for (ItemStack leftover : refundOverflow.values()) {
-                    player.getWorld().dropItemNaturally(player.getLocation(), leftover);
-                }
-            }
+            // fix6 Y2-04：类型异常退回货币（deliverItem 已 warning 日志）
+            refundCurrency(player, item);
             return;
         }
 
@@ -167,6 +170,21 @@ public class ShopListener implements Listener {
                 String.valueOf(have - spent)));
     }
 
+    /**
+     * 退回购买货币（fix6 Y2-04）：price > 0 才退（createCurrencyItem 对 amount 钳制，0 价照退
+     * 会发出 1 个水晶刷钱）；退款同样处理背包溢出（与正常发货分支一致），避免退款静默丢失。
+     * 两个退款分支（deliverItem 返回 null / 构造抛异常）共用本方法，保证行为一致。
+     */
+    private void refundCurrency(Player player, ShopItem item) {
+        if (item.getPrice() > 0) {
+            java.util.Map<Integer, ItemStack> refundOverflow =
+                    player.getInventory().addItem(shopManager.createCurrencyItem(item.getPrice()));
+            for (ItemStack leftover : refundOverflow.values()) {
+                player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+            }
+        }
+    }
+
     /** 商品名（消息占位用）：shop.yml 直配优先，否则用 i18n 键值，最后回退材质名 */
     private String resolveItemName(Player player, ShopItem item) {
         if (item.getName() != null && !item.getName().isEmpty()) {
@@ -177,7 +195,7 @@ public class ShopListener implements Listener {
         if (!msg.equals(key)) {
             return msg;
         }
-        return item.getIcon().name().toLowerCase().replace('_', ' ');
+        return item.getIcon().name().toLowerCase(Locale.ROOT).replace('_', ' ');
     }
 
     /** 玩家离线时清理购买冷却记录，防内存泄漏 */

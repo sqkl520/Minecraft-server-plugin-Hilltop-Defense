@@ -3,6 +3,7 @@ package com.hilltopvillage.mechanics;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.core.GameManager;
+import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.core.PlayerData;
 import org.bukkit.Bukkit;
 import org.bukkit.GameMode;
@@ -62,12 +63,19 @@ public class PlayerLifecycleListener implements Listener {
     @EventHandler(priority = EventPriority.HIGH)
     public void onDeath(PlayerDeathEvent event) {
         Player player = event.getEntity();
-        GameManager gameManager = gm(player);
-        if (gameManager == null) return;
-
-        // 只有对局进行中才接管死亡；等待区/开局前的死亡按原版处理
-        // （否则未部署或尚未开局的竞技场会因「全员阵亡」被误判为失败）
-        if (!gameManager.isGameRunning()) return;
+        // fix6 Y1-R08-02：门控从 GameManager.isGameRunning() 收化为「所属竞技场处于对局或结算」
+        // ——经 endGame() 的结算窗（自然胜利 / 人数不足判负）GM.state 已为 VICTORY/DEFEAT，
+        // 旧门控为 false → 少记一次死亡且物品短暂落地；而 triggerDefeat 窗（haltGame 刻意
+        // 不改 GM.state）反而接管——两窗口语义由实现细节决定，不对称。统一为「接管」。
+        // ENDING（回滚屏障）仍不接管：此时玩家已全部移出、无遗留成员。
+        ArenaInstance arena = plugin.getMultiArenaManager().getPlayerArena(player);
+        if (arena == null) return;
+        GameState arenaState = arena.getState();
+        if (arenaState != GameState.RUNNING && arenaState != GameState.WAVE_INTERMISSION
+                && arenaState != GameState.VICTORY && arenaState != GameState.DEFEAT) {
+            return;
+        }
+        GameManager gameManager = arena.getGameManager();
 
         PlayerData data = gameManager.getPlayerData(player);
         if (data != null) {

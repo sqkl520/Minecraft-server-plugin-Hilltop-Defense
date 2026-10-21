@@ -115,22 +115,6 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
                 lang.getFor(admin, "config.menu.common.back-lore"));
     }
 
-    protected void setCloseButton() {
-        // Close button removed — no-op kept for subclass compatibility
-    }
-
-    protected void fillBorders() {
-        ItemStack border = new ItemStack(Material.GRAY_STAINED_GLASS_PANE);
-        ItemMeta meta = border.getItemMeta();
-        if (meta != null) {
-            meta.setDisplayName(" ");
-            border.setItemMeta(meta);
-        }
-        for (int i = 0; i < 9; i++) {
-            inventory.setItem(i, border);
-        }
-    }
-
     protected void fillEmpty() {
         ItemStack empty = new ItemStack(Material.BLACK_STAINED_GLASS_PANE);
         ItemMeta meta = empty.getItemMeta();
@@ -145,20 +129,12 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
         }
     }
 
-    protected static String formatValue(String label, String value) {
-        return ChatColor.GRAY + label + ": " + ChatColor.AQUA + value;
-    }
-
     protected static String formatValue(String label, double value) {
         return ChatColor.GRAY + label + ": " + ChatColor.AQUA + String.format("%.1f", value);
     }
 
     protected static String formatValue(String label, int value) {
         return ChatColor.GRAY + label + ": " + ChatColor.AQUA + value;
-    }
-
-    protected static List<String> lore(String... lines) {
-        return Arrays.asList(lines);
     }
 
     @EventHandler

@@ -103,6 +103,9 @@ public class DeployMenuSender {
                 lang.getFor(player, "deploy.desc-confirmclearmob"));
         sendClickableLine(player, "deploy.cmd-reloadnodes", "/hilltop deploy reloadnodes", hover,
                 lang.getFor(player, "deploy.desc-reloadnodes"));
+        // fix6 Y3-R09-09：命令族无 addnode 入口——给出向导第 4 步的指引（reloadnodes 不注册节点）
+        sendClickableLine(player, "deploy.cmd-node-hint", "/hilltop setup", hover,
+                lang.getFor(player, "deploy.desc-node-hint"));
         sendClickableLine(player, "deploy.cmd-addvillager", "/hilltop deploy addvillager", hover,
                 lang.getFor(player, "deploy.desc-addvillager"));
         sendClickableLine(player, "deploy.cmd-listvillagers", "/hilltop deploy listvillagers", hover,

@@ -11,15 +11,14 @@ import org.bukkit.command.CommandExecutor;
 import org.bukkit.command.CommandSender;
 import org.bukkit.entity.Player;
 
+import java.util.Locale;
+
 /**
- * Arena join/leave commands.
- * Similar to BedWars1058's join/leave system.
+ * Arena list/status view commands (internal form).
  *
- * Commands:
- * - /hilltop join [arena] - join an arena (auto-join if no arena specified)
- * - /hilltop leave - leave current arena
- * - /hilltop list - list all available arenas
- * - /hilltop arenas - show arena status (admin)
+ * <p>fix6 Y4-B25：本类只保留 HCH 硬编码调用的两种形态（{@code list} / {@code arenas}）。
+ * 旧的 join/leave/无参/help 分支自 fix3 起即不可达（唯一调用方 HilltopCommandHandler
+ * 只以 {@code new String[]{"list"}} / {@code new String[]{"arenas"}} 进入），本轮删除。</p>
  */
 public class ArenaCommand implements CommandExecutor {
 
@@ -35,73 +34,15 @@ public class ArenaCommand implements CommandExecutor {
 
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
-        if (args.length == 0) {
-            sendHelp(sender);
-            return true;
-        }
-
-        String subCommand = args[0].toLowerCase();
-
-        switch (subCommand) {
-            case "join" -> handleJoin(sender, args);
-            case "leave" -> handleLeave(sender);
+        // 仅提供内部调用形态：HCH 以 list/arenas 两形态调用（join/leave 等命令入口由 HCH 路由，
+        // sendHelp 的消费点已随本收窄一并消失）
+        if (args.length == 0) return true;
+        switch (args[0].toLowerCase(Locale.ROOT)) {
             case "list" -> handleList(sender);
             case "arenas" -> handleArenas(sender);
-            default -> sendHelp(sender);
+            default -> { }
         }
-
         return true;
-    }
-
-    /**
-     * /hilltop join [arena]
-     * Join an arena (auto-join if no arena specified).
-     */
-    private void handleJoin(CommandSender sender, String[] args) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage(languageManager.get("player-only-command"));
-            return;
-        }
-
-        // Check if already in arena
-        if (arenaManager.isInArena(player)) {
-            languageManager.send(player, "already-in-arena");
-            return;
-        }
-
-        if (args.length == 1) {
-            // Auto-join
-            if (arenaManager.autoJoinArena(player)) {
-                // Success message sent by arena
-            } else {
-                languageManager.send(player, "no-arenas-available");
-            }
-        } else {
-            // Join specific arena
-            // C3-02：joinArena 全失败路径均已在内部发送精确原因（arena-not-found / arena-full /
-            // game-in-progress / arena-not-deployed …），此处不再补发泛化 join-failed（避免双消息叠报）
-            arenaManager.joinArena(player, args[1]);
-        }
-    }
-
-    /**
-     * /hilltop leave
-     * Leave current arena.
-     */
-    private void handleLeave(CommandSender sender) {
-        if (!(sender instanceof Player player)) {
-            sender.sendMessage(languageManager.get("player-only-command"));
-            return;
-        }
-
-        ArenaInstance arena = arenaManager.getPlayerArena(player);
-        if (arena == null) {
-            languageManager.send(player, "not-in-arena");
-            return;
-        }
-
-        arenaManager.leaveArena(player);
-        languageManager.send(player, "arena-left");
     }
 
     /**
@@ -230,22 +171,5 @@ public class ArenaCommand implements CommandExecutor {
             return languageManager.getFor(player, key, args);
         }
         return languageManager.get(key, languageManager.getLocale(), args);
-    }
-
-    /**
-     * Send command help.
-     */
-    private void sendHelp(CommandSender sender) {
-        sender.sendMessage(forSender(sender, "arena-list-help-title"));
-        sender.sendMessage(forSender(sender, "usage-join"));
-        sender.sendMessage(forSender(sender, "usage-leave"));
-        sender.sendMessage(forSender(sender, "usage-list"));
-
-        if (sender.hasPermission("hilltopvillage.admin")) {
-            sender.sendMessage(forSender(sender, "arena-list-help-admin"));
-            sender.sendMessage(forSender(sender, "usage-arenas"));
-            sender.sendMessage(forSender(sender, "usage-start"));
-            sender.sendMessage(forSender(sender, "usage-stop"));
-        }
     }
 }

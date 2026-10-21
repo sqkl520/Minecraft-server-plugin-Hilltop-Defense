@@ -3,6 +3,7 @@ package com.hilltopvillage.command;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Locale;
 
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
@@ -29,7 +30,7 @@ public class HilltopTabCompleter implements TabCompleter {
     private List<String> arenaIds(String input) {
         List<String> ids = new ArrayList<>();
         for (var definition : plugin.getMultiArenaManager().getDefinitionManager().getRegistry().list()) {
-            if (definition.getId().toLowerCase().startsWith(input)) {
+            if (definition.getId().toLowerCase(Locale.ROOT).startsWith(input)) {
                 ids.add(definition.getId());
             }
         }
@@ -42,13 +43,14 @@ public class HilltopTabCompleter implements TabCompleter {
 
         if (args.length == 1) {
             List<String> completions = new ArrayList<>();
-            String input = args[0].toLowerCase();
+            String input = args[0].toLowerCase(Locale.ROOT);
 
             for (String sub : Arrays.asList("start", "stop", "join", "leave", "lobby", "status", "list", "arenas",
                     "manage", "enable", "disable", "hammer", "fireball", "help", "setup", "deploy", "config",
                     "reloadconfig", "shop", "lang", "tps", "gui", "build", "stats", "top", "wave")) {
                 if (sub.startsWith(input)) {
-                    boolean isAdmin = sub.equals("start") || sub.equals("stop") || sub.equals("help")
+                    // fix6 Y3-R07-08：help 撤出 admin 门（命令体已开放给玩家，补全同步）
+                    boolean isAdmin = sub.equals("start") || sub.equals("stop")
                             || sub.equals("setup") || sub.equals("deploy") || sub.equals("config")
                             || sub.equals("reloadconfig") || sub.equals("shop") || sub.equals("tps")
                             || sub.equals("build") || sub.equals("arenas") || sub.equals("manage")
@@ -62,17 +64,17 @@ public class HilltopTabCompleter implements TabCompleter {
         }
 
         // 第 2 个参数：竞技场 ID
-        if (args.length == 2 && ARENA_ARG_COMMANDS.contains(args[0].toLowerCase())) {
-            String sub = args[0].toLowerCase();
+        if (args.length == 2 && ARENA_ARG_COMMANDS.contains(args[0].toLowerCase(Locale.ROOT))) {
+            String sub = args[0].toLowerCase(Locale.ROOT);
             boolean adminOnly = sub.equals("start") || sub.equals("stop")
                     || sub.equals("enable") || sub.equals("disable");
             if (adminOnly && !sender.hasPermission("hilltopvillage.admin")) return new ArrayList<>();
-            return arenaIds(args[1].toLowerCase());
+            return arenaIds(args[1].toLowerCase(Locale.ROOT));
         }
 
         if (args.length == 2 && args[0].equalsIgnoreCase("shop") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
-            String input = args[1].toLowerCase();
+            String input = args[1].toLowerCase(Locale.ROOT);
             for (String sub : Arrays.asList("reload", "give")) {
                 if (sub.startsWith(input)) completions.add(sub);
             }
@@ -82,14 +84,14 @@ public class HilltopTabCompleter implements TabCompleter {
         // /hilltop lobby setspawn：补全 setspawn 子命令（仅管理员）
         if (args.length == 2 && args[0].equalsIgnoreCase("lobby") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
-            if ("setspawn".startsWith(args[1].toLowerCase())) completions.add("setspawn");
+            if ("setspawn".startsWith(args[1].toLowerCase(Locale.ROOT))) completions.add("setspawn");
             return completions;
         }
 
         // /hilltop wave <clear|skip>
         if (args.length == 2 && args[0].equalsIgnoreCase("wave") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
-            String input = args[1].toLowerCase();
+            String input = args[1].toLowerCase(Locale.ROOT);
             for (String sub : Arrays.asList("clear", "skip")) {
                 if (sub.startsWith(input)) completions.add(sub);
             }
@@ -99,16 +101,16 @@ public class HilltopTabCompleter implements TabCompleter {
         // /hilltop wave <clear|skip> <竞技场>
         if (args.length == 3 && args[0].equalsIgnoreCase("wave")
                 && sender.hasPermission("hilltopvillage.admin")) {
-            return arenaIds(args[2].toLowerCase());
+            return arenaIds(args[2].toLowerCase(Locale.ROOT));
         }
 
         // /hilltop shop give <玩家>：补全在线玩家名
         if (args.length == 3 && args[0].equalsIgnoreCase("shop") && args[1].equalsIgnoreCase("give")
                 && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
-            String input = args[2].toLowerCase();
+            String input = args[2].toLowerCase(Locale.ROOT);
             for (org.bukkit.entity.Player online : org.bukkit.Bukkit.getOnlinePlayers()) {
-                if (online.getName().toLowerCase().startsWith(input)) {
+                if (online.getName().toLowerCase(Locale.ROOT).startsWith(input)) {
                     completions.add(online.getName());
                 }
             }
@@ -117,7 +119,7 @@ public class HilltopTabCompleter implements TabCompleter {
 
         if (args.length == 2 && args[0].equalsIgnoreCase("deploy") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
-            String input = args[1].toLowerCase();
+            String input = args[1].toLowerCase(Locale.ROOT);
             for (String sub : Arrays.asList("help", "setcore", "addspawn", "listspawns", "delspawn", "clearspawns",
                     "confirmclear", "reloadnodes", "showparticles",
                     "addmobspawn", "listmobspawns", "delmobspawn", "clearmobspawns", "confirmclearmob",
@@ -132,7 +134,7 @@ public class HilltopTabCompleter implements TabCompleter {
 
         if (args.length == 2 && args[0].equalsIgnoreCase("setup") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
-            String input = args[1].toLowerCase();
+            String input = args[1].toLowerCase(Locale.ROOT);
             for (String sub : Arrays.asList("confirm-world", "confirm-core", "addspawn", "overview", "spawngui", "spawns-done",
                     "addmobspawn", "mobspawngui",
                     "addnode", "nodesgui", "show-particles",
@@ -159,9 +161,9 @@ public class HilltopTabCompleter implements TabCompleter {
         // /hilltop stats [玩家名]：补全在线玩家名
         if (args.length == 2 && args[0].equalsIgnoreCase("stats")) {
             List<String> completions = new ArrayList<>();
-            String input = args[1].toLowerCase();
+            String input = args[1].toLowerCase(Locale.ROOT);
             for (org.bukkit.entity.Player online : org.bukkit.Bukkit.getOnlinePlayers()) {
-                if (online.getName().toLowerCase().startsWith(input)) {
+                if (online.getName().toLowerCase(Locale.ROOT).startsWith(input)) {
                     completions.add(online.getName());
                 }
             }
@@ -170,7 +172,7 @@ public class HilltopTabCompleter implements TabCompleter {
 
         if (args.length == 2 && args[0].equalsIgnoreCase("top")) {
             List<String> completions = new ArrayList<>();
-            String input = args[1].toLowerCase();
+            String input = args[1].toLowerCase(Locale.ROOT);
             for (String sub : Arrays.asList("kills", "wins", "games", "best-wave", "nodes", "deaths", "crystals")) {
                 if (sub.startsWith(input)) completions.add(sub);
             }
@@ -179,7 +181,7 @@ public class HilltopTabCompleter implements TabCompleter {
 
         if (args.length == 2 && args[0].equalsIgnoreCase("lang")) {
             List<String> completions = new ArrayList<>();
-            String input = args[1].toLowerCase();
+            String input = args[1].toLowerCase(Locale.ROOT);
             for (String sub : Arrays.asList("en", "zh")) {
                 if (sub.startsWith(input)) completions.add(sub);
             }

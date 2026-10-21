@@ -11,6 +11,8 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.inventory.ClickType;
 import org.bukkit.plugin.Plugin;
 
+import java.util.Locale;
+
 /**
  * Gameplay item settings (54-slot large chest).
  * Manages all configurable properties for Sacred Hammer and Fireball.
@@ -248,9 +250,9 @@ public class ItemSettingsMenu extends AbstractConfigMenu {
 
     private String formatMat(Material m) {
         if (m == null) return lang.getFor(admin, "config.menu.common.none");
-        String key = "config.menu.mat." + m.name().toLowerCase().replace('_', '-');
+        String key = "config.menu.mat." + m.name().toLowerCase(Locale.ROOT).replace('_', '-');
         String translated = lang.getFor(admin, key);
-        return translated.equals(key) ? m.name().toLowerCase().replace('_', ' ') : translated;
+        return translated.equals(key) ? m.name().toLowerCase(Locale.ROOT).replace('_', ' ') : translated;
     }
 
     private String fmtStep(double s) {

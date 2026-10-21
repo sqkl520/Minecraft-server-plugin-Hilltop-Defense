@@ -112,6 +112,29 @@ public class NpcManager {
     }
 
     /**
+     * 查询「目标位置的跨世界迁移是否会被他场对局拒绝」（fix6 Y3-M-02 文案分派用）。
+     *
+     * <p>与 {@link #spawnNpc(Location)} 的拒绝分支同一判据：被拒时返回阻塞的竞技场 ID，
+     * 否则返回 null。仅供调用方区分失败原因——spawnNpc 的 boolean 返回值无法分辨
+     * 「跨世界被他场对局拒绝」与「坐标/世界无效」，向导据此把 stop 指引指向正确的场。</p>
+     *
+     * @param target 目标位置（新的商店坐标）
+     * @return 阻塞迁移的竞技场 ID；无阻塞返回 null
+     */
+    public String findBlockingArenaId(Location target) {
+        if (target == null || target.getWorld() == null) return null;
+        Location previous = getNpcLocation();
+        if (previous != null && previous.getWorld() != null
+                && !previous.getWorld().equals(target.getWorld())) {
+            ArenaInstance previousArena = liveArenaByWorld(previous.getWorld().getName());
+            if (previousArena != null && isGameInProgress(previousArena.getState())) {
+                return previousArena.getArenaId();
+            }
+        }
+        return null;
+    }
+
+    /**
      * 商店守卫的统一「对局窗口」口径（向导 / ArenaAdminService / set 路径共用）：
      * 开局倒计时 / 进行中 / 波间休整 / <b>结算倒计时（VICTORY / DEFEAT，玩家仍在场内）</b>
      * 均视为「对局进行中」——移动或清除商店会当场撤掉场内玩家正在使用的商店，一律拒绝。

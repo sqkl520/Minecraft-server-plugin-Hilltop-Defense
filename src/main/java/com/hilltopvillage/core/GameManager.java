@@ -123,7 +123,8 @@ public class GameManager {
         this.totalWaves = configManager.getActiveConfig().getVictoryWaves();
         this.waveManager = new WaveManager(this);
         this.nodeSystem = new NodeSystem(this);
-        this.displayEntityManager = new DisplayEntityManager(plugin);
+        // fix6 Y4-A2：DisplayEntityManager 收窄为无构造参数的纯粒子工具（清理队列链已删）
+        this.displayEntityManager = new DisplayEntityManager();
         this.adminDeployManager = new AdminDeployManager(plugin, this);
     }
 
@@ -795,40 +796,10 @@ public class GameManager {
     }
 
     /**
-     * 生成点列表的<b>只读视图</b>（不拷贝列表，也不克隆其中的 {@link Location}）。
-     *
-     * <p>供「每只怪生成时都要读一次」的热路径使用：{@link #getSpawnPoints()} 每次都
-     * {@code new ArrayList<>(...)}，刷一波 80 只怪就要拷 80 次小数组。本方法只包一层
-     * {@code unmodifiableList}，调用方只能读，改不动内部列表。</p>
-     *
-     * <p><b>使用约束：</b>返回的视图绑定在<b>当前</b>的 {@code arenaSpawnPoints} 实例上。
-     * {@link #setSpawnPoints(List)} 会整体替换该字段，因此视图<b>不可跨部署改动缓存</b>，
-     * 每次需要时重新调用本方法即可（热路径调用方正是这样做的）。</p>
-     *
-     * <p><b>元素安全：</b>视图中的 {@link Location} 仍是内部对象本体，调用方若直接
-     * {@code add}/{@code setWorld} 会改到内部状态。当前唯一的热路径调用方
-     * {@code WaveManager.getRandomSpawnLocation()} 取出元素后立刻 {@code clone()}
-     * 再对副本做扩散偏移，不会改到内部对象，因此使用视图是安全的。</p>
-     */
-    public List<Location> getSpawnPointsView() {
-        return Collections.unmodifiableList(arenaSpawnPoints);
-    }
-
-    /**
      * 检查是否有配置的生成点
      */
     public boolean hasSpawnPoints() {
         return !arenaSpawnPoints.isEmpty();
-    }
-
-    /**
-     * 是否配置了<b>独立的</b>怪物刷怪点（{@code mob-spawn-points} 非空）。
-     *
-     * <p>注意：本方法只反映新 schema 的部署状态，旧存档双用回退的场返回 false。
-     * 开局拦截判定请用 {@link #hasEffectiveMobSpawnPoints()}。</p>
-     */
-    public boolean hasMobSpawnPoints() {
-        return !arenaMobSpawnPoints.isEmpty();
     }
 
     /**
@@ -850,18 +821,10 @@ public class GameManager {
     }
 
     /**
-     * 怪物刷怪点列表的防御性拷贝（不含双用回退：只返回独立部署的 {@code mob-spawn-points}）。
-     */
-    public List<Location> getMobSpawnPoints() {
-        return new ArrayList<>(arenaMobSpawnPoints);
-    }
-
-    /**
      * 怪物刷怪坐标的<b>只读视图</b>（含双用回退：独立刷怪点为空时回退到玩家出生点）。
      *
-     * <p>供 {@code WaveManager.getRandomSpawnLocation()} 热路径使用：与
-     * {@link #getSpawnPointsView()} 相同的只读视图约定（不可跨部署改动缓存，
-     * 取出元素后必须 {@code clone()} 再改）。</p>
+     * <p>供 {@code WaveManager.getRandomSpawnLocation()} 热路径使用：与玩家出生点视图
+     * 相同的只读视图约定（不可跨部署改动缓存，取出元素后必须 {@code clone()} 再改）。</p>
      *
      * <p>视图可能绑定在 {@code arenaMobSpawnPoints} 或 {@code arenaSpawnPoints} 上，
      * 两者在 {@code set*} 方法中都可能被整体替换，因此调用方每次需要时重新调用本方法。</p>

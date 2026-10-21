@@ -1,7 +1,6 @@
 package com.hilltopvillage.arena;
 
 import com.hilltopvillage.core.GameState;
-import com.hilltopvillage.core.PlayerData;
 import org.bukkit.Location;
 import org.bukkit.entity.Player;
 
@@ -92,11 +91,6 @@ public interface IArena {
      */
     boolean isPlayer(Player player);
 
-    /**
-     * Get player data (crystals, kills, etc).
-     */
-    PlayerData getPlayerData(UUID uuid);
-
     // ========== Game Control ==========
 
     /**
@@ -110,12 +104,6 @@ public interface IArena {
      * Kicks all players, resets arena state.
      */
     void stopGame();
-
-    /**
-     * Check if game can start.
-     * Requires: min players reached, all spawn points set, core location valid.
-     */
-    boolean canStart();
 
     /**
      * Current wave number (1-based).
@@ -142,22 +130,11 @@ public interface IArena {
     Location getLobbySpawn();
 
     /**
-     * Spectator spawn point (where dead players go).
-     * If null, uses core location + 10 blocks up.
-     */
-    Location getSpectatorSpawn();
-
-    /**
      * Player spawn points (for in-game respawn).
      */
     List<Location> getSpawnPoints();
 
     // ========== Messaging ==========
-
-    /**
-     * Send a message to all players in this arena.
-     */
-    void broadcast(String message);
 
     /**
      * Send an i18n message to all players in this arena.

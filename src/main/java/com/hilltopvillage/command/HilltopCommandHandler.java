@@ -3,6 +3,7 @@ package com.hilltopvillage.command;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -87,7 +88,7 @@ public class HilltopCommandHandler {
             return true;
         }
 
-        String sub = args[0].toLowerCase();
+        String sub = args[0].toLowerCase(Locale.ROOT);
 
         // 控制台准入：先放行「控制台本来就能用」的管理命令，再拦真正需要玩家的命令。
         //
@@ -101,7 +102,7 @@ public class HilltopCommandHandler {
         // 下移到各 case，让错误信息更贴近真实原因（无权限报 no-permission，
         // 缺玩家报 players-only，而不是一律 players-only）。
         //
-        // 需要玩家在场的命令（控制台执行时报 players-only，行为��旧版一致）：
+        // 需要玩家在场的命令（控制台执行时报 players-only，行为与旧版一致）：
         // join / leave / lobby / gui / hammer / fireball / setup / deploy / config /
         // manage / build / stats（不带玩家名时）/ top（走各自 case 的守卫，此处不列）。
         //
@@ -141,6 +142,15 @@ public class HilltopCommandHandler {
                 // Check game state
                 if (startGm.getState() != GameState.WAITING) {
                     sender.sendMessage(lang.getFor(player, "game-start-already-running"));
+                    break;
+                }
+                // fix6 Y1-R03-05：回滚窗专属预检——地图恢复未完成时，「人数不足」不是真实阻塞
+                // （玩家此时无法 join，硬屏障在 ArenaInstance.addPlayer），
+                // 先报专用文案避免「start 说拉人 / join 说进行中」的自相矛盾。
+                if (startArena.getState() == GameState.ENDING
+                        || plugin.getMapRestoreManager().isRestoring(startArena.getWorldName())) {
+                    sender.sendMessage(lang.getFor(player, "game-start-restoring",
+                            startArena.getArenaId()));
                     break;
                 }
                 // 人数下限以「本竞技场」的配置为准（arenas.yml 的 game.min-players），
@@ -241,7 +251,9 @@ public class HilltopCommandHandler {
                 }
                 GameManager statusGm = statusArena.getGameManager();
                 sender.sendMessage(lang.getFor(player, "status-header"));
-                sender.sendMessage(lang.getFor(player, "status-state", statusGm.getState()));
+                // fix6 Y3-M-11：经 GameState.i18nKey() 本地化（zh 显示「等待中/运行中…」而非英文枚举名）
+                sender.sendMessage(lang.getFor(player, "status-state",
+                        lang.getFor(player, statusGm.getState().i18nKey())));
                 sender.sendMessage(lang.getFor(player, "status-wave", statusGm.getCurrentWave()));
                 sender.sendMessage(lang.getFor(player, "status-players", statusGm.getPlayers().size()));
                 sender.sendMessage(lang.getFor(player, "status-mobs", statusGm.getWaveManager().getRemainingMobCount()));
@@ -279,10 +291,8 @@ public class HilltopCommandHandler {
                 break;
 
             case "help":
-                if (!sender.hasPermission("hilltopvillage.admin")) {
-                    sender.sendMessage(lang.getFor(player, "no-permission"));
-                    return true;
-                }
+                // fix6 Y3-R07-08：撤掉 admin 门——sendUsage 内部按权限裁剪（玩家看不到管理段），
+                // 与无参 / default 路径行为对齐（正确入口不应被锁、错误入口反而畅通）。
                 deployMenuSender.sendUsage(sender);
                 break;
 
@@ -461,11 +471,16 @@ public class HilltopCommandHandler {
                     return;
                 }
                 if (args[2].equalsIgnoreCase("repairitem")) {
-                    Material mat = Material.getMaterial(args[3].toUpperCase());
-                    if (mat != null) {
+                    Material mat = Material.getMaterial(args[3].toUpperCase(Locale.ROOT));
+                    if (mat != null && mat.isItem()) {
                         cm.getActiveConfig().setRepairCostItem(mat);
                         cm.saveToFile();
                         admin.sendMessage(lang.getFor(admin, "config.repairitem-set", mat.name()));
+                    } else if (mat != null) {
+                        // fix6 Y2-01：存在但非可携带物品（WATER/LAVA 等方块态材质）→ ItemStack 构造必抛，
+                        // 若放行则商店 REPAIR_ITEM 发货链吃币（扣款后 new ItemStack 抛异常、无退款）
+                        admin.sendMessage(lang.getFor(admin, "config.invalid-material-not-item",
+                                args[3], mat.name()));
                     } else {
                         admin.sendMessage(lang.getFor(admin, "config.invalid-material", args[3]));
                     }
@@ -556,7 +571,7 @@ public class HilltopCommandHandler {
 
         // 已配置但尚无活动实例的场（未启用 / 未部署）：help 与 clearshop 无需实例即可工作
         if (deployArena == null) {
-            String sub = args[1].toLowerCase();
+            String sub = args[1].toLowerCase(Locale.ROOT);
             if (sub.equals("help")) {
                 deployMenuSender.sendDeployMenu(admin);
                 return;
@@ -581,7 +596,7 @@ public class HilltopCommandHandler {
         GameManager deployGm = deployArena.getGameManager();
         AdminDeployManager deploy = deployGm.getAdminDeployManager();
 
-        switch (args[1].toLowerCase()) {
+        switch (args[1].toLowerCase(Locale.ROOT)) {
             case "help":
                 deployMenuSender.sendDeployMenu(admin);
                 break;
@@ -603,8 +618,9 @@ public class HilltopCommandHandler {
             case "addspawn":
                 deploy.addSpawnPoint(admin.getLocation());
                 admin.sendMessage(lang.getFor(admin, "deploy.addspawn-added"));
+                // fix6 Y3-M-03：编号 1 基（新增点即第 size() 个，与 listspawns 显示一致）
                 admin.sendMessage(lang.getFor(admin, "deploy.addspawn-coords",
-                        deploy.getSpawnPoints().size() - 1,
+                        deploy.getSpawnPoints().size(),
                         String.format("%.1f", admin.getLocation().getX()),
                         String.format("%.1f", admin.getLocation().getY()),
                         String.format("%.1f", admin.getLocation().getZ())));
@@ -622,7 +638,8 @@ public class HilltopCommandHandler {
                     admin.sendMessage(lang.getFor(admin, "deploy.listspawns-header", points.size()));
                     for (int i = 0; i < points.size(); i++) {
                         Location loc = points.get(i);
-                        admin.sendMessage(lang.getFor(admin, "deploy.listspawns-entry", i,
+                        // fix6 Y3-M-03：编号统一为 1 基（与 Manage GUI / 村民 GUI 口径一致，防止跨界面删错）
+                        admin.sendMessage(lang.getFor(admin, "deploy.listspawns-entry", i + 1,
                                 String.format("%.1f", loc.getX()),
                                 String.format("%.1f", loc.getY()),
                                 String.format("%.1f", loc.getZ())));
@@ -637,12 +654,15 @@ public class HilltopCommandHandler {
                     return;
                 }
                 try {
-                    int index = Integer.parseInt(args[2]);
+                    // fix6 Y3-M-03：命令参数与列表显示口径统一为 1 基，内部索引转 0 基。
+                    // 显示的 1 基编号直接可粘贴回本命令（此前跨界面差 1，会删错条目）。
+                    int shownIndex = Integer.parseInt(args[2]);
+                    int index = shownIndex - 1;
                     if (deploy.removeSpawnPoint(index)) {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delspawn-deleted", index));
+                        admin.sendMessage(lang.getFor(admin, "deploy.delspawn-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delspawn-not-found", index));
+                        admin.sendMessage(lang.getFor(admin, "deploy.delspawn-not-found", shownIndex));
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
@@ -678,8 +698,9 @@ public class HilltopCommandHandler {
             case "addmobspawn":
                 deploy.addMobSpawnPoint(admin.getLocation());
                 admin.sendMessage(lang.getFor(admin, "deploy.mobspawn-added"));
+                // fix6 Y3-M-03：编号 1 基（新增点即第 size() 个，与 listmobspawns 显示一致）
                 admin.sendMessage(lang.getFor(admin, "deploy.mobspawn-coords",
-                        deploy.getMobSpawnPoints().size() - 1,
+                        deploy.getMobSpawnPoints().size(),
                         String.format("%.1f", admin.getLocation().getX()),
                         String.format("%.1f", admin.getLocation().getY()),
                         String.format("%.1f", admin.getLocation().getZ())));
@@ -697,7 +718,8 @@ public class HilltopCommandHandler {
                     admin.sendMessage(lang.getFor(admin, "deploy.listmobspawns-header", mobPoints.size()));
                     for (int i = 0; i < mobPoints.size(); i++) {
                         Location loc = mobPoints.get(i);
-                        admin.sendMessage(lang.getFor(admin, "deploy.listmobspawns-entry", i,
+                        // fix6 Y3-M-03：编号统一为 1 基
+                        admin.sendMessage(lang.getFor(admin, "deploy.listmobspawns-entry", i + 1,
                                 String.format("%.1f", loc.getX()),
                                 String.format("%.1f", loc.getY()),
                                 String.format("%.1f", loc.getZ())));
@@ -712,12 +734,14 @@ public class HilltopCommandHandler {
                     return;
                 }
                 try {
-                    int index = Integer.parseInt(args[2]);
+                    // fix6 Y3-M-03：与 listmobspawns 显示口径统一为 1 基，内部索引转 0 基
+                    int shownIndex = Integer.parseInt(args[2]);
+                    int index = shownIndex - 1;
                     if (deploy.removeMobSpawnPoint(index)) {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-deleted", index));
+                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-not-found", index));
+                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-not-found", shownIndex));
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
@@ -765,8 +789,9 @@ public class HilltopCommandHandler {
             case "addvillager":
                 deploy.addVillager(admin.getLocation());
                 admin.sendMessage(lang.getFor(admin, "deploy.addvillager-added"));
+                // fix6 Y3-M-03：编号 1 基（新增点即第 size() 个，与 listvillagers 显示一致）
                 admin.sendMessage(lang.getFor(admin, "deploy.addvillager-coords",
-                        deploy.getVillagers().size() - 1,
+                        deploy.getVillagers().size(),
                         String.format("%.1f", admin.getLocation().getX()),
                         String.format("%.1f", admin.getLocation().getY()),
                         String.format("%.1f", admin.getLocation().getZ())));
@@ -784,7 +809,8 @@ public class HilltopCommandHandler {
                     admin.sendMessage(lang.getFor(admin, "deploy.listvillagers-header", villagers.size()));
                     for (int i = 0; i < villagers.size(); i++) {
                         Location loc = villagers.get(i);
-                        admin.sendMessage(lang.getFor(admin, "deploy.listvillagers-entry", i,
+                        // fix6 Y3-M-03：编号统一为 1 基
+                        admin.sendMessage(lang.getFor(admin, "deploy.listvillagers-entry", i + 1,
                                 String.format("%.1f", loc.getX()),
                                 String.format("%.1f", loc.getY()),
                                 String.format("%.1f", loc.getZ())));
@@ -799,12 +825,14 @@ public class HilltopCommandHandler {
                     return;
                 }
                 try {
-                    int index = Integer.parseInt(args[2]);
+                    // fix6 Y3-M-03：与 listvillagers 显示口径统一为 1 基（村民 GUI 本就 1 基），内部索引转 0 基
+                    int shownIndex = Integer.parseInt(args[2]);
+                    int index = shownIndex - 1;
                     if (deploy.removeVillager(index)) {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delvillager-deleted", index));
+                        admin.sendMessage(lang.getFor(admin, "deploy.delvillager-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delvillager-not-found", index));
+                        admin.sendMessage(lang.getFor(admin, "deploy.delvillager-not-found", shownIndex));
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
@@ -1109,7 +1137,7 @@ public class HilltopCommandHandler {
             sender.sendMessage(lang.getFor(player, "usage-wave-skip"));
             return;
         }
-        String action = args[1].toLowerCase();
+        String action = args[1].toLowerCase(Locale.ROOT);
         boolean skipIntermission = action.equals("skip");
         if (!skipIntermission && !action.equals("clear")) {
             sender.sendMessage(lang.getFor(player, "usage-wave-clear"));
@@ -1247,7 +1275,7 @@ public class HilltopCommandHandler {
             return;
         }
 
-        sender.sendMessage(lang.getFor(player, "top.header", type.getKey().toUpperCase(), String.valueOf(top.size())));
+        sender.sendMessage(lang.getFor(player, "top.header", type.getKey().toUpperCase(Locale.ROOT), String.valueOf(top.size())));
         int rank = 1;
         for (Map.Entry<UUID, StatsManager.PlayerStats> entry : top) {
             sender.sendMessage(lang.getFor(player, "top.entry",
@@ -1332,7 +1360,7 @@ public class HilltopCommandHandler {
             return;
         }
 
-        String locale = args[1].toLowerCase();
+        String locale = args[1].toLowerCase(Locale.ROOT);
         if (!locale.equals("en") && !locale.equals("zh")) {
             sender.sendMessage(lang.getFor(player, "lang.invalid"));
             return;

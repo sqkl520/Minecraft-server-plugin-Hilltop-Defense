@@ -3,6 +3,7 @@ package com.hilltopvillage.mechanics;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.core.GameManager;
+import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.core.PlayerData;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
@@ -181,6 +182,11 @@ public class ArenaScoreboard {
         int deaths = data == null ? -1 : data.getDeaths();
         // fix4 反馈6：本局获取的水晶数（击杀掉落口径）——让玩家不依赖地板掉落物也能看到进度
         int crystals = data == null ? -1 : data.getCurrencyCollected();
+        // fix6 Y3-M-07：STARTING 剩余秒数（非 STARTING 返回 -1 → 隐藏该行）
+        int startCountdown = arena.getStartCountdown();
+        // fix6 Y3-M-08：等待期且未达标时显示差员进度（与 M-07 的 STARTING 行互斥出现）
+        boolean waitingForPlayers = arena.getState() == GameState.WAITING
+                && arena.getPlayerCount() < arena.getMinPlayers();
 
         // 输入签名：记分板每一行都由这些整数派生，它们没变就整帧跳过。
         // 用 StringBuilder 而非字符串拼接：这里每秒每玩家只跑一次，
@@ -195,6 +201,10 @@ public class ArenaScoreboard {
            .append(':').append(spectators).append(':').append(activeNodes).append(':').append(totalNodes)
            .append(':').append(aliveVillagers).append(':').append(totalVillagers)
            .append(':').append(kills).append(':').append(deaths).append(':').append(crystals)
+           // fix6 Y3-M-08：差员进度纳入签名（0=不显示行，1=显示）——凑人/达标切换时触发重绘
+           .append(':').append(waitingForPlayers ? 1 : 0)
+           // fix6 Y3-M-07：倒计时纳入签名，秒数变化触发刷新
+           .append(':').append(startCountdown)
            .append(':').append(lang.getPlayerLocale(player));
         String signature = sig.toString();
         if (signature.equals(state.signature)) return;
@@ -219,6 +229,16 @@ public class ArenaScoreboard {
                 // per-arena 值，等待期会先显示全局值，出现「20 波突然变 10 波」的跳变
                 String.valueOf(totalWaves)));
         lines.add(lang.getFor(player, "scoreboard.alive", String.valueOf(alive)));
+        if (startCountdown >= 0) {
+            // fix6 Y3-M-07：STARTING 期间常驻显示剩余秒数——聊天播报只在首秒与末 5 秒，
+            // 中途加入者（STARTING 允许合流）此前完全看不到倒计时。
+            lines.add(lang.getFor(player, "scoreboard.starting", String.valueOf(startCountdown)));
+        }
+        if (waitingForPlayers) {
+            // fix6 Y3-M-08：等待期差员进度（与上行互斥：STARTING 与 WAITING 不会同时成立）
+            lines.add(lang.getFor(player, "scoreboard.waiting",
+                    String.valueOf(arena.getPlayerCount()), String.valueOf(arena.getMinPlayers())));
+        }
         lines.add(lang.getFor(player, "scoreboard.spectators", String.valueOf(spectators)));
         lines.add(lang.getFor(player, "scoreboard.nodes",
                 String.valueOf(activeNodes), String.valueOf(totalNodes)));

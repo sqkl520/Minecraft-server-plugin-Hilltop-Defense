@@ -121,8 +121,6 @@ public final class PlayerGoodsManager {
         private boolean allowFlight;
         private boolean flying;
         private Collection<PotionEffect> effects = new ArrayList<>();
-
-        public String getPlayerName() { return playerName; }
     }
 
     // ========== 保存 / 归还 ==========

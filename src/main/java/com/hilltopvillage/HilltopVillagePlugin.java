@@ -356,16 +356,8 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         return shopManager;
     }
 
-    public ShopListener getShopListener() {
-        return shopListener;
-    }
-
     public NodeListener getNodeListener() {
         return nodeListener;
-    }
-
-    public HilltopCommandHandler getCommandHandler() {
-        return commandHandler;
     }
 
     public ArenaSelectionGUI getArenaSelectionGUI() {

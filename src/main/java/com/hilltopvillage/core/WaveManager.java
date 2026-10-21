@@ -435,7 +435,7 @@ public class WaveManager {
     private void spawnCustomMob(String type, Location location) {
         World world = gameManager.getGameWorld();
 
-        switch (type.toLowerCase()) {
+        switch (type.toLowerCase(Locale.ROOT)) {
             case "explode-beetle":
                 spawnExplodeBeetle(location);
                 break;
@@ -447,12 +447,12 @@ public class WaveManager {
                 break;
             default:
                 try {
-                    EntityType entityType = EntityType.valueOf(type.toUpperCase());
+                    EntityType entityType = EntityType.valueOf(type.toUpperCase(Locale.ROOT));
                     Entity entity = world.spawnEntity(location, entityType);
                     if (entity instanceof Mob mob) {
                         markMonsterId(mob, type);
                         applyMonsterEquipment(mob, gameManager.getConfigManager().getActiveConfig()
-                                .getMonsters().get(type.toLowerCase()));
+                                .getMonsters().get(type.toLowerCase(Locale.ROOT)));
                         prepareWaveMob(mob);
                     } else if (entity instanceof LivingEntity living) {
                         markMonsterId(living, type);
@@ -732,8 +732,8 @@ public class WaveManager {
             return null;
         }
 
-        // 只读视图而非 getMobSpawnPoints()：后者每次都 new ArrayList<>(...)，
-        // 一波 80 只怪就要拷 80 次小数组。取出的元素下面立刻 clone() 再偏移，
+        // 取只读视图（getMobSpawnPointsView 只包一层 unmodifiableList，不再整表拷贝）——
+        // 一波 80 只怪不必拷 80 次小数组。取出的元素下面立刻 clone() 再偏移，
         // 不会改到 GameManager 内部的 Location 本体（视图的元素安全约束见该方法 Javadoc）。
         Location basePoint = fixedPoints.get(random.nextInt(fixedPoints.size())).clone();
 
@@ -898,16 +898,6 @@ public class WaveManager {
         return activeMobs.isEmpty();
     }
 
-    /**
-     * 登记一只波次怪物。
-     *
-     * <p>对外只暴露只读视图（见 {@link #getActiveMobs()}），写入统一走本方法，
-     * 避免外部持有可变内部集合、绕过集合选型约定。</p>
-     */
-    public void addActiveMob(LivingEntity mob) {
-        if (mob != null) activeMobs.add(mob);
-    }
-
     /** 给空投小怪打上 PDC 标记（dropCurrency / 调试据此识别空投来源的怪物）。 */
     private void markAirdropMob(LivingEntity mob) {
         mob.getPersistentDataContainer().set(airdropKey, PersistentDataType.BYTE, (byte) 1);
@@ -925,7 +915,7 @@ public class WaveManager {
      */
     private void markMonsterId(LivingEntity mob, String monsterId) {
         if (mob == null || monsterId == null) return;
-        mob.getPersistentDataContainer().set(monsterIdKey, PersistentDataType.STRING, monsterId.toLowerCase());
+        mob.getPersistentDataContainer().set(monsterIdKey, PersistentDataType.STRING, monsterId.toLowerCase(Locale.ROOT));
     }
 
     /**
@@ -959,7 +949,7 @@ public class WaveManager {
     /**
      * 执行一轮空投（P0-D 统一纳管入口，由 {@link com.hilltopvillage.ai.AirdropSpawnGoal} 调用）。
      *
-     * <p>与旧实现（AirdropSpawnGoal 内直接 {@code spawnEntity + addActiveMob}）的区别：</p>
+     * <p>与旧实现（AirdropSpawnGoal 内直接 {@code spawnEntity} 后自行登记）的区别：</p>
      * <ul>
      *   <li><b>受容量上限约束</b>：开投前按 {@link #resolveMobCap()} 裁剪本轮只数，批次内每只再复查，满了即停；</li>
      *   <li><b>纳入波次管理</b>：每只走 {@link #prepareWaveMob}（persistent + NodeAttackGoal），
@@ -1038,7 +1028,7 @@ public class WaveManager {
         activeMobs.remove(mob);
     }
 
-    /** 只读视图：调用方只能查询，写入请用 {@link #addActiveMob(LivingEntity)} */
+    /** 只读视图：调用方只能查询；写入统一走本类内部的生成/空投路径，不对外暴露写入口 */
     public Set<LivingEntity> getActiveMobs() {
         return Collections.unmodifiableSet(activeMobs);
     }

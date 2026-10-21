@@ -11,6 +11,7 @@ import org.bukkit.entity.Mob;
 import org.bukkit.entity.Player;
 
 import java.util.EnumSet;
+import java.util.Locale;
 import java.util.Random;
 import java.util.Set;
 import java.util.UUID;
@@ -233,7 +234,7 @@ public class AirdropSpawnGoal implements Goal<Mob> {
         String mobTypeName = monsterCfg != null ? monsterCfg.getAirdropMobType() : "ZOMBIE";
         EntityType mobType;
         try {
-            mobType = EntityType.valueOf(mobTypeName.toUpperCase());
+            mobType = EntityType.valueOf(mobTypeName.toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             mobType = EntityType.ZOMBIE;
         }

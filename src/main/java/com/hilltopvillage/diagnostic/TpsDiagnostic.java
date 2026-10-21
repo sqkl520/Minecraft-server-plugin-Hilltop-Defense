@@ -54,15 +54,15 @@ public class TpsDiagnostic {
         sender.sendMessage(msg(sender, "tps.mspt", String.format("%.2f", mspt)));
 
         if (gameManager != null) {
-            sender.sendMessage(msg(sender, "tps.state", gameManager.getState()));
+            // fix6 Y3-M-11：经 GameState.i18nKey() 本地化（zh 显示「等待中/运行中…」而非英文枚举名）
+            sender.sendMessage(msg(sender, "tps.state",
+                    msg(sender, gameManager.getState().i18nKey())));
             sender.sendMessage(msg(sender, "tps.online-players", Bukkit.getOnlinePlayers().size()));
             sender.sendMessage(msg(sender, "tps.game-players", gameManager.getPlayers().size()));
             sender.sendMessage(msg(sender, "tps.wave", gameManager.getCurrentWave()));
             sender.sendMessage(msg(sender, "tps.mobs", gameManager.getWaveManager().getRemainingMobCount()));
             sender.sendMessage(msg(sender, "tps.nodes",
                     gameManager.getNodeSystem().getActiveCount(), gameManager.getNodeSystem().getTotalCount()));
-            sender.sendMessage(msg(sender, "tps.cleanup-queue",
-                    gameManager.getDisplayEntityManager().getPendingCleanupCount()));
         } else {
             sender.sendMessage(msg(sender, "tps.online-players", Bukkit.getOnlinePlayers().size()));
         }

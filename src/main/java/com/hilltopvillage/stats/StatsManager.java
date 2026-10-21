@@ -15,7 +15,6 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 import java.util.ArrayList;
 import java.util.Comparator;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -80,17 +79,10 @@ public class StatsManager {
         public int getCrystalsCollected() { return crystalsCollected; }
         public int getWavesSurvived() { return wavesSurvived; }
         public int getBestWave() { return bestWave; }
-        public long getFirstPlay() { return firstPlay; }
-        public long getLastPlay() { return lastPlay; }
 
         /** 胜率（0.0~1.0），无对局时返回 0 */
         public double getWinRate() {
             return gamesPlayed == 0 ? 0.0 : (double) wins / gamesPlayed;
-        }
-
-        /** 平均每局击杀 */
-        public double getKillsPerGame() {
-            return gamesPlayed == 0 ? 0.0 : (double) kills / gamesPlayed;
         }
     }
 
@@ -517,20 +509,5 @@ public class StatsManager {
         }
         dirty = true;
         save();
-    }
-
-    /** 供排行榜展示用：UUID → 名字的映射（含离线玩家） */
-    public Map<UUID, String> nameMap() {
-        Map<UUID, String> map = new LinkedHashMap<>();
-        for (Map.Entry<UUID, PlayerStats> entry : cache.entrySet()) {
-            map.put(entry.getKey(), entry.getValue().getName());
-        }
-        return map;
-    }
-
-    /** 在线玩家判定辅助（排行榜展示时标记） */
-    public boolean isOnline(UUID uuid) {
-        Player player = Bukkit.getPlayer(uuid);
-        return player != null && player.isOnline();
     }
 }

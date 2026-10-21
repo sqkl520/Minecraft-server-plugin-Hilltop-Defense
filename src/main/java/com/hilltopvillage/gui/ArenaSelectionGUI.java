@@ -26,11 +26,11 @@ import java.util.Map;
  * Arena selection GUI - displays all available arenas in a chest interface.
  * Players can click on an arena icon to join that arena.
  *
- * Icon colors indicate arena status:
- * - GREEN wool border = WAITING (can join)
- * - YELLOW wool border = STARTING (can join)
- * - RED wool border = RUNNING (cannot join)
- * - GRAY wool border = DISABLED (cannot join)
+ * Icon sword material indicates arena status (see getStatusText for colors):
+ * - DIAMOND_SWORD = WAITING（等待中，绿字，可加入）
+ * - IRON_SWORD = RUNNING / WAVE_INTERMISSION（对局中，红字，不可加入）
+ * - STONE_SWORD = ENDING / VICTORY / DEFEAT（已结束/重置中，灰字）
+ * - WOODEN_SWORD / BARRIER = 未启用 / 未部署 / 地图缺失（不可用）
  *
  * 点击识别采用 InventoryHolder 模式（不依赖标题文本），避免标题被语言/颜色影响。
  */
@@ -112,36 +112,32 @@ public class ArenaSelectionGUI implements Listener {
      */
     private ItemStack createArenaIcon(IArena arena, Player player) {
         GameState state = arena.getState();
+        // fix6 Y3-M-06：borderMaterial 死变量已删（曾写入 YELLOW_WOOL 等 5 值但从未被读取——
+        // 图例一度承诺四色边框，实际状态区分靠剑的材质 + 状态 lore；图例文案同步改述）。
         Material iconMaterial;
-        Material borderMaterial;
 
-        // Determine icon and border based on state
+        // Determine icon material based on state
         switch (state) {
             case WAITING:
                 iconMaterial = Material.DIAMOND_SWORD;
-                borderMaterial = Material.YELLOW_WOOL;
                 break;
             case RUNNING:
             case WAVE_INTERMISSION:
                 iconMaterial = Material.IRON_SWORD;
-                borderMaterial = Material.RED_WOOL;
                 break;
             case ENDING:
             case VICTORY:
             case DEFEAT:
                 iconMaterial = Material.STONE_SWORD;
-                borderMaterial = Material.GRAY_WOOL;
                 break;
             default:
                 iconMaterial = Material.WOODEN_SWORD;
-                borderMaterial = Material.GRAY_WOOL;
                 break;
         }
 
         // 未启用 / 地图缺失 / 未部署：统一显示为灰色的不可用状态
         if (!arena.isEnabled() || !arena.isWorldAvailable() || !arena.isDeployed()) {
             iconMaterial = arena.isWorldAvailable() ? Material.WOODEN_SWORD : Material.BARRIER;
-            borderMaterial = Material.GRAY_WOOL;
         }
 
         ItemStack icon = new ItemStack(iconMaterial);

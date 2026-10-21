@@ -30,10 +30,6 @@ public class PlayerData {
         this.alive = true;
     }
 
-    public UUID getPlayerId() {
-        return playerId;
-    }
-
     public boolean isSmashActive() {
         return smashActive;
     }

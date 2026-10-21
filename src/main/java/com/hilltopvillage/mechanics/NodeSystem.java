@@ -106,7 +106,7 @@ public class NodeSystem {
                 double z = ((Number) nodeMap.get("z")).doubleValue();
 
                 if (gameManager.getGameWorld() == null
-                        || !gameManager.getGameWorld().getName().equals(worldName)) {
+                        || !gameManager.getGameWorld().getName().equalsIgnoreCase(worldName)) {
                     continue;
                 }
 
@@ -393,7 +393,8 @@ public class NodeSystem {
         List<Map<String, Object>> keptNodes = new ArrayList<>();
         int removed = 0;
         for (Map<?, ?> nodeMap : config.getMapList("nodes")) {
-            if (worldName.equals(entryWorldName(nodeMap))) {
+            // fix6 Y1-F1-03：世界名比较忽略大小写（与 Bukkit 世界查找口径一致）
+            if (worldName.equalsIgnoreCase(entryWorldName(nodeMap))) {
                 removed++;
                 continue;
             }
@@ -421,7 +422,8 @@ public class NodeSystem {
         boolean removed = false;
         for (Map<?, ?> nodeMap : config.getMapList("nodes")) {
             // 序号只对属于该世界的条目递增，与 readNodesForWorld 的返回顺序严格对应
-            if (!removed && worldName.equals(entryWorldName(nodeMap))) {
+            // fix6 Y1-F1-03：世界名比较忽略大小写
+            if (!removed && worldName.equalsIgnoreCase(entryWorldName(nodeMap))) {
                 if (currentIndex == index) {
                     removed = true;
                     continue;
@@ -440,7 +442,8 @@ public class NodeSystem {
      * 世界未加载时传入的 {@code world} 为 null，坐标照样返回。
      */
     private static Location readNodeLocation(Map<?, ?> nodeMap, World world, String worldName) {
-        if (!worldName.equals(entryWorldName(nodeMap))) return null;
+        // fix6 Y1-F1-03：世界名比较忽略大小写
+        if (!worldName.equalsIgnoreCase(entryWorldName(nodeMap))) return null;
 
         Object x = nodeMap.get("x");
         Object y = nodeMap.get("y");
@@ -488,11 +491,6 @@ public class NodeSystem {
 
     public boolean isNodeBlock(Block block) {
         return nodeBlockTypes.contains(block.getType());
-    }
-
-    public boolean isNodeAt(Location location) {
-        Location normalizedLoc = normalizeLocation(location);
-        return nodes.containsKey(normalizedLoc);
     }
 
     public NodeData getNodeAt(Location location) {
@@ -751,26 +749,6 @@ public class NodeSystem {
         return activeNodes.size();
     }
 
-    public Set<NodeData> getActiveNodes() {
-        return new HashSet<>(activeNodes);
-    }
-
-    public double getBaseHealth() {
-        return baseHealth;
-    }
-
-    public double getBuffRadius() {
-        return buffRadius;
-    }
-
-    public Map<PotionEffectType, Integer> getBuffEffects() {
-        return new LinkedHashMap<>(buffEffects);
-    }
-
-    public Set<Material> getNodeBlockTypes() {
-        return new HashSet<>(nodeBlockTypes);
-    }
-
     /** 节点数据内部类 */
     public static class NodeData {
         private final Location location;
@@ -824,10 +802,6 @@ public class NodeSystem {
         private void resetToFull() {
             this.currentHealth = maxHealth;
             this.active = true;
-        }
-
-        public double getHealthPercentage() {
-            return maxHealth > 0 ? (currentHealth / maxHealth) : 0;
         }
     }
 }

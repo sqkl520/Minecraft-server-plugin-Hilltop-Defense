@@ -19,8 +19,4 @@ public enum ConfigPermission {
     public String getNode() {
         return node;
     }
-
-    public String getDescription() {
-        return description;
-    }
 }

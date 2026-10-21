@@ -271,11 +271,10 @@ public class LanguageManager {
      *   <li><b>C 类</b>：<b>出货配置下</b>不可达。55 处「带 ≥2 个替换参数」的调用点全部核对过
      *       （已剔除注释里的伪调用），参数来源是玩家名、世界名、竞技场 ID、数字、
      *       {@code String.format} 结果，以及 {@code shop.yml} 的商品名（{@code "&6神圣重锤"} 这类）。
-     *       特别核对了三处「参数本身是 i18n 结果」的调用：
+     *       特别核对了两处「参数本身是 i18n 结果」的调用：
      *       {@code WaveSettingsMenu} 的怪物显示名（值是 {@code "§eExplode Beetle"} 之类）、
-     *       {@code ShopListener} 的商品名、{@code AdminDeployManager} 的
-     *       {@code deploy.menu-random-yes/no}（值是 {@code "§a是"} / {@code "§c否"}）——
-     *       三者都不含大括号。<b>注意前提</b>：{@code shop.yml} 的商品名与 {@code arenas.yml} 的
+     *       {@code ShopListener} 的商品名——
+     *       两者都不含大括号。<b>注意前提</b>：{@code shop.yml} 的商品名与 {@code arenas.yml} 的
      *       显示名是<b>服主可自由填写的文本</b>，若有人填进 {@code "{"}，C 类就会变成可达 ——
      *       这也正是本方法语义上更合理的地方（模板已编译，不该被运行期数据二次改写），
      *       但仍需在改动这些配置时留意。</li>

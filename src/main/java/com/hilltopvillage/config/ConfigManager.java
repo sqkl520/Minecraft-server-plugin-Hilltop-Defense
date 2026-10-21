@@ -119,7 +119,7 @@ public class ConfigManager {
                 plugin.getLogger().warning("Invalid nodes.buff-effects entry (expected \"EFFECT:AMPLIFIER\"): " + raw);
                 continue;
             }
-            PotionEffectType effectType = PotionEffectType.getByName(parts[0].trim().toUpperCase());
+            PotionEffectType effectType = PotionEffectType.getByName(parts[0].trim().toUpperCase(Locale.ROOT));
             if (effectType == null) {
                 plugin.getLogger().warning("Unknown potion effect: " + parts[0].trim() + ", skipping");
                 continue;
@@ -287,7 +287,7 @@ public class ConfigManager {
                 plugin.getLogger().warning("Invalid starter-kit item (missing material), skipping");
                 continue;
             }
-            Material material = Material.getMaterial(materialName.trim().toUpperCase());
+            Material material = Material.getMaterial(materialName.trim().toUpperCase(Locale.ROOT));
             if (material == null || !material.isItem()) {
                 plugin.getLogger().warning("Unknown starter-kit material: " + materialName + ", skipping");
                 continue;
@@ -423,7 +423,7 @@ public class ConfigManager {
         for (Map.Entry<PotionEffectType, Integer> buff : activeConfig.getNodeBuffEffects().entrySet()) {
             // PotionEffectType -> NamespacedKey -> String（如 "resistance"），再转大写写入配置
             String effectName = buff.getKey().getKey().getKey();
-            buffEffectList.add(effectName.toUpperCase() + ":" + buff.getValue());
+            buffEffectList.add(effectName.toUpperCase(Locale.ROOT) + ":" + buff.getValue());
         }
         settingsYaml.set("nodes.buff-effects", buffEffectList);
         settingsYaml.set("nodes.buff-refresh-ticks", activeConfig.getNodeBuffRefreshTicks());
@@ -586,10 +586,11 @@ public class ConfigManager {
         String hammerMat = settingsYaml.getString("hammer.material");
         if (hammerMat != null) {
             Material hammerMatResult = Material.getMaterial(hammerMat);
-            if (hammerMatResult != null) {
+            // fix6 Y2-05：非 item 材质放行会让 createVanillaHammer 的 new ItemStack 抛异常
+            if (hammerMatResult != null && hammerMatResult.isItem()) {
                 activeConfig.setHammerMaterial(hammerMatResult);
             } else {
-                plugin.getLogger().warning("Unknown material: " + hammerMat + ", keeping default");
+                plugin.getLogger().warning("Invalid hammer material: " + hammerMat + ", keeping default");
             }
         }
         if (settingsYaml.contains("hammer.itemsadder-id")) activeConfig.setHammerItemsAdderId(settingsYaml.getString("hammer.itemsadder-id"));
@@ -627,7 +628,14 @@ public class ConfigManager {
         String repairCostItemStr = settingsYaml.getString("nodes.repair-cost-item");
         if (repairCostItemStr != null) {
             Material rcMat = Material.getMaterial(repairCostItemStr);
-            if (rcMat != null) { activeConfig.setRepairCostItem(rcMat); } else { plugin.getLogger().warning("Unknown material: " + repairCostItemStr + ", keeping default"); }
+            // fix6 Y2-02：isItem 校验与命令侧同一判据——手改 yml 写 water 等非物品材质同样会
+            // 让商店 REPAIR_ITEM 发货链抛异常吃币（先扣款后抛、无退款）。
+            if (rcMat != null && rcMat.isItem()) {
+                activeConfig.setRepairCostItem(rcMat);
+            } else {
+                plugin.getLogger().warning("Invalid repair-cost-item material '" + repairCostItemStr
+                        + "' (unknown or not a carryable item), keeping default");
+            }
         }
         if (settingsYaml.contains("nodes.repair-cost-amount")) activeConfig.setRepairCostAmount(settingsYaml.getInt("nodes.repair-cost-amount"));
         if (settingsYaml.contains("nodes.repair-amount-per-cost")) activeConfig.setRepairAmountPerCost(settingsYaml.getDouble("nodes.repair-amount-per-cost"));
@@ -642,8 +650,13 @@ public class ConfigManager {
             if (hasLegacyRepairItem && !settingsYaml.contains("nodes.repair-cost-item")) {
                 String legacyRepairItem = settingsYaml.getString("nodes.repair-item");
                 Material legacyRepairMat = legacyRepairItem == null ? null : Material.getMaterial(legacyRepairItem);
-                if (legacyRepairMat != null) {
+                // fix6 Y2-03：旧键值同样要求 isItem——非物品材质沿用会让发货链抛异常吃币
+                if (legacyRepairMat != null && legacyRepairMat.isItem()) {
                     activeConfig.setRepairCostItem(legacyRepairMat);
+                } else if (legacyRepairItem != null) {
+                    // fix6 Y2-03：旧键值非法（未知或非可携带物品）不采用，下方写回的新键为当前默认值
+                    plugin.getLogger().warning("Invalid legacy repair-item material '" + legacyRepairItem
+                            + "' (unknown or not a carryable item), keeping default");
                 }
                 plugin.getLogger().warning("检测到旧配置键 nodes.repair-item，已自动迁移到 nodes.repair-cost-item");
                 // 新键原本缺失，补写入迁移后的值，避免删除旧键后配置丢失
@@ -695,10 +708,11 @@ public class ConfigManager {
         String fireballMat = settingsYaml.getString("fireball.material");
         if (fireballMat != null) {
             Material fireballMatResult = Material.getMaterial(fireballMat);
-            if (fireballMatResult != null) {
+            // fix6 Y2-05：非 item 材质放行会让 createFireball 的 new ItemStack 抛异常
+            if (fireballMatResult != null && fireballMatResult.isItem()) {
                 activeConfig.setFireballMaterial(fireballMatResult);
             } else {
-                plugin.getLogger().warning("Unknown material: " + fireballMat + ", keeping default");
+                plugin.getLogger().warning("Invalid fireball material: " + fireballMat + ", keeping default");
             }
         }
         if (settingsYaml.contains("fireball.speed")) activeConfig.setFireballSpeed(settingsYaml.getDouble("fireball.speed"));
@@ -899,7 +913,7 @@ public class ConfigManager {
             String entityTypeName = monstersConfigYaml.getString(key + ".entity-type");
             if (entityTypeName != null && !entityTypeName.isEmpty()) {
                 try {
-                    EntityType parsedType = EntityType.valueOf(entityTypeName.trim().toUpperCase());
+                    EntityType parsedType = EntityType.valueOf(entityTypeName.trim().toUpperCase(Locale.ROOT));
                     // 合法名称不代表可生成：PLAYER / ITEM / ARROW 等类型无法 spawnEntity，会中断刷怪任务。
                     // 此处只接受实体类是 Mob 子类的类型，不满足则保留默认值。
                     Class<?> entityClass = parsedType.getEntityClass();
@@ -960,10 +974,6 @@ public class ConfigManager {
                 else { plugin.getLogger().warning("Unknown material: " + boots + ", keeping default"); }
             }
         }
-    }
-
-    public GameConfig snapshotForPreview() {
-        return activeConfig.snapshot();
     }
 
     public void revertAll() {

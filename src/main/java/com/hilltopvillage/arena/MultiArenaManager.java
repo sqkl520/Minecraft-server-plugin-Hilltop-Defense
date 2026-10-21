@@ -641,16 +641,6 @@ public class MultiArenaManager {
     }
 
     /**
-     * Stop all running arenas.
-     * Called on plugin disable.
-     */
-    public void stopAllArenas() {
-        for (String arenaId : new ArrayList<>(activeArenas.keySet())) {
-            stopArena(arenaId);
-        }
-    }
-
-    /**
      * Get an active arena instance by ID.
      *
      * @param arenaId arena ID
@@ -773,19 +763,6 @@ public class MultiArenaManager {
         // Join the first one
         ArenaInstance arena = available.get(0);
         return joinArena(player, arena.getArenaId());
-    }
-
-    /**
-     * Get available arenas (can be joined).
-     */
-    public List<ArenaInstance> getAvailableArenas() {
-        List<ArenaInstance> available = new ArrayList<>();
-        for (ArenaInstance arena : activeArenas.values()) {
-            if (arena.isAvailable()) {
-                available.add(arena);
-            }
-        }
-        return available;
     }
 
     /**
@@ -1038,17 +1015,6 @@ public class MultiArenaManager {
         }
 
         return null;
-    }
-
-    /**
-     * Check if a world is an arena world.
-     * ✅ 用于判断世界是否是竞技场世界
-     *
-     * @param worldName world name
-     * @return true if it's an arena world
-     */
-    public boolean isArenaWorld(String worldName) {
-        return getArenaByWorld(worldName) != null;
     }
 
     /**

@@ -50,11 +50,12 @@ public class ShopConfigLoader {
         String currencyMatStr = yaml.getString("shop.currency.material");
         if (currencyMatStr != null && !currencyMatStr.isEmpty()) {
             Material parsed = Material.getMaterial(currencyMatStr);
-            if (parsed != null) {
+            // fix6 Y2-06：非 item 材质会让 createCurrencyItem 的 new ItemStack 抛异常（掉币/退款链）
+            if (parsed != null && parsed.isItem()) {
                 currencyMaterial = parsed;
             } else {
-                plugin.getLogger().warning("shop.yml: unknown currency material '"
-                        + currencyMatStr + "', keeping default EMERALD");
+                plugin.getLogger().warning("shop.yml: invalid currency material '"
+                        + currencyMatStr + "' (unknown or not a carryable item), keeping default EMERALD");
             }
         }
         String currencyName = yaml.getString("shop.currency.name");
@@ -107,9 +108,11 @@ public class ShopConfigLoader {
         String iconMatStr = yaml.getString(path + ".icon.material");
         if (iconMatStr != null && !iconMatStr.isEmpty()) {
             Material parsed = Material.getMaterial(iconMatStr);
-            if (parsed == null) {
-                plugin.getLogger().warning("shop.yml: item '" + id + "' has unknown icon material '"
-                        + iconMatStr + "', skipped");
+            // fix6 Y2-06：非 item 材质放行会让 ShopGUI:72 的 new ItemStack(icon) 先抛 → 整个商店 GUI
+            // 打不开（MATERIAL/EQUIPMENT 发货链同抛）；跳过该条目比放行更正确，与未知材质行为对齐
+            if (parsed == null || !parsed.isItem()) {
+                plugin.getLogger().warning("shop.yml: item '" + id + "' has invalid icon material '"
+                        + iconMatStr + "' (unknown or not a carryable item), skipped");
                 return null;
             }
             icon = parsed;

@@ -227,6 +227,16 @@ public class ArenaInstance implements IArena {
         return state;
     }
 
+    /**
+     * STARTING 倒计时剩余秒数（供侧边栏常驻显示，fix6 Y3-M-07）。
+     *
+     * <p>非 STARTING 状态返回 -1——调用方（ArenaScoreboard）据此隐藏该行，
+     * 无需自己判断状态。与 {@code countdown} 字段同源，每秒随倒计时任务递减。</p>
+     */
+    public int getStartCountdown() {
+        return state == GameState.STARTING ? countdown : -1;
+    }
+
     @Override
     public void setState(GameState newState) {
         // ENDING 同时是地图恢复屏障；只有恢复完成回调可以重新开放 WAITING。
@@ -331,6 +341,12 @@ public class ArenaInstance implements IArena {
 
         // Broadcast join message
         broadcastI18n("player-joined", player.getName(), getPlayerCount(), getMaxPlayers());
+        // fix6 Y3-M-08：等待期补一句「还差几人」（达标后的 STARTING 期不提示；
+        // 侧边栏另有常驻行，双通道覆盖不看侧边栏的玩家）。
+        if (state == GameState.WAITING && getPlayerCount() < getMinPlayers()) {
+            broadcastI18n("player-joined-need-more",
+                    getMinPlayers() - getPlayerCount(), getMinPlayers());
+        }
 
         // 未就绪（世界缺失 / 未部署）时给管理员一句提示。原文这里是 else-if，
         // 与开局分支互斥（本分支要求 !isPlayable()，开局分支要求 isPlayable()），
@@ -573,11 +589,6 @@ public class ArenaInstance implements IArena {
     }
 
     @Override
-    public PlayerData getPlayerData(UUID uuid) {
-        return gameManager.getPlayerData(uuid);
-    }
-
-    @Override
     public void startGame() {
         if (restoreStarted || plugin.getMapRestoreManager().isRestoring(definition.getWorldName())) {
             return; // 地图回滚完成前禁止开始下一局
@@ -598,6 +609,20 @@ public class ArenaInstance implements IArena {
         cancelEndSequence();
         // G3d：空置值守随本局终结一并取消（幂等；也防旧任务跨局残留）
         cancelEmptyArenaTask();
+
+        // fix6 Y1-F1-01（含 R07-07）：踢人前先通告（game-ended 的既有广播点在 onGameEnd，
+        // 彼时玩家已全部离场、受众为空——被踢者此前全程静默）。getPlayers() 为空时自然无受众。
+        broadcastI18n("game-force-stopped");
+
+        // fix6 Y1-F1-01：踢人前先脱离 running 态（与 reset() 的「先归零状态再补录」范式一致）。
+        // 否则踢人循环期间 GameManager.removeOfflinePlayer 的「人数不足判负」会触发
+        // endGame(false)：剩余玩家收到假战报（game-defeat）、后被踢者按 defeat 落库记
+        // 负场，同一强停先踢者 neutral / 后被踢者 loss（一局两口径）。
+        // 顺序铁律：sessionWave 快照必须在 gameManager.stopGame() 之前捕获——后者会把
+        // currentWave 归零，归零后 removePlayer 记录的波次（Math.max(getCurrentWave(),
+        // sessionWave)）与 onGameEnd 的快照都会退化为 0（与 reset() 的捕获顺序完全同款）。
+        sessionWave = Math.max(sessionWave, gameManager.getCurrentWave());
+        gameManager.stopGame();
 
         // Kick all players
         for (Player player : getPlayers()) {
@@ -751,25 +776,6 @@ public class ArenaInstance implements IArena {
         }
     }
 
-    /**
-     * 是否满足开局条件。
-     *
-     * <p>生成点与核心都按<b>实时值</b>判定（读 {@link GameManager} / {@link #getCoreLocation()}）：
-     * 部署命令只刷新 GameManager，若用 {@code definition} 的构造期快照，
-     * 刚部署好的竞技场仍会被判成「不能开局」。</p>
-     *
-     * <p>STORY-1.2：追加「怪物刷怪坐标非空」条件。旧存档（仅 {@code spawn-points}）
-     * 走双用回退，{@code hasEffectiveMobSpawnPoints()} 同样通过 —— 仅当两套点都为空时才拦截。</p>
-     */
-    @Override
-    public boolean canStart() {
-        return isEnabled()
-            && getPlayerCount() >= getMinPlayers()
-            && gameManager.hasSpawnPoints()
-            && gameManager.hasEffectiveMobSpawnPoints()
-            && getCoreLocation() != null;
-    }
-
     @Override
     public int getCurrentWave() {
         return gameManager.getCurrentWave();
@@ -823,7 +829,7 @@ public class ArenaInstance implements IArena {
      * {@code new ArenaInstance(...)} 之前拒绝未部署核心，{@link ArenaInstance} 构造函数本身也会
      * 解引用 core，且全项目唯一写点 {@code AdminDeployManager.saveSpawnPoints()} 仅在非空时才向
      * {@code gameManager.setCoreLocation(...)} 转发。因此这里直接读取，不用 try/catch 掩盖异常；
-     * 调用方仍按「null = 未部署」判空（见 {@link #getSpectatorSpawn()}、{@link #canStart()}）。</p>
+     * 调用方仍按「null = 未部署」判空（见 isPlayable 的检查链）。</p>
      */
     @Override
     public Location getCoreLocation() {
@@ -834,13 +840,6 @@ public class ArenaInstance implements IArena {
     public Location getLobbySpawn() {
         // ✅ 返回竞技场内的等待区位置（参考 BedWars1058 的 getWaitingLocation）
         return definition.getWaitingLocation();
-    }
-
-    @Override
-    public Location getSpectatorSpawn() {
-        // 10 blocks above core
-        Location core = getCoreLocation();
-        return core == null ? null : core.clone().add(0, 10, 0);
     }
 
     /**
@@ -858,13 +857,6 @@ public class ArenaInstance implements IArena {
     @Override
     public List<Location> getSpawnPoints() {
         return gameManager.getSpawnPoints();
-    }
-
-    @Override
-    public void broadcast(String message) {
-        for (Player player : getPlayers()) {
-            player.sendMessage(message);
-        }
     }
 
     @Override
@@ -1101,7 +1093,8 @@ public class ArenaInstance implements IArena {
         // M-08：上一局波次快照随新局归零（局中发现的中途离场者按局进程记新波次）
         sessionWave = 0;
 
-        broadcastI18n("game-started");
+        // fix6 Y3-R07-02：开局播报由 gameManager.startGame 的 game-start 负责（去重——
+        // 同 tick 两条同义消息连发）；game-started 键保留在 messages.yml 不再消费。
 
         // ✅ Teleport all players from waiting area to game spawn points
         // STORY-1.2：此处仍读玩家出生点（getSpawnPoints 语义已固定为玩家出生），怪物刷怪点不影响传送
@@ -1316,6 +1309,15 @@ public class ArenaInstance implements IArena {
         cancelEndSequence();
         // G3d：实例级终结（插件关闭 / 强制重置）必须停掉空置值守
         cancelEmptyArenaTask();
+        // fix6 Y1-F1-01 第二触发面：与 stopGame() 同款顺序——先捕获波次快照、再归零
+        // GameManager 状态、最后踢人。不修的话：插件关闭（stopAllArenasNow）/ stopArena 禁用
+        // 分支的踢人循环同样触发判负链（后被踢者按 defeat 落库）；且禁用阶段触发
+        // beginEndSequence 的无条件 runTaskTimer 会抛 IllegalPluginAccessException
+        // （MultiArenaManager 已认领的异常面）——本修法顺带闭合该异常面。
+        // 刻意不广播（插件关闭场景无发送必要，禁用阶段发消息亦不安全；
+        // stopGame 路径已含 R07-07 的广播）。
+        sessionWave = Math.max(sessionWave, gameManager.getCurrentWave());
+        gameManager.stopGame();
         for (Player player : getPlayers()) {
             removePlayer(player);
         }

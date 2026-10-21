@@ -94,7 +94,9 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: `hilltopvillage.admin`（管理员；普通玩家请通过村民商店购买）。\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop hammer`\n");
-        md.append("- **注意事项**: 锤子右键可触发蓄力重击（Smash），左键为普通攻击。每位玩家同时只能持有一把锤子。\n\n");
+        // fix6 Y3-M-09：原句「每位玩家同时只能持有一把锤子」失实（该限制从未存在，
+        // 命令与商店均无条件发放，冷却按 UUID 记、与持有多寡无关）
+        md.append("- **注意事项**: 锤子右键可触发蓄力重击（Smash），左键为普通攻击。可重复获取多把锤子，它们共享同一冷却（冷却按玩家计算，与持有数量无关）。\n\n");
 
         md.append("### `/hilltop fireball`\n\n");
         md.append("- **功能**: 获取烈焰蛋（Fireball）。\n");
@@ -196,12 +198,12 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy listspawns`\n");
-        md.append("- **注意事项**: 显示每个出生点的编号、坐标。编号用于 delspawn 命令。\n\n");
+        md.append("- **注意事项**: 显示每个出生点的编号、坐标。编号从 1 开始，用于 delspawn 命令。\n\n");
 
         md.append("### `/hilltop deploy delspawn <编号>`\n\n");
         md.append("- **功能**: 删除指定编号的玩家出生点。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `<编号>` — 出生点编号（从 listspawns 获取）。\n");
+        md.append("- **参数**: `<编号>` — 出生点编号（从 1 开始；用 listspawns 查看）。\n");
         md.append("- **使用示例**: `/hilltop deploy delspawn 2`\n");
         md.append("- **注意事项**: 删除后剩余出生点的编号会前移，请重新用 listspawns 确认编号。\n\n");
 
@@ -238,12 +240,12 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy listmobspawns`\n");
-        md.append("- **注意事项**: 显示每个刷怪点的编号、坐标。编号用于 delmobspawn 命令。\n\n");
+        md.append("- **注意事项**: 显示每个刷怪点的编号、坐标。编号从 1 开始，用于 delmobspawn 命令。\n\n");
 
         md.append("### `/hilltop deploy delmobspawn <编号>`\n\n");
         md.append("- **功能**: 删除指定编号的怪物刷怪点。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `<编号>` — 刷怪点编号（从 listmobspawns 获取）。\n");
+        md.append("- **参数**: `<编号>` — 刷怪点编号（从 1 开始；用 listmobspawns 查看）。\n");
         md.append("- **使用示例**: `/hilltop deploy delmobspawn 1`\n");
         md.append("- **注意事项**: 删除后剩余刷怪点的编号会前移。\n\n");
 
@@ -294,12 +296,12 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy listvillagers`\n");
-        md.append("- **注意事项**: 显示每个村民的编号、坐标。编号用于 delvillager 命令。\n\n");
+        md.append("- **注意事项**: 显示每个村民的编号、坐标。编号从 1 开始，用于 delvillager 命令。\n\n");
 
         md.append("### `/hilltop deploy delvillager <编号>`\n\n");
         md.append("- **功能**: 删除指定编号的村民。\n");
         md.append("- **权限**: `hilltopvillage.admin`\n");
-        md.append("- **参数**: `<编号>` — 村民编号（从 listvillagers 获取）。\n");
+        md.append("- **参数**: `<编号>` — 村民编号（从 1 开始；用 listvillagers 查看）。\n");
         md.append("- **使用示例**: `/hilltop deploy delvillager 2`\n");
         md.append("- **注意事项**: 删除后剩余村民的编号会前移。\n\n");
 
@@ -400,7 +402,9 @@ public class CommandsDocumentGenerator {
         md.append("## 注意事项\n\n");
         md.append("1. **命令别名**: `/hilltop` 命令也可使用 `/hv` 或 `/htv` 作为别名。\n");
         md.append("2. **控制台限制**: 采用黑名单模型——仅以下命令不可由控制台执行：`join` / `leave` / `lobby` / `gui` / `hammer` / `fireball` / `setup` / `deploy` / `config` / `manage` / `build`。其余命令（含 `status` / `reloadconfig` / `start` / `stop` / `enable` / `disable` / `arenas` / `list` / `stats`（带玩家名） / `top` / `tps` / `help` / `lang` / `shop reload` / `shop give` / `wave clear` / `wave skip`）均可在控制台执行（管理命令仍需 OP / `hilltopvillage.admin` 权限）。\n");
-        md.append("3. **部署流程**: 建议按照 `setcore → addspawn → addmobspawn → reloadnodes → start` 的顺序操作（玩家出生点与怪物刷怪点两套均需至少 1 个）。\n");
+        // fix6 Y3-M-10：原链路缺节点/村民/商店三必填，且把 reloadnodes（仅重读文件）排进流程
+        // 暗示它负责注册节点——照链操作会得到 0 节点 + 0 村民的可开局场
+        md.append("3. **部署流程**: 建议直接运行 `/hilltop setup` 向导完成部署（8 步引导，含节点 / 村民 / 商店三个必填项）。手动命令顺序：`setcore → addspawn → addmobspawn → addvillager → setshop → start`（节点请在向导第 4 步添加；`reloadnodes` 仅重读 nodes.yml，不扫描地图）。\n");
         md.append("4. **配置保存**: 使用 GUI 关闭菜单时配置会自动保存，`/hilltop reloadconfig` 用于手动重载外部编辑的配置。\n");
         md.append("5. **粒子展示**: `/hilltop deploy showparticles` 仅展示当前已设置的玩家出生点对应粒子。若没有出生点则不会有任何效果。\n");
         md.append("6. **多语言**: 使用 `/hilltop lang <en|zh>` 切换语言。所有消息文本可在 `plugins/HilltopVillage/messages.yml` 中自定义编辑。\n");

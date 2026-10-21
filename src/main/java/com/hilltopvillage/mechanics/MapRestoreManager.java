@@ -112,7 +112,7 @@ public class MapRestoreManager implements Listener {
      * 已经因超限报过警的世界名。
      *
      * <p>超限后每次记录都打日志会把日志刷爆，因此每个世界只警告一次。
-     * 日志被移除（回滚 / discard）时必须同时清掉这里的条目，否则该世界下一局再超限时
+     * 日志被移除（回滚开始 / 回滚完成收尾）时必须同时清掉这里的条目，否则该世界下一局再超限时
      * 会因为「已经警告过」而静默降级，管理员看不到任何提示。</p>
      */
     private final Set<String> journalOverflowWarned = ConcurrentHashMap.newKeySet();
@@ -542,7 +542,7 @@ public class MapRestoreManager implements Listener {
         if (operation.finished) return;
         int end = Math.min(operation.nextIndex + BLOCKS_PER_TICK, operation.entries.size());
         restoreRange(operation, end);
-        if (operation.nextIndex >= operation.entries.size()) complete(operation, false);
+        if (operation.nextIndex >= operation.entries.size()) complete(operation);
     }
 
     private void restoreRange(RestoreOperation operation, int endExclusive) {
@@ -594,10 +594,10 @@ public class MapRestoreManager implements Listener {
             operation.task = null;
         }
         restoreRange(operation, operation.entries.size());
-        complete(operation, false);
+        complete(operation);
     }
 
-    private void complete(RestoreOperation operation, boolean discarded) {
+    private void complete(RestoreOperation operation) {
         if (operation.finished) return;
         operation.finished = true;
         if (operation.task != null) {
@@ -609,12 +609,8 @@ public class MapRestoreManager implements Listener {
         invalidateFluidJournalCache();
 
         int failedBlocks = operation.failedEntries.size();
-        boolean requeued = false;
-        if (discarded) {
-            plugin.getLogger().warning("地图回滚已取消并丢弃：" + operation.worldName
-                    + (failedBlocks > 0 ? "（另有 " + failedBlocks + " 个方块未回滚成功，随记录一并丢弃）" : ""));
-        } else if (failedBlocks > 0) {
-            requeued = requeueFailedBlocks(operation);
+        if (failedBlocks > 0) {
+            boolean requeued = requeueFailedBlocks(operation);
             plugin.getLogger().warning("地图回滚完成但有 " + failedBlocks + " 个方块失败"
                     + (requeued ? "（原始快照已重新入队，可再次回滚补救）" : "（重新入队失败）")
                     + "：" + operation.worldName);
@@ -626,7 +622,7 @@ public class MapRestoreManager implements Listener {
         List<Consumer<Boolean>> callbacks = new ArrayList<>(operation.completionCallbacks);
         operation.completionCallbacks.clear();
         // 只有「零失败」才算成功：有失败时调用方必须保持屏障，不能开放半恢复的地图。
-        boolean success = !discarded && failedBlocks == 0;
+        boolean success = failedBlocks == 0;
         for (Consumer<Boolean> callback : callbacks) {
             runCompletion(callback, success, operation.worldName);
         }
@@ -660,20 +656,6 @@ public class MapRestoreManager implements Listener {
             plugin.getLogger().log(java.util.logging.Level.SEVERE,
                     "地图回滚完成回调失败：" + worldName, exception);
         }
-    }
-
-    /**
-     * 丢弃某个世界的记录并安全取消活动任务。已合并的完成回调仍会执行，
-     * 使等待恢复屏障的竞技场不会永久卡在 ENDING。
-     */
-    public void discard(String worldName) {
-        requirePrimaryThread();
-        journals.remove(worldName);
-        // 日志已丢弃：清掉超限标记，否则该世界下一局再超限时不会告警
-        journalOverflowWarned.remove(worldName);
-        invalidateFluidJournalCache();
-        RestoreOperation operation = activeRestores.get(worldName);
-        if (operation != null) complete(operation, true);
     }
 
     /** 当前是否正在回滚该世界。 */

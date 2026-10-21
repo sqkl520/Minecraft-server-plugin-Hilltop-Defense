@@ -13,6 +13,7 @@ import org.bukkit.inventory.meta.ItemMeta;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 
 /**
@@ -121,7 +122,7 @@ public class ShopGUI implements InventoryHolder {
     }
 
     private String prettyMaterialName(Material material) {
-        String name = material.name().toLowerCase().replace('_', ' ');
+        String name = material.name().toLowerCase(Locale.ROOT).replace('_', ' ');
         return Character.toUpperCase(name.charAt(0)) + name.substring(1);
     }
 }

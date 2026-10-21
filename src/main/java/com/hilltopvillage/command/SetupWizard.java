@@ -194,13 +194,6 @@ public class SetupWizard implements Listener {
         return arenaId != null && deploymentContexts.remove(arenaId) != null;
     }
 
-    /**
-     * 丢弃全部部署期上下文缓存（重置路径按世界无法定位 arenaId 时的兜底）。
-     */
-    public void invalidateAllDeploymentContexts() {
-        deploymentContexts.clear();
-    }
-
     public void start(Player player) {
         // 按玩家当前所在世界解析竞技场定义（不再写死默认竞技场）——这同时修复了
         // 「服主站在未部署竞技场世界里执行 setup 被提示无活动竞技场」的部署死锁。
@@ -450,7 +443,7 @@ public class SetupWizard implements Listener {
             int slot = i - startIdx;
             inv.setItem(slot, makeItem(Material.COMPASS,
                     lang.getFor(player, "setup.spawn-entry",
-                            String.valueOf(i), fmt(loc.getX()), fmt(loc.getY()), fmt(loc.getZ())),
+                            String.valueOf(i + 1), fmt(loc.getX()), fmt(loc.getY()), fmt(loc.getZ())),
                     lang.getFor(player, "setup.spawn-entry-lore"),
                     "setup-spawn-" + i));
         }
@@ -553,7 +546,7 @@ public class SetupWizard implements Listener {
             int slot = i - startIdx;
             inv.setItem(slot, makeItem(Material.SPAWNER,
                     lang.getFor(player, "setup.mobspawn-entry",
-                            String.valueOf(i), fmt(loc.getX()), fmt(loc.getY()), fmt(loc.getZ())),
+                            String.valueOf(i + 1), fmt(loc.getX()), fmt(loc.getY()), fmt(loc.getZ())),
                     lang.getFor(player, "setup.spawn-entry-lore"),
                     "setup-mobspawn-" + i));
         }
@@ -1011,10 +1004,19 @@ public class SetupWizard implements Listener {
         // spawnNpc 返回 false（旧 NPC 在别世界且那场正在对局 / 坐标无效）同样提示。
         AdminDeployManager deploy = deploy(player);
         Location shopNpcLoc = deploy == null ? null : deploy.getShopNpcLocation();
-        if (shopNpcLoc != null
-                && (isTargetArenaInGame(player)
-                    || !plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLoc))) {
+        if (shopNpcLoc != null && isTargetArenaInGame(player)) {
             player.sendMessage(lang.getFor(player, "setup.shop-set-in-game"));
+        } else if (shopNpcLoc != null) {
+            // fix6 Y3-M-02：先区分「商店单例当前服务的他场在对局」——旧文案让 stop 本场，完全无效；
+            // 命中时给出带正确竞技场 ID 的定向文案（spawnNpc 尚未执行、旧实体仍在原位）。
+            String blockingArena = plugin.getShopManager().getNpcManager()
+                    .findBlockingArenaId(shopNpcLoc);
+            if (blockingArena != null) {
+                player.sendMessage(lang.getFor(player, "setup.shop-blocked-other-arena", blockingArena));
+            } else if (!plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLoc)) {
+                // 残余 false = 坐标 / 世界无效（罕见：来自损坏配置），沿用旧键
+                player.sendMessage(lang.getFor(player, "setup.shop-set-in-game"));
+            }
         }
         // 若玩家还开着向导 GUI（如预览后 goto 8），会话即将移除、界面点击将不再生效 —— 顺手关掉
         if (player.getOpenInventory().getTitle() != null) {
@@ -1118,7 +1120,7 @@ public class SetupWizard implements Listener {
             rest = sub.substring(spaceIdx + 1).trim();
         }
 
-        switch (token.toLowerCase()) {
+        switch (token.toLowerCase(Locale.ROOT)) {
             case "confirm-world":
                 // P2-1：步骤守卫（此前任意步骤可执行：聊天历史里点旧的 [确认] 就清核心并推进一步）
                 if (s.step != 1) {
@@ -1175,6 +1177,14 @@ public class SetupWizard implements Listener {
                 shopNpcLocation.setPitch(0f);
                 // 先生成后存盘：spawnNpc 返回 false（旧 NPC 在别世界且那场正在对局，跨世界抽走被拒）
                 // 时不写配置、整次操作原样拒绝 —— 避免「配置指向新位置、实体留在旧世界」的分叉状态
+                // fix6 Y3-M-02：区分失败原因——被「他场对局」拒绝时报出正确 stop 目标场
+                String blockingArena = plugin.getShopManager().getNpcManager()
+                        .findBlockingArenaId(shopNpcLocation);
+                if (blockingArena != null) {
+                    player.sendMessage(lang.getFor(player, "setup.shop-blocked-other-arena", blockingArena));
+                    sendShopButtons(player);
+                    break;
+                }
                 if (!plugin.getShopManager().getNpcManager().spawnNpc(shopNpcLocation)) {
                     player.sendMessage(lang.getFor(player, "setup.shop-set-in-game"));
                     sendShopButtons(player);
@@ -1782,7 +1792,7 @@ public class SetupWizard implements Listener {
                     int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
                     if (s.spawnPage > maxPageAfter) s.spawnPage = maxPageAfter;
                     player.sendMessage(LegacyComponentSerializer.legacySection()
-                            .deserialize(lang.getFor(player, "setup.spawn-removed", String.valueOf(idx))));
+                            .deserialize(lang.getFor(player, "setup.spawn-removed", String.valueOf(idx + 1))));
                     refreshSpawnGui(event.getInventory(), player, s.spawnPage);
                     autoSave(player);
                     sendSpawnButtons(player);
@@ -1852,7 +1862,7 @@ public class SetupWizard implements Listener {
                     int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
                     if (s.mobSpawnPage > maxPageAfter) s.mobSpawnPage = maxPageAfter;
                     player.sendMessage(LegacyComponentSerializer.legacySection()
-                            .deserialize(lang.getFor(player, "setup.mobspawn-removed", String.valueOf(idx))));
+                            .deserialize(lang.getFor(player, "setup.mobspawn-removed", String.valueOf(idx + 1))));
                     refreshMobSpawnGui(event.getInventory(), player, s.mobSpawnPage);
                     autoSave(player);
                     sendSpawnButtons(player);
