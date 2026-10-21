@@ -1,6 +1,55 @@
 # Changelog
 
 
+## [1.1.0-SNAPSHOT-fix2] - 2026-10-22
+
+> 1.1.0 的第二个修复版：fix6 全量审查轮（12 专家通道全库审查 + V1 横向对账 + V2 对抗证伪，合并清单 ~40 条：P0=0/P1=3/P2=11/P3=~26）的四路并行修复 + 四路锐评轮裁定修正。
+> 审查产物：`docs/01-reviews/fix6/`（fix6-MASTER-BACKLOG.md 总报告）；修复规格书：`fix6-REPAIR-PLAN.md`（124KB）；锐评报告：`docs/01-reviews/fix6-critique/`。
+> 原 `1.0.9-SNAPSHOT` / `-fix1`~`-fix4` / `1.1.0-SNAPSHOT` / `-fix1` 的包与 GitHub Release 保留不动。
+
+### Fixed（2026-10-22 — Y1 状态机语义（含 2 条 P1））
+
+- **【P1】`/hilltop stop` 强停判负链封堵**：`stopGame()` 与 `resetNow()` 双触发面照 `reset()` 既有范式改为「先捕获 sessionWave 快照 → `gameManager.stopGame()` 归零状态 → 再踢人」——修复「踢人循环期间人数跌破 min-players 触发 `endGame(false)`：剩余玩家收假『对局失败』战报、后被踢者按 defeat 落库记负场（一局两口径）」；修复前 fix5 审查曾误判为「强停=中性」
+- **【P1】节点世界名大小写分裂修复**：`NodeSystem` 4 处 equals → equalsIgnoreCase + **写回过滤第 5 点**（saveNodesToConfig 的 `arenaWorlds.contains`，fix6 锐评 Y1-N1 补漏）——修复「服主改 arenas.yml 世界名大小写后，nodes.yml 节点静默全丢 / 删除节点不落盘 / 幽灵节点复活」
+- **强停踢人静默修复**：踢人前广播 `game-force-stopped`（被踢者不再无声弹回大厅）
+- **回滚窗 start 误导修复**：`/hilltop start` 在地图回滚期间报专属文案（新增 `game-start-restoring`，含回滚失败态提示）取代误导的「人数不足」
+- **结算窗死亡接管统一**：死亡门控从 `GameManager.isGameRunning()` 收化为「竞技场状态 ∈ RUNNING/WAVE_INTERMISSION/VICTORY/DEFEAT」——经 `endGame()` 的结算窗死亡正常记死亡（此前少记一次且物品短暂落地）
+
+### Fixed（2026-10-22 — Y2 输入校验与经济链（含 1 条 P1））
+
+- **【P1】非法材质吃币链封堵（六个改点）**：`/hilltop config nodes repairitem water` 等非物品材质全链拒绝（HCH 命令入口 + ConfigManager 磁盘读取 + 旧键迁移三处加 `isItem()`；同族扩至锤材质/烈焰蛋材质/商店 icon/货币材质共六改点，全部与既有 `!material.isItem()` 范式对齐）
+- **购买退款纵深**：`ShopListener.purchase` 对发货构造异常兜底退款（提取 `refundCurrency` 共用方法，含 0 价防刷钱与背包溢出掉落）——任何工厂异常都不再吃玩家货币
+
+### Fixed（2026-10-22 — Y3 UX 与文档（10 项 + P3 随修 5 项））
+
+- **【编号口径统一·重要】delspawn/delmobspawn/delvillager 编号全面 1 基化**：列表显示、删除接收、回显、usage 文案与 SetupWizard/管理 GUI 全部统一从 1 开始（修复「跨界面按显示编号敲命令会删错条目」；`delspawn 0` 现在明确报不存在）
+- **商店 NPC 迁移文案错靶修复**：跨世界被他场对局阻塞时改为定向文案（新增 `findBlockingArenaId`，指出实际需 stop 的场 ID）
+- **等待期体验**：侧边栏显示「等待玩家 x/y」与「开局倒计时 N 秒」（中途加入者立即可见）；参数页补「对局中/结算中被拒」预披露
+- **选场 GUI 图例修正**：删死变量 borderMaterial（图例自 1.0 起承诺的四色边框从未渲染），图例改述实际
+- **生成器修正**：「每位玩家同时只能持有一把锤子」失实句删除；部署流程链补节点/村民/商店三向导必填项
+- **`/hilltop tps` 状态本地化**：`tps.state` 不再直吐 GameState 英文枚举（GameState.i18nKey() 统一）
+- **P3 随修**：开局重复消息合并（R07-02）；`/hilltop help` 开放给所有玩家（内容按权限分档）+ Tab 补全；死亡零惩罚披露（R07-09）；旁观期说明（R07-11）；reloadnodes 菜单描述修正 + 节点入口指引（R09-09）
+
+### Fixed（2026-10-22 — Y4 死代码清扫与质量）
+
+- **死代码大清扫（A/B 两组 ~33 项，全部附四通道零调用证明）**：openDeployMenu 整链（含 37 个 deploy.menu-* 死键）、DisplayEntityManager 半类（spawnHammerImpact/cleanupQueue 链/cleanupAll）、stopParticleShow、MapRestoreManager.discard（含 complete 签名收窄）、SetupWizard.invalidateAllDeploymentContexts、IArena 四死成员、AdminDeployManager 两死 getter 等；`getEnableQueue`/`isResetting` 按评估保留（潜在 UX 接线面）
+- **Locale 45 处补齐**：全库 `toUpperCase()/toLowerCase()` 无参调用全部补 `Locale.ROOT`——杜绝 tr_TR 等 JVM locale 下命令分发/材质解析失效
+- **javadoc 同步 5 处**（删除后引用清理）+ 杂项（HCH:104 乱码修复、ArenaManager 重复 import 清理）
+
+### Fixed（2026-10-22 — 锐评轮快修）
+
+- **nodes 写回过滤大小写漏修**（fix6 锐评 Y1-N1，P2 级）：`saveNodesToConfig` 的过滤补 equalsIgnoreCase 匹配——F1-03 的第 5 个点位（规格书漏列、锐评补报）
+- **回滚失败态文案适配**（Y1-N2）：`game-start-restoring` 补「若长时间无变化需排查控制台日志」
+- **README 双语同步**：`/hilltop help` 标注从「（管理员）」改为「所有玩家可用（内容按权限分档）」（Y3-N2）；sessionWave javadoc 同步四处捕获现状（Y1-N3）
+
+### ⚠️ 升级提示（升级到本版必读）
+
+- **删除命令编号 1 基化（行为变更）**：`/hilltop deploy delspawn|delmobspawn|delvillager <编号>` 的编号从 1 开始（与列表显示一致）——旧习惯的 `delspawn 0` 将报「编号不存在」，请按列表显示编号操作
+- **`/hilltop help` 开放给所有玩家**（内容按权限分档显示）；此前仅管理员可用
+- **`/hilltop stop` 语义修复**：强停不再播「对局失败」假战报、不记负场（修复前双人局强停会把部分玩家错误记负）
+- **节点世界名大小写**：此前手改 arenas.yml 世界名大小写会导致 nodes.yml 节点静默全丢且删除不落盘——本版修复；若你的服务器已处于分裂态，升级后节点会自动恢复加载，此前「删不掉的幽灵节点」也可正常删除
+- 服务端无需其它动作；`commands.md` 重启后自动重生成（编号说明已同步）
+
 ## [1.1.0-SNAPSHOT-fix1] - 2026-10-20
 
 > 1.1.0 的第一个修复版：fix5 审查轮（10 专家通道 + 2 验证角色，合并清单 48 条：P0=0/P1=1/P2=19/P3=28）的六路并行修复 + 结转清理 + 六路锐评轮（与执行同数量的对抗审查）的裁定修正。
