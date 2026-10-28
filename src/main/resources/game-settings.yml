@@ -36,8 +36,8 @@ villager-health: 20.0
 # 掉线重连窗口（秒）：对局中掉线后保留位置的时长，0 = 关闭重连
 rejoin-timeout-seconds: 60
 # 空置自动结束（秒）：对局进行中在线成员为 0 持续此时长后自动结束本局（走正常结束路径），
-# 0 或负数 = 禁用（不推荐，防止空转对局无限占用竞技场与地图回滚资源）
-empty-arena-end-seconds: 60
+# 0 或负数 = 禁用（不推荐）；建议大于 rejoin-timeout-seconds，先留足重连窗口再判空置
+empty-arena-end-seconds: 120
 
 # 地图恢复：对局结束时回滚本局被破坏/放置的方块
 map-restore:

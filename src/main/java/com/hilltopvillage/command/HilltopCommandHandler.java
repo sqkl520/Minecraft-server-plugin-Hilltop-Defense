@@ -251,6 +251,15 @@ public class HilltopCommandHandler {
                 }
                 GameManager statusGm = statusArena.getGameManager();
                 sender.sendMessage(lang.getFor(player, "status-header"));
+                // 竞技场名：多竞技场服务器上从大厅执行时，只看状态/波次分不清是哪一场。
+                // 附注「默认」仅在走回退链时加（未显式给 ID 且玩家不在任何场，
+                // 与 resolveArena 的回退判据一致）；后缀走独立 i18n 键，避免在 Java 里硬编码文本。
+                boolean explicitArenaId = statusArenaId != null && !statusArenaId.isBlank();
+                boolean arenaFallback = !explicitArenaId
+                        && (player == null || arenaManager.getPlayerArena(player) == null);
+                String arenaNote = arenaFallback ? lang.getFor(player, "status-arena-default") : "";
+                sender.sendMessage(lang.getFor(player, "status-arena",
+                        statusArena.getArenaId(), arenaNote));
                 // fix6 Y3-M-11：经 GameState.i18nKey() 本地化（zh 显示「等待中/运行中…」而非英文枚举名）
                 sender.sendMessage(lang.getFor(player, "status-state",
                         lang.getFor(player, statusGm.getState().i18nKey())));
@@ -371,6 +380,20 @@ public class HilltopCommandHandler {
                 }
                 if (!isPlayer) {
                     sender.sendMessage(lang.get("players-only"));
+                    return true;
+                }
+                // fix4 反馈：建造模式只对大厅世界生效（LobbyProtectionListener#exempt 仅在
+                // inLobby() 为真时放行），在竞技场等世界切换只会给出错误提示。
+                // 大厅世界解析沿用 getLobbyWorld()（含未配置时回退主世界的同一口径），
+                // 名称比较用 equalsIgnoreCase（理由同 handleLobbyCommand 的 setspawn 守卫）。
+                // 已在建造模式的玩家永远允许 toggle off —— 即使此刻已被传送出大厅世界。
+                org.bukkit.World lobbyWorld = arenaManager.getLobbyWorld();
+                String lobbyWorldName = lobbyWorld != null ? lobbyWorld.getName() : null;
+                boolean inLobbyWorld = lobbyWorldName != null
+                        && player.getWorld().getName().equalsIgnoreCase(lobbyWorldName);
+                if (!inLobbyWorld && !plugin.getLobbyProtectionListener().isBuildMode(player)) {
+                    player.sendMessage(lang.getFor(player, "build.not-in-lobby",
+                            lobbyWorldName != null ? lobbyWorldName : "?"));
                     return true;
                 }
                 plugin.getLobbyProtectionListener().toggleBuildMode(player);

@@ -274,7 +274,7 @@ public final class ArenaResetService {
         plugin.getLogger().info(LOG + "nodes-cleared arena=" + arenaId + " count=" + removedNodes);
         // clearNodesForWorld 的返回值 0 有两种含义（没有条目 / 写入失败），用清点结果消歧
         if (expectedNodes > 0 && removedNodes == 0) {
-            abort(ctx, "nodes", "nodes.yml 写入失败（清点 " + expectedNodes + " 条，实际删除 0 条）",
+            abort(ctx, "nodes", "nodes.yml write failed (counted " + expectedNodes + ", removed 0)",
                     false, false, onDone);
             return;
         }
@@ -297,7 +297,7 @@ public final class ArenaResetService {
         boolean dataOk = definitions.clearDeploymentData(arenaId);
         if (dataOk) plugin.getLogger().info(LOG + "deployment-cleared arena=" + arenaId);
         if (!dataOk) {
-            abort(ctx, "deployment", "clearDeploymentData 返回 false（竞技场不存在或 arenas.yml 写入失败）",
+            abort(ctx, "deployment", "clearDeploymentData returned false (arena missing or arenas.yml write failed)",
                     true, false, onDone);
             return;
         }
@@ -322,7 +322,7 @@ public final class ArenaResetService {
         if (!worldLoaded) {
             // 世界没加载就动不了方块：保持 DISABLED，等世界可用后由管理员重试
             plugin.getLogger().warning(LOG + "aborted arena=" + arenaId
-                    + " step=restore reason=世界未加载，无法回滚 " + pending + " 个方块");
+                    + " step=restore reason=world not loaded, cannot roll back " + pending + " block change(s)");
             finish(ctx, false, true, "restore", true, true, onDone);
             return;
         }
@@ -335,7 +335,7 @@ public final class ArenaResetService {
         if (!accepted) {
             // 世界名空白 / 世界不可用：restoreWithResult 直接返回 false 且不回调，必须自己收尾
             plugin.getLogger().warning(LOG + "aborted arena=" + arenaId
-                    + " step=restore reason=restoreWithResult 拒绝请求（世界名空白或世界不可用）");
+                    + " step=restore reason=restoreWithResult rejected the request (blank world name or world unavailable)");
             finish(ctx, false, false, "restore", true, true, onDone);
         }
     }
@@ -409,7 +409,7 @@ public final class ArenaResetService {
     private ReinstateSkip reinstate(ResetCtx ctx) {
         if (!ctx.wasReady()) {
             plugin.getLogger().info(LOG + "reinstate-skipped arena=" + ctx.arenaId()
-                    + " reason=NOT_READY_BEFORE 重置前没有活动实例，无需重新启用");
+                    + " reason=NOT_READY_BEFORE no active instance before the reset, nothing to re-enable");
             return ReinstateSkip.NOT_READY_BEFORE;
         }
 
@@ -419,23 +419,23 @@ public final class ArenaResetService {
             if (fresh == null) {
                 // 定义在重置过程中被外部删除：不该发生，按「本该成功却被拒」处理
                 plugin.getLogger().warning(LOG + "reinstate-rejected arena=" + ctx.arenaId()
-                        + " reason=ENABLE_REJECTED 竞技场定义已不存在");
+                        + " reason=ENABLE_REJECTED the arena definition no longer exists");
                 return ReinstateSkip.ENABLE_REJECTED;
             }
             if (fresh.getCore() == null) {
                 plugin.getLogger().info(LOG + "reinstate-skipped arena=" + ctx.arenaId()
-                        + " reason=MISSING_CORE 核心坐标已清空，需重新部署后再启用");
+                        + " reason=MISSING_CORE core location cleared, redeploy before enabling");
                 return ReinstateSkip.MISSING_CORE;
             }
             if (!fresh.isEnabled()) {
                 plugin.getLogger().info(LOG + "reinstate-skipped arena=" + ctx.arenaId()
-                        + " reason=CONFIG_DISABLED 配置中该竞技场为 enabled: false");
+                        + " reason=CONFIG_DISABLED the arena is enabled: false in the config");
                 return ReinstateSkip.CONFIG_DISABLED;
             }
             if (multi.enableArena(ctx.arenaId())) return null;
 
             plugin.getLogger().warning(LOG + "reinstate-rejected arena=" + ctx.arenaId()
-                    + " reason=ENABLE_REJECTED enableArena 返回 false（核心与 enabled 均正常）");
+                    + " reason=ENABLE_REJECTED enableArena returned false (core and enabled are both fine)");
             return ReinstateSkip.ENABLE_REJECTED;
         } catch (RuntimeException exception) {
             plugin.getLogger().log(Level.SEVERE, LOG + "reinstate-failed arena=" + ctx.arenaId(), exception);

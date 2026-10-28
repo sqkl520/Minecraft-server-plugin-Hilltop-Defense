@@ -99,13 +99,13 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         try {
             this.playerGoodsManager = new PlayerGoodsManager(this);
         } catch (Throwable t) {
-            getLogger().log(Level.SEVERE, "PlayerGoodsManager 初始化失败（物品快照功能将被禁用）", t);
+            getLogger().log(Level.SEVERE, "Failed to initialize PlayerGoodsManager (item snapshot feature will be disabled)", t);
             this.playerGoodsManager = null;
         }
         try {
             this.statsManager = new StatsManager(this);
         } catch (Throwable t) {
-            getLogger().log(Level.SEVERE, "StatsManager 初始化失败（统计功能将被禁用）", t);
+            getLogger().log(Level.SEVERE, "Failed to initialize StatsManager (statistics will be disabled)", t);
             this.statsManager = null;
         }
         this.mapRestoreManager = new MapRestoreManager(this);
@@ -121,7 +121,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         if (this.multiArenaManager.isAutoStartArenas()) {
             this.multiArenaManager.enableAllConfiguredArenas();
         } else {
-            getLogger().info("arenas.yml settings.auto-start-arenas=false，跳过自动启用竞技场");
+            getLogger().info("arenas.yml settings.auto-start-arenas is false, skipping automatic arena enable");
         }
 
         // Initialize arena management services（竞技场管理 GUI 的共享服务）
@@ -207,7 +207,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 fireballListener.shutdown();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "停止烈焰蛋任务失败（继续禁用流程）", exception);
+                getLogger().log(Level.SEVERE, "Failed to stop the Fireball task (continuing the disable sequence)", exception);
             }
         }
 
@@ -223,14 +223,14 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 arenaResetService.shutdown();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "清理竞技场重置服务失败（继续禁用流程）", exception);
+                getLogger().log(Level.SEVERE, "Failed to shut down the arena reset service (continuing the disable sequence)", exception);
             }
         }
         if (locationParticlePreview != null) {
             try {
                 locationParticlePreview.stopAll();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "停止坐标粒子预览任务失败（继续禁用流程）", exception);
+                getLogger().log(Level.WARNING, "Failed to stop the coordinate particle preview task (continuing the disable sequence)", exception);
             }
         }
 
@@ -244,12 +244,12 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 multiArenaManager.shutdown();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "停止竞技场管理器失败（继续禁用流程）", exception);
+                getLogger().log(Level.SEVERE, "Failed to shut down the multi-arena manager (continuing the disable sequence)", exception);
             }
             try {
                 multiArenaManager.stopAllArenasNow();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "同步停止竞技场失败（继续禁用流程）", exception);
+                getLogger().log(Level.SEVERE, "Failed to stop all arenas synchronously (continuing the disable sequence)", exception);
             }
         }
 
@@ -258,7 +258,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 mapRestoreManager.restoreAllNow();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "禁用阶段地图回滚失败", exception);
+                getLogger().log(Level.SEVERE, "Map rollback failed during the disable sequence", exception);
             }
         }
 
@@ -267,7 +267,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 shopManager.getNpcManager().despawnNpc();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "大厅商店 NPC 清理失败（继续禁用流程）", exception);
+                getLogger().log(Level.SEVERE, "Failed to clean up the lobby shop NPC (continuing the disable sequence)", exception);
             }
         }
 
@@ -276,7 +276,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 villagerPreviewManager.clearAll();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "村民预览实体清理失败（继续禁用流程）", exception);
+                getLogger().log(Level.WARNING, "Failed to clean up villager preview entities (continuing the disable sequence)", exception);
             }
         }
 
@@ -285,7 +285,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 statsManager.saveNow();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "统计落盘失败", exception);
+                getLogger().log(Level.SEVERE, "Failed to save statistics", exception);
             }
         }
 
@@ -297,7 +297,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 playerGoodsManager.saveNow();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "物品快照落盘失败", exception);
+                getLogger().log(Level.SEVERE, "Failed to save item snapshots", exception);
             }
         }
 
@@ -506,7 +506,7 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
             try {
                 playerGoodsManager.saveNow();
             } catch (RuntimeException exception) {
-                getLogger().log(Level.SEVERE, "玩家退出时物品快照落盘失败", exception);
+                getLogger().log(Level.SEVERE, "Failed to save item snapshots on player quit", exception);
             }
         }
 

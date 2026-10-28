@@ -262,9 +262,9 @@ public class StatsManager {
             // fix5 M-12：隔离结果决定日志措辞——原实现在隔离可能失败时仍无条件宣称
             // “已重命名为 .corrupt”，与紧随的失败 warning 自相矛盾。
             boolean quarantined = quarantineCorruptFile();
-            plugin.getLogger().log(Level.SEVERE, FILE_NAME + " 解析失败，"
-                    + (quarantined ? "已重命名为 " + FILE_NAME + ".corrupt" : "隔离失败（原文件保留）")
-                    + "并跳过加载（本次以空统计启动）", exception);
+            plugin.getLogger().log(Level.SEVERE, FILE_NAME + " could not be parsed, "
+                    + (quarantined ? "renamed to " + FILE_NAME + ".corrupt" : "quarantine failed (original file kept)")
+                    + "; skipping load (starting with empty statistics)", exception);
             dirty = false;
             return;
         }
@@ -299,13 +299,13 @@ public class StatsManager {
                 cache.put(uuid, stats);
                 loaded++;
             } catch (Exception exception) {
-                plugin.getLogger().log(Level.WARNING, "跳过损坏的统计记录: " + key, exception);
+                plugin.getLogger().log(Level.WARNING, "Skipping damaged statistics record: " + key, exception);
             }
         }
 
         dirty = false;
         if (loaded > 0) {
-            plugin.getLogger().info("已加载 " + loaded + " 条玩家统计记录");
+            plugin.getLogger().info("Loaded " + loaded + " player statistics record(s)");
         }
     }
 
@@ -323,11 +323,11 @@ public class StatsManager {
         File corrupt = new File(statsFile.getParentFile(), statsFile.getName() + ".corrupt");
         try {
             Files.move(statsFile.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            plugin.getLogger().warning("损坏的 " + FILE_NAME + " 已重命名为 " + corrupt.getName());
+            plugin.getLogger().warning("Damaged " + FILE_NAME + " renamed to " + corrupt.getName());
             return true;
         } catch (IOException moveException) {
-            plugin.getLogger().warning("无法隔离损坏的 " + FILE_NAME + "（" + moveException.getMessage()
-                    + "），本次跳过加载；下次写盘会原子替换该文件");
+            plugin.getLogger().warning("Failed to quarantine damaged " + FILE_NAME + " (" + moveException.getMessage()
+                    + "); skipping load, the next save will replace the file atomically");
             return false;
         }
     }
@@ -443,7 +443,7 @@ public class StatsManager {
             // 而清脏标记若发生在这里，会吞掉「快照构建完成之后、写入完成之前」
             // 这段时间内主线程新产生的改动，导致那批数据永远不落盘。
             dirty = true;
-            plugin.getLogger().log(Level.SEVERE, "无法保存 " + FILE_NAME, exception);
+            plugin.getLogger().log(Level.SEVERE, "Failed to save " + FILE_NAME, exception);
         } finally {
             // 写失败时清掉可能残留的临时文件，避免目录里堆积垃圾
             if (tmp.exists() && !tmp.delete()) {

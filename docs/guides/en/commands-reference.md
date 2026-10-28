@@ -17,7 +17,7 @@
 | `/hilltop leave` | Leave the current arena | ❌ |
 | `/hilltop gui` | Open the arena selection menu (with status and player counts) | ❌ |
 | `/hilltop lobby` | Return to the lobby (sub-command `setspawn`: run it while standing in the lobby world to set the lobby spawn to your current position, effective immediately — Admin) | ❌ |
-| `/hilltop status [arena]` | View game status (wave/players/mobs/nodes/awaiting respawn) | ✅ |
+| `/hilltop status [arena]` | View game status (arena/wave/players in arena/mobs/nodes/awaiting respawn) | ✅ |
 | `/hilltop stats [player]` | View your own or someone else's stats | ✅ (with a player name) |
 | `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths/crystals) | ✅ |
 | `/hilltop hammer` | Get the Sacred Hammer (Admin; players buy from the shop) | ❌ |
@@ -39,7 +39,7 @@
 | `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) | ✅ |
 | `/hilltop shop reload` | Reload villager shop config (Admin) | ✅ |
 | `/hilltop shop give <player> [amount]` | Give shop currency (Energy Crystals; default 1, max 6400) to an online player (Admin; works in any world, including the lobby) | ✅ |
-| `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) | ❌ |
+| `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance; **lobby world only** — arena changes are handled by map rollback, build mode does not affect arenas) | ❌ |
 | `/hilltop tps` | TPS/MSPT diagnostics (Admin) | ✅ |
 
 ## Deploy Sub-commands (`/hilltop deploy`)

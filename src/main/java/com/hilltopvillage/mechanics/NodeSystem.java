@@ -275,7 +275,7 @@ public class NodeSystem {
         invalidateAndClearNodes();
         if (arenaWorlds.isEmpty()) {
             gameManager.getPlugin().getLogger().warning(
-                    "无法确定本竞技场的世界（世界未加载且无已注册节点），nodes.yml 中的旧节点条目已保留");
+                    "Cannot determine this arena's world (world not loaded and no registered nodes); existing node entries in nodes.yml were kept");
         }
         saveNodesToConfig(arenaWorlds);
         return removed;
@@ -485,7 +485,7 @@ public class NodeSystem {
             return true;
         } catch (IOException exception) {
             Bukkit.getLogger().log(java.util.logging.Level.SEVERE,
-                    "保存 nodes.yml 失败: " + exception.getMessage(), exception);
+                    "[HilltopVillage] Failed to save nodes.yml: " + exception.getMessage(), exception);
             return false;
         }
     }

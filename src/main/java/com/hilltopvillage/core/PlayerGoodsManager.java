@@ -250,9 +250,9 @@ public final class PlayerGoodsManager {
             // fix5 M-12：隔离结果决定日志措辞——原实现在隔离可能失败时仍无条件宣称
             // “已重命名为 .corrupt”，与紧随的失败 warning 自相矛盾。
             boolean quarantined = quarantineCorruptFile();
-            plugin.getLogger().log(Level.SEVERE, FILE_NAME + " 解析失败，"
-                    + (quarantined ? "已重命名为 " + FILE_NAME + ".corrupt" : "隔离失败（原文件保留）")
-                    + "并跳过加载（本次以空快照启动）", exception);
+            plugin.getLogger().log(Level.SEVERE, FILE_NAME + " could not be parsed, "
+                    + (quarantined ? "renamed to " + FILE_NAME + ".corrupt" : "quarantine failed (original file kept)")
+                    + "; skipping load (starting with an empty snapshot set)", exception);
             return;
         }
         ConfigurationSection root = yaml.getConfigurationSection("players");
@@ -292,12 +292,12 @@ public final class PlayerGoodsManager {
                 goods.put(uuid, snapshot);
                 loaded++;
             } catch (Exception exception) {
-                plugin.getLogger().log(Level.WARNING, "跳过损坏的物品快照: " + key, exception);
+                plugin.getLogger().log(Level.WARNING, "Skipping damaged item snapshot: " + key, exception);
             }
         }
 
         if (loaded > 0) {
-            plugin.getLogger().info("已从 " + FILE_NAME + " 恢复 " + loaded + " 份未归还的玩家物品快照");
+            plugin.getLogger().info("Restored " + loaded + " unreturned player item snapshot(s) from " + FILE_NAME);
         }
     }
 
@@ -315,11 +315,11 @@ public final class PlayerGoodsManager {
         File corrupt = new File(goodsFile.getParentFile(), goodsFile.getName() + ".corrupt");
         try {
             Files.move(goodsFile.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
-            plugin.getLogger().warning("损坏的 " + FILE_NAME + " 已重命名为 " + corrupt.getName());
+            plugin.getLogger().warning("Damaged " + FILE_NAME + " renamed to " + corrupt.getName());
             return true;
         } catch (IOException moveException) {
-            plugin.getLogger().warning("无法隔离损坏的 " + FILE_NAME + "（" + moveException.getMessage()
-                    + "），本次跳过加载；下次写盘会原子替换该文件");
+            plugin.getLogger().warning("Failed to quarantine damaged " + FILE_NAME + " (" + moveException.getMessage()
+                    + "); skipping load, the next save will replace the file atomically");
             return false;
         }
     }
@@ -402,7 +402,7 @@ public final class PlayerGoodsManager {
                 Files.move(tmp.toPath(), goodsFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException exception) {
-            plugin.getLogger().log(Level.SEVERE, "无法保存 " + FILE_NAME, exception);
+            plugin.getLogger().log(Level.SEVERE, "Failed to save " + FILE_NAME, exception);
         } finally {
             // 写失败时清掉可能残留的临时文件，避免目录里堆积垃圾
             if (tmp.exists() && !tmp.delete()) {

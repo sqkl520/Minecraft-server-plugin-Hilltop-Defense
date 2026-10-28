@@ -147,7 +147,7 @@ public class HammerListener implements Listener {
                 }
             }
         } catch (Exception ignored) {
-            plugin.getLogger().warning("ItemsAdder \u672a\u5b89\u88c5\u6216\u65e0\u6cd5\u83b7\u53d6\u7269\u54c1: " + itemId);
+            plugin.getLogger().warning("ItemsAdder is not installed or the item could not be fetched: " + itemId);
         }
         return null;
     }

@@ -76,9 +76,9 @@ public class NpcManager {
                 && !previous.getWorld().equals(location.getWorld())) {
             ArenaInstance previousArena = liveArenaByWorld(previous.getWorld().getName());
             if (previousArena != null && isGameInProgress(previousArena.getState())) {
-                plugin.getLogger().warning("拒绝迁移商店 NPC：当前实体位于 " + previous.getWorld().getName()
-                        + "（竞技场 " + previousArena.getArenaId() + " 正在对局中），目标世界 "
-                        + location.getWorld().getName() + "；请先对该竞技场执行 /hilltop stop 再重试");
+                plugin.getLogger().warning("Refusing to move the shop NPC: the entity is in " + previous.getWorld().getName()
+                        + " (arena " + previousArena.getArenaId() + " has a match in progress) and the target world is "
+                        + location.getWorld().getName() + "; run /hilltop stop for that arena first");
                 return false;
             }
         }
@@ -296,13 +296,12 @@ public class NpcManager {
         if (target == null) return;
 
         if (configured > 1) {
-            plugin.getLogger().warning("有 " + configured + " 个竞技场配置了商店 NPC 位置，"
-                    + "但商店 NPC 是插件级单例，仅生成竞技场 " + target.getId() + " 的位置");
+            plugin.getLogger().warning(configured + " arena(s) have a shop NPC location but the shop NPC is a plugin-wide singleton; only the location for arena " + target.getId() + " is used");
         }
         if (spawnNpc(location)) {
             plugin.getLogger().info("Shop NPC respawned for arena " + target.getId());
         } else {
-            plugin.getLogger().warning("Shop NPC 生成失败（坐标 / 世界无效），arena=" + target.getId());
+            plugin.getLogger().warning("Failed to spawn the shop NPC (invalid location or world), arena=" + target.getId());
         }
     }
 

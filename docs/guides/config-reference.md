@@ -48,7 +48,7 @@ wave-timeout-seconds: 0          # 波次超时保险：默认关闭（0）；�
 defeat-countdown-seconds: 20     # 失败后显示战报到传送回大厅的倒计时
 villager-health: 20.0            # 村民最大生命值（全部阵亡 = 失败）
 rejoin-timeout-seconds: 60       # 掉线重连窗口，0 = 关闭重连
-empty-arena-end-seconds: 60      # 空置自动结束：对局中在线成员为 0 持续此时长后自动结束本局，0 或负数 = 禁用（不推荐）
+empty-arena-end-seconds: 120     # 空置自动结束：对局中在线成员为 0 持续此时长后自动结束本局，0 或负数 = 禁用（不推荐）
 
 map-restore:
   enabled: true                  # 对局结束回滚被破坏/放置的方块

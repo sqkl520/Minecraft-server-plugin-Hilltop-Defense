@@ -152,7 +152,7 @@ public class VillagerPreviewManager implements Listener {
         }
         previews.clear();
         if (removed > 0) {
-            plugin.getLogger().info("村民预览实体清理：已移除 " + removed + " 个残留实体");
+            plugin.getLogger().info("Villager preview cleanup: removed " + removed + " leftover entity(ies)");
         }
     }
 

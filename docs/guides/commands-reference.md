@@ -13,7 +13,7 @@
 | `/hilltop leave` | 退出当前竞技场 | ❌ |
 | `/hilltop lobby` | 返回大厅（子命令 `setspawn`：站在大厅世界内执行，把当前位置设为大厅出生点并立即生效，管理员） | ❌ |
 | `/hilltop gui` | 打开竞技场选择菜单（带状态与人数） | ❌ |
-| `/hilltop status [竞技场]` | 查看游戏状态（波次/玩家/怪物/节点/等待复活） | ✅ |
+| `/hilltop status [竞技场]` | 查看游戏状态（竞技场/波次/场内玩家/怪物/节点/等待复活） | ✅ |
 | `/hilltop stats [玩家名]` | 查看自己或他人的统计 | ✅（带玩家名时） |
 | `/hilltop top <类型>` | 查看排行榜（kills/wins/games/best-wave/nodes/deaths/crystals） | ✅ |
 | `/hilltop hammer` | 获取神圣重锤（管理员；玩家请去商店购买） | ❌ |
@@ -35,7 +35,7 @@
 | `/hilltop reloadconfig` | 重载游戏配置（game-settings.yml + monsters-config.yml + messages.yml）（管理员；arenas.yml 仍需重启） | ✅ |
 | `/hilltop shop reload` | 重载村民商店配置（管理员） | ✅ |
 | `/hilltop shop give <玩家> [数量]` | 给在线玩家发放商店货币（能量水晶，默认 1、上限 6400）（管理员；任何世界均可用，含大厅） | ✅ |
-| `/hilltop build` | 切换大厅建造模式（管理员，用于整修大厅） | ❌ |
+| `/hilltop build` | 切换大厅建造模式（管理员，用于整修大厅；**仅大厅世界**，竞技场改动由地图回滚管理，建造模式不影响竞技场） | ❌ |
 | `/hilltop tps` | TPS/MSPT 诊断（管理员） | ✅ |
 
 ## 部署子命令 (`/hilltop deploy`)

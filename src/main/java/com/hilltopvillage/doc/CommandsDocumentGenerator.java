@@ -73,7 +73,7 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: 无（所有玩家可用）。\n");
         md.append("- **参数**: 可选 `[竞技场]` — 不填时按你所在的场 → 默认场依次解析。\n");
         md.append("- **使用示例**: `/hilltop status`, `/hilltop status arena2`\n");
-        md.append("- **注意事项**: 显示内容包括游戏状态、当前波次、在线玩家数、存活怪物数、能量节点状态等。\n\n");
+        md.append("- **注意事项**: 显示内容包括竞技场、游戏状态、当前波次、场内玩家数、存活怪物数、能量节点状态等。\n\n");
 
         md.append("### `/hilltop stats [玩家名]`\n\n");
         md.append("- **功能**: 查看自己或他人的统计。\n");
@@ -416,9 +416,9 @@ public class CommandsDocumentGenerator {
                     docFile.getParentFile().mkdirs();
                 }
                 java.nio.file.Files.write(docFile.toPath(), content.getBytes(StandardCharsets.UTF_8));
-                plugin.getLogger().info("命令文档已生成: " + docFile.getAbsolutePath());
+                plugin.getLogger().info("Command reference generated: " + docFile.getAbsolutePath());
             } catch (IOException e) {
-                plugin.getLogger().severe("无法生成命令文档 commands.md: " + e.getMessage());
+                plugin.getLogger().warning("Failed to generate the command reference commands.md: " + e.getMessage());
             }
         });
     }

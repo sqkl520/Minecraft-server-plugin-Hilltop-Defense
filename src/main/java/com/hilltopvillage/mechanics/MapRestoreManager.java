@@ -83,13 +83,13 @@ public class MapRestoreManager implements Listener {
             int value = Integer.parseInt(raw.trim());
             if (value <= 0) {
                 Bukkit.getLogger().warning("[HilltopVillage] hilltop.maprestore.blocksPerTick=" + raw
-                        + " 非法（需为正整数），回退到 200");
+                        + " is invalid (expected a positive integer), falling back to 200");
                 return 200;
             }
             return value;
         } catch (NumberFormatException exception) {
             Bukkit.getLogger().warning("[HilltopVillage] hilltop.maprestore.blocksPerTick=" + raw
-                    + " 不是数字，回退到 200");
+                    + " is not a number, falling back to 200");
             return 200;
         }
     }
@@ -104,6 +104,19 @@ public class MapRestoreManager implements Listener {
      * 这比整个服务器 OOM 要好。</p>
      */
     private static final int MAX_JOURNAL_ENTRIES_PER_WORLD = 1_000_000;
+
+    /**
+     * 每 tick 最多打印的「逐方块回滚失败」明细条数，超出部分只计数。
+     *
+     * <p>取值理由：回滚是每 tick {@link #BLOCKS_PER_TICK} 块的批处理，若区块持续失败，
+     * 逐块 warning 一 tick 就能刷出 200 行，把真正有用的汇总挤出视野；但整段降到
+     * {@code fine} 又会丢失定位能力——{@link #complete(RestoreOperation)} 的汇总只打
+     * 「N 个方块失败」+ 世界名，不含坐标，而失败会让竞技场卡在 ENDING 屏障，服主将
+     * 永远查不到是哪几个方块。因此保留前 5 条明细（同一异常通常成片出现，前几条足以
+     * 看出规律），其余只计数，并在批次（= tick）结束时补一条「本 tick 另有 X 个」汇总，
+     * 既不丢总量也不刷屏。</p>
+     */
+    private static final int MAX_BLOCK_FAILURE_LOGS_PER_TICK = 5;
 
     private final HilltopVillagePlugin plugin;
     /** 世界名 → (方块坐标 → 本局首次改变前的快照) */
@@ -205,6 +218,10 @@ public class MapRestoreManager implements Listener {
          * 而不是让这些方块永久丢失、留下一张半恢复的地图。
          */
         private final List<Map.Entry<BlockPos, OriginalBlock>> failedEntries = new ArrayList<>();
+        /** 本 tick 已打印的逐块失败明细条数（批次起点重置，见 restoreRange）。 */
+        private int tickFailureLogs;
+        /** 本 tick 因超过明细上限而被省略的失败数（批次末尾汇总一次）。 */
+        private int tickFailuresSuppressed;
         private int nextIndex;
         private BukkitTask task;
         private boolean finished;
@@ -327,9 +344,8 @@ public class MapRestoreManager implements Listener {
         // 超限：停止记账并只警告一次，避免无界增长把 3GB 的堆吃光
         if (journal.size() >= MAX_JOURNAL_ENTRIES_PER_WORLD) {
             if (journalOverflowWarned.add(worldName)) {
-                plugin.getLogger().severe("地图回滚日志已达上限 " + MAX_JOURNAL_ENTRIES_PER_WORLD
-                        + "（世界 " + worldName + "），后续方块改动将不再记录；"
-                        + "本局结束时地图回滚将不完整。请检查是否有异常的放水/爆炸刷屏。");
+                plugin.getLogger().severe("Map rollback journal reached its limit of " + MAX_JOURNAL_ENTRIES_PER_WORLD
+                        + " entries for world " + worldName + "; further block changes will not be recorded and the map rollback at the end of this match will be incomplete. Check for unusual flooding/explosion spam.");
             }
             return;
         }
@@ -502,7 +518,7 @@ public class MapRestoreManager implements Listener {
 
         World world = Bukkit.getWorld(worldName);
         if (world == null) {
-            plugin.getLogger().warning("地图回滚无法开始：世界未加载 " + worldName);
+            plugin.getLogger().warning("Map rollback cannot start: world not loaded " + worldName);
             return false;
         }
 
@@ -519,7 +535,7 @@ public class MapRestoreManager implements Listener {
         operation.addCompletionCallback(onComplete);
         activeRestores.put(worldName, operation);
 
-        plugin.getLogger().info("开始回滚 " + worldName + " 的 " + operation.entries.size() + " 个方块改动");
+        plugin.getLogger().info("Starting rollback of " + operation.entries.size() + " block change(s) in " + worldName);
         restoreBatch(operation);
         if (operation.finished) return true;
 
@@ -546,24 +562,48 @@ public class MapRestoreManager implements Listener {
     }
 
     private void restoreRange(RestoreOperation operation, int endExclusive) {
+        // 批次起点即 tick 边界（restoreBatch 每 tick 调用一次）：逐块明细配额随之重置。
+        // 计数挂在 operation 上而不是本类字段上，多竞技场并发回滚时互不干扰。
+        operation.tickFailureLogs = 0;
+        operation.tickFailuresSuppressed = 0;
         while (operation.nextIndex < endExclusive) {
             Map.Entry<BlockPos, OriginalBlock> entry = operation.entries.get(operation.nextIndex++);
-            if (!restoreBlock(operation.world, entry.getKey(), entry.getValue())) {
+            if (!restoreBlock(operation, entry.getKey(), entry.getValue())) {
                 // 保留原始快照，恢复结束时重新入队，使失败可以重试
                 operation.failedEntries.add(entry);
             }
         }
+        logSuppressedBlockFailures(operation);
     }
 
-    private boolean restoreBlock(World world, BlockPos pos, OriginalBlock original) {
+    /**
+     * 批次（tick）结束时补一条汇总，只在确实有被省略的明细时打印。
+     *
+     * <p>{@link #complete(RestoreOperation)} 的汇总只有数量与世界名、没有坐标，
+     * 因此这条「本 tick 另有 X 个」是服主确认刷屏幅度、并与前 5 条明细对账的唯一依据。</p>
+     */
+    private void logSuppressedBlockFailures(RestoreOperation operation) {
+        if (operation.tickFailuresSuppressed <= 0) return;
+        plugin.getLogger().warning("Map rollback: " + operation.tickFailuresSuppressed
+                + " more block failure(s) this tick (details omitted): " + operation.worldName);
+    }
+
+    private boolean restoreBlock(RestoreOperation operation, BlockPos pos, OriginalBlock original) {
         try {
-            Block block = world.getBlockAt(pos.x(), pos.y(), pos.z());
+            Block block = operation.world.getBlockAt(pos.x(), pos.y(), pos.z());
             // BlockData 保留朝向、上下半部、含水等属性；关闭物理避免连锁改变。
             block.setBlockData(original.blockData().clone(), false);
             return original.tileState() == null || original.tileState().update(true, false);
         } catch (RuntimeException exception) {
-            plugin.getLogger().warning("地图回滚方块失败 " + world.getName() + " ["
-                    + pos.x() + "," + pos.y() + "," + pos.z() + "]: " + exception.getMessage());
+            // 逐块明细保留坐标（complete() 的汇总不含坐标，降级会失去定位能力），
+            // 但每 tick 只打前 MAX_BLOCK_FAILURE_LOGS_PER_TICK 条，其余由批次尾部汇总。
+            if (operation.tickFailureLogs < MAX_BLOCK_FAILURE_LOGS_PER_TICK) {
+                operation.tickFailureLogs++;
+                plugin.getLogger().warning("Failed to roll back block at " + operation.world.getName() + " ["
+                        + pos.x() + "," + pos.y() + "," + pos.z() + "]: " + exception.getMessage());
+            } else {
+                operation.tickFailuresSuppressed++;
+            }
             return false;
         }
     }
@@ -611,12 +651,12 @@ public class MapRestoreManager implements Listener {
         int failedBlocks = operation.failedEntries.size();
         if (failedBlocks > 0) {
             boolean requeued = requeueFailedBlocks(operation);
-            plugin.getLogger().warning("地图回滚完成但有 " + failedBlocks + " 个方块失败"
-                    + (requeued ? "（原始快照已重新入队，可再次回滚补救）" : "（重新入队失败）")
-                    + "：" + operation.worldName);
+            plugin.getLogger().warning("Map rollback finished with " + failedBlocks + " failed block(s) "
+                    + (requeued ? "(original snapshots re-queued; they will be retried on the next rollback of this world)" : "(re-queue failed)")
+                    + ": " + operation.worldName);
         } else {
-            plugin.getLogger().info("地图回滚完成：" + operation.worldName
-                    + " 共 " + operation.entries.size() + " 个方块");
+            plugin.getLogger().info("Map rollback finished: " + operation.entries.size()
+                    + " block(s) in " + operation.worldName);
         }
 
         List<Consumer<Boolean>> callbacks = new ArrayList<>(operation.completionCallbacks);
@@ -654,7 +694,7 @@ public class MapRestoreManager implements Listener {
             callback.accept(success);
         } catch (RuntimeException exception) {
             plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "地图回滚完成回调失败：" + worldName, exception);
+                    "Map rollback completion callback failed: " + worldName, exception);
         }
     }
 

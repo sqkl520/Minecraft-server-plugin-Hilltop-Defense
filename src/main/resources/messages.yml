@@ -31,7 +31,7 @@ en:
   wave-skip-broadcast: "&6An admin skipped the intermission — wave &6{0} &6is starting now!"
   game-victory: "&6All waves survived! &aVICTORY!"
   game-defeat: "&cAll players have fallen. &4DEFEAT!"
-  game-start-need-players: "&cCannot start: &f{0}&c/&f{1}&c players. More players needed (edit &earenas.yml&c game.min-players, or &e/hilltop config&c for arenas without an explicit value)."
+  game-start-need-players: "&cCannot start: &f{0}&c/&f{1}&c players in the arena. Players must &e/hilltop join&c first (players in the lobby are not counted); change the minimum via &earenas.yml&c game.min-players, or &e/hilltop config&c for arenas without an explicit value."
   game-start-already-running: "&cA game is already in progress. Use /hilltop stop first."
   game-start-restoring: "&cArena &f{0} &cis restoring its map right now (or the last restore failed and needs a check). Please wait a moment; if it persists, check the console log."
 
@@ -134,6 +134,7 @@ en:
   lobby-protected: "&cThe lobby is protected — you cannot do that here."
   build-mode-on: "&aBuild mode &lON &7— you can now build in the lobby."
   build-mode-off: "&7Build mode &lOFF &7— lobby protection restored."
+  build.not-in-lobby: "&cBuild mode only applies to the lobby world (&f{0}&c). You are not in it."
 
   # === 记分板侧边栏 ===
   scoreboard.title: "&6&lHilltop Village"
@@ -206,9 +207,11 @@ en:
 
   # === 游戏状态显示 ===
   status-header: "&6=== Hilltop Village Status ==="
+  status-arena: "&rArena: &f{0}{1}"
+  status-arena-default: " &8(default)"
   status-state: "&rState: &f{0}"
   status-wave: "&rWave: &f{0}"
-  status-players: "&rPlayers: &f{0}"
+  status-players: "&rPlayers in arena: &f{0}"
   status-mobs: "&rActive Mobs: &f{0}"
   status-nodes: "&rActive Nodes: &f{0}/{1}"
   status-spectators: "&rAwaiting respawn: &f{0}"
@@ -302,8 +305,8 @@ en:
   setup.step2: "&6[&e{0}/{1}&6] &fStand on the village core and click confirm"
   setup.step3: "&6[&e{0}/{1}&6] &fThis step deploys two independent sets of coordinates: &a① player spawns&f — where players are teleported when a game starts (respawns use the core from Step 2); &c② mob spawn points&f — where monsters spawn. At least &e1 of each&f is required."
   setup.step3-mobspawns: "&6[&e{0}/{1}&6] &fHow: stand at a spawn spot and click &e[Add Current Location]&f; stand at a mob spot and click &e[Add Mob Spawn]&f. With both sets ready, click &b[Open Spawn Points Overview]&f — the hub shows the count/status of both sets, lets you open the two sub-manager GUIs to review/delete, and carries the single &a[Done]&f button that advances to the next step; to leave early click &7[Save & Back to Lobby]&f — progress is kept."
-  setup.step4-nodes: "&6[&e{0}/{1}&6] &fEnergy nodes = respawn anchor blocks. Place respawn anchors in the map first, then stand next to a node block and click &a[Add Node]&f (or use the manager GUI) — nodes are registered &emanually&f, there is no auto-detect. &eAt least 1 node is required:&f with 0 nodes, the first player death fails the whole team instantly and nobody can be revived (revival needs an active node to repair)."
-  setup.nodes-required: "&cYou need at least 1 registered energy node before continuing — with 0 nodes, the first player death fails the whole team instantly and revival is impossible (there is nothing to repair). Stand next to a respawn anchor and click &e[Add Node]&c."
+  setup.step4-nodes: "&6[&e{0}/{1}&6] &fEnergy nodes = respawn anchor blocks. Place respawn anchors in the map first, then stand next to a node block and click &a[Add Node]&f (or use the manager GUI) — nodes are registered &emanually&f, there is no auto-detect. &eAt least 1 node is required:&f with 0 nodes nobody can be revived (revival needs an active node to repair), and the match is lost the moment the last living player dies."
+  setup.nodes-required: "&cYou need at least 1 registered energy node before continuing — with 0 nodes nobody can be revived, and the team loses as soon as the last living player dies (there is nothing to repair). Stand next to a respawn anchor and click &e[Add Node]&c."
   setup.node-entry: "&eNode #{0}"
   setup.node-entry-lore-world: "&7World: &f{0}"
   setup.node-entry-lore-coord: "&7Coords: &f{0}, {1}, {2}"
@@ -1166,6 +1169,7 @@ zh:
   lobby-protected: "&c大厅受到保护 —— 你不能在这里这样做。"
   build-mode-on: "&a建造模式 &l已开启 &7—— 你现在可以在大厅建造。"
   build-mode-off: "&7建造模式 &l已关闭 &7—— 大厅保护已恢复。"
+  build.not-in-lobby: "&c建造模式只对大厅世界（&f{0}&c）生效，你当前不在该世界。"
 
   # === 记分板侧边栏 ===
   scoreboard.title: "&6&l村民守卫战"
@@ -1249,15 +1253,17 @@ zh:
   wave-skip-broadcast: "&6管理员跳过了休整期 — 第 &6{0} &6波现在开始！"
   game-victory: "&6所有波次均已通过！&a胜利！"
   game-defeat: "&c所有玩家已阵亡。&4失败！"
-  game-start-need-players: "&c无法开始游戏：当前 &f{0}&c/&f{1}&c 名玩家。需要更多玩家加入（请改 &earenas.yml&c 的 game.min-players；未显式配置的竞技场才走 &e/hilltop config&c 的全局值）。"
+  game-start-need-players: "&c无法开始游戏：当前场内 &f{0}&c/&f{1}&c 名玩家。玩家需先 &e/hilltop join&c 进入竞技场（大厅里的人不计入）；人数下限改 &earenas.yml&c 的 game.min-players，未显式配置的场才走 &e/hilltop config&c 的全局值。"
   game-start-already-running: "&c游戏已在进行中。请先使用 /hilltop stop 结束当前游戏。"
   game-start-restoring: "&c竞技场 &f{0} &c正在回滚地图（若长时间无变化，可能是上次回滚失败需排查控制台日志）。"
 
   # === 游戏状态显示 ===
   status-header: "&6=== 村民守卫战 状态 ==="
+  status-arena: "&r竞技场: &f{0}{1}"
+  status-arena-default: " &8（默认）"
   status-state: "&r状态: &f{0}"
   status-wave: "&r波次: &f{0}"
-  status-players: "&r在线玩家: &f{0}"
+  status-players: "&r场内玩家: &f{0}"
   status-mobs: "&r存活怪物: &f{0}"
   status-nodes: "&r活跃节点: &f{0}/{1}"
   status-spectators: "&r等待复活: &f{0}"
@@ -1351,8 +1357,8 @@ zh:
   setup.step2: "&6[&e{0}/{1}&6] &f站在村庄核心位置，点击确认"
   setup.step3: "&6[&e{0}/{1}&6] &f本步要部署两套独立坐标：&a① 玩家出生点&f —— 开局时玩家被传送到的位置（阵亡复活用第 2 步的核心，不是这里）；&c② 怪物刷怪点&f —— 怪物出生的位置。两套各需 &e≥1 个&f。"
   setup.step3-mobspawns: "&6[&e{0}/{1}&6] &f做法：走到出生点位置点击 &e[添加当前位置]&f；走到刷怪点位置点击 &e[添加刷怪点]&f。两套点都配好后点 &b[打开生成点总览]&f —— 总览里显示两套点的计数与状态、可进入两个子管理界面查看/删除，并在此点击唯一的 &a[完成]&f 进入下一步；想中途退出点击 &7[保存并返回大厅]&f，进度不会丢。"
-  setup.step4-nodes: "&6[&e{0}/{1}&6] &f能量节点 = 重生锚方块。先在地图上放置重生锚，然后站在节点方块旁边点击 &a[添加节点]&f（或打开管理GUI）——节点必须&e手动注册&f，没有自动识别。&e至少注册 1 个：&f0 节点的场里，任意一名玩家阵亡都会立即导致全队判负，且所有人无法复活（复活需要修复活跃节点）。"
-  setup.nodes-required: "&c继续前必须至少注册 1 个能量节点 —— 0 节点的场任意玩家阵亡会立即判全队失败且无法复活（没有节点可修）。站到重生锚旁边点击 &e[添加节点]&c。"
+  setup.step4-nodes: "&6[&e{0}/{1}&6] &f能量节点 = 重生锚方块。先在地图上放置重生锚，然后站在节点方块旁边点击 &a[添加节点]&f（或打开管理GUI）——节点必须&e手动注册&f，没有自动识别。&e至少注册 1 个：&f0 节点的场里全员无法复活（复活需要修复活跃节点），最后一个存活玩家阵亡时全队判负。"
+  setup.nodes-required: "&c继续前必须至少注册 1 个能量节点 —— 0 节点的场全员无法复活，最后一个存活玩家阵亡时全队判负（没有节点可修）。站到重生锚旁边点击 &e[添加节点]&c。"
   setup.node-entry: "&e节点 #{0}"
   setup.node-entry-lore-world: "&7世界: &f{0}"
   setup.node-entry-lore-coord: "&7坐标: &f{0}, {1}, {2}"

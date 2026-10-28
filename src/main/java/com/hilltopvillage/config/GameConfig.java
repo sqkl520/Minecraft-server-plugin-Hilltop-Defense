@@ -47,7 +47,7 @@ public class GameConfig {
      * 空置自动结束（秒，G3d）：对局进行中（STARTING / RUNNING / WAVE_INTERMISSION）
      * 在线成员为 0 持续此时长后自动走正常结束路径；{@code <=0} 表示禁用。
      */
-    private int emptyArenaEndSeconds = 60;
+    private int emptyArenaEndSeconds = 120;
     /** 是否启用地图恢复（对局结束回滚被破坏/放置的方块） */
     private boolean mapRestoreEnabled = true;
     /** 是否启用记分板侧边栏 */

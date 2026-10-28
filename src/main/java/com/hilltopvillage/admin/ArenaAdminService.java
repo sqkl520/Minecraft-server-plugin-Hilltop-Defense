@@ -695,7 +695,7 @@ public final class ArenaAdminService {
         try {
             yaml.save(file);
         } catch (IOException exception) {
-            plugin.getLogger().severe("写入 arenas.yml 失败（" + path + "）: " + exception.getMessage());
+            plugin.getLogger().severe("Failed to write arenas.yml (" + path + "): " + exception.getMessage());
             return false;
         }
         // 本类改的是磁盘，而每个已启用竞技场的 AdminDeployManager 在构造时缓存了整份 arenas.yml 副本，

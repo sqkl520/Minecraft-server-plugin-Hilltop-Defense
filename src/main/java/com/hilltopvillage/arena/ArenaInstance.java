@@ -1060,7 +1060,7 @@ public class ArenaInstance implements IArena {
                 }
                 emptyArenaSeconds++;
                 if (emptyArenaSeconds >= limit) {
-                    plugin.getLogger().info("竞技场 " + arenaId + " 空置 " + limit + "s，自动结束本局");
+                    plugin.getLogger().info("Arena " + arenaId + " empty for " + limit + "s, ending the match automatically");
                     // 沿用既有「全员退光」语义：stopGame()（其内部会取消本任务句柄）
                     stopGame();
                 }
@@ -1242,8 +1242,9 @@ public class ArenaInstance implements IArena {
             } catch (Throwable t) {
                 // 任何单玩家补录异常都不得阻断后续的 restoreWithResult——
                 // 否则 restoreStarted 无复位、ENDING 硬屏障卡死（fix5 M-02）
-                plugin.getLogger().warning("Arena " + arenaId + " reset 补录玩家 " + uuid
-                        + " 统计失败（已跳过）：" + t);
+                // 战绩补录失败 = 该玩家的本局数据永久丢失（无法重试），按 severe 记录
+                plugin.getLogger().severe("Arena " + arenaId + " reset: failed to backfill stats for player " + uuid
+                        + " (skipped): " + t);
             }
             // 同步清掉「玩家 → 竞技场」映射（L06-04 / P2-11 同一收口）：残留映射会让下次
             // 登录的 isInArena 判定为 true，推迟物品快照归还
@@ -1273,15 +1274,20 @@ public class ArenaInstance implements IArena {
                     } else {
                         restoreStarted = false;
                         resetScheduled = false;
-                        plugin.getLogger().severe("Arena " + arenaId
-                                + " reset blocked: map restoration completed with failed blocks");
+                        // 可重试的回滚失败（失败方块已重新入队，下一次 reset 会再回滚）：
+                        // 不是数据损坏，按 warning 记录
+                        plugin.getLogger().warning("Arena " + arenaId
+                                + " reset blocked: map rollback finished with failed blocks; the arena stays in ENDING"
+                                + " — run /hilltop disable " + arenaId + " then /hilltop enable " + arenaId
+                                + " to roll it back again");
                     }
                 });
         if (!accepted) {
             restoreStarted = false;
             resetScheduled = false;
             plugin.getLogger().warning("Arena " + arenaId
-                    + " reset blocked: map restoration could not start");
+                    + " reset blocked: map rollback could not start; the arena stays in ENDING"
+                    + " — run /hilltop disable " + arenaId + " then /hilltop enable " + arenaId + " to retry");
         }
     }
 
@@ -1343,7 +1349,7 @@ public class ArenaInstance implements IArena {
             removed++;
         }
         if (removed > 0) {
-            plugin.getLogger().info("已清理 " + removed + " 个残留掉落物 (竞技场 " + arenaId + ")");
+            plugin.getLogger().info("Cleaned up " + removed + " leftover dropped item(s) (arena " + arenaId + ")");
         }
     }
 

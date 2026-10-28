@@ -318,11 +318,11 @@ public class AdminDeployManager {
         try {
             arenasConfig.save(arenasFile);
         } catch (IOException e) {
-            plugin.getLogger().severe("迁移商店 NPC 位置到 arenas.yml 失败: " + e.getMessage());
+            plugin.getLogger().severe("Failed to migrate the shop NPC location to arenas.yml: " + e.getMessage());
             return legacy;
         }
-        plugin.getLogger().warning("已将旧的全局商店 NPC 位置迁移到竞技场 " + arenaId
-                + "（arenas.yml 的 " + path + "）；spawnpoints.yml 的 shop-npc 键保留未删除");
+        plugin.getLogger().warning("Migrated the legacy global shop NPC location to arena " + arenaId
+                + " (arenas.yml " + path + "); the shop-npc key in spawnpoints.yml was kept");
         return legacy;
     }
 
@@ -331,12 +331,12 @@ public class AdminDeployManager {
         if (section == null) return null;
         // 必须用 isSet 判断：getDouble 对缺失的键返回 0.0，会把损坏的节点当成 (0, 0, 0) 生成 NPC
         if (!section.isSet("x") || !section.isSet("y") || !section.isSet("z")) {
-            plugin.getLogger().warning("商店 NPC 位置坐标缺失，已忽略: " + path);
+            plugin.getLogger().warning("Shop NPC location is missing coordinates, ignored: " + path);
             return null;
         }
         double x = section.getDouble("x"), y = section.getDouble("y"), z = section.getDouble("z");
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
-            plugin.getLogger().warning("商店 NPC 位置坐标无效，已忽略: " + path);
+            plugin.getLogger().warning("Shop NPC location has invalid coordinates, ignored: " + path);
             return null;
         }
         float yaw = (float) section.getDouble("yaw"), pitch = (float) section.getDouble("pitch");
@@ -503,12 +503,12 @@ public class AdminDeployManager {
     /** 异世界坐标被拒收时的日志行（世界名 + 坐标，便于排障） */
     private void logRejectedLocation(String kind, Location location) {
         World arenaWorld = gameManager.getGameWorld();
-        plugin.getLogger().warning("拒绝登记异世界的" + kind + "（期望世界 "
-                + (arenaWorld != null ? arenaWorld.getName() : "未加载")
-                + "，实际 "
+        plugin.getLogger().warning("Refusing to register " + kind + " from another world (expected world "
+                + (arenaWorld != null ? arenaWorld.getName() : "not loaded")
+                + ", got "
                 + (location != null && location.getWorld() != null ? location.getWorld().getName() : "null")
                 + " @ " + (location != null ? location.getBlockX() + "," + location.getBlockY()
-                        + "," + location.getBlockZ() : "null") + "）");
+                        + "," + location.getBlockZ() : "null") + ")");
     }
 
     /**
@@ -523,7 +523,7 @@ public class AdminDeployManager {
     public void addSpawnPoint(Location location) {
         // M-02 兜底：异世界坐标拒收 + 日志（不落盘）
         if (!isInArenaWorld(location)) {
-            logRejectedLocation("玩家出生点", location);
+            logRejectedLocation("player spawn point", location);
             return;
         }
         // 保存方块坐标（整数），粒子显示时+0.5才是方块正中心
@@ -559,7 +559,7 @@ public class AdminDeployManager {
     public void addMobSpawnPoint(Location location) {
         // M-02 兜底：异世界坐标拒收 + 日志（不落盘）
         if (!isInArenaWorld(location)) {
-            logRejectedLocation("怪物刷怪点", location);
+            logRejectedLocation("mob spawn point", location);
             return;
         }
         // 保存方块坐标（整数），与 addSpawnPoint 同口径
@@ -597,7 +597,7 @@ public class AdminDeployManager {
     /** 登记一个村民位置（保存方块坐标；异世界坐标拒收 + 日志，见 M-02 兜底） */
     public void addVillager(Location location) {
         if (!isInArenaWorld(location)) {
-            logRejectedLocation("村民位置", location);
+            logRejectedLocation("villager location", location);
             return;
         }
         Location blockCenter = new Location(

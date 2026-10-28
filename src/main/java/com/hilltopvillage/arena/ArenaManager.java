@@ -91,9 +91,10 @@ public final class ArenaManager {
         // 提醒管理员该文件可能由更新版插件写过，当前版本可能不认识其中部分内容。
         int schemaVersion = configuration.getInt("schema-version", SCHEMA_VERSION);
         if (schemaVersion > SCHEMA_VERSION) {
-            plugin.getLogger().warning("arenas.yml 的 schema-version 为 " + schemaVersion
-                    + "，高于当前插件支持的 " + SCHEMA_VERSION + "；"
-                    + "该文件可能由更新版本的插件写入，部分内容可能无法识别");
+            plugin.getLogger().warning("arenas.yml schema-version is " + schemaVersion
+                    + ", newer than the " + SCHEMA_VERSION
+                    + " supported by this build;"
+                    + " the file may have been written by a newer version and some entries may not be recognized");
         }
 
         // Paper 默认只加载 level-name 指向的世界；竞技场/大厅世界文件夹存在但未加载时自动加载
@@ -117,9 +118,9 @@ public final class ArenaManager {
                     }
                     String owner = worldOwners.get(normalizeWorldName(definition.getWorldName()));
                     if (owner != null) {
-                        plugin.getLogger().warning("拒绝加载竞技场 " + id + "：世界 " + definition.getWorldName()
-                                + " 已被竞技场 " + owner + " 占用（一个世界只能对应一个竞技场，"
-                                + "共用世界会导致地图回滚互相破坏）");
+                        plugin.getLogger().warning("Refusing to load arena " + id + ": world " + definition.getWorldName()
+                                + " is already owned by arena " + owner + " (one world can only back one arena;"
+                                + " sharing a world would make the two map rollbacks corrupt each other)");
                         continue;
                     }
                     registry.register(definition);
@@ -165,17 +166,17 @@ public final class ArenaManager {
 
             File folder = new File(Bukkit.getWorldContainer(), worldName);
             if (!new File(folder, "level.dat").exists()) {
-                plugin.getLogger().warning("跳过未加载的世界（服务器根目录下不存在该世界文件夹）: " + worldName);
+                plugin.getLogger().warning("Skipping unloaded world (no such world folder under the server root): " + worldName);
                 continue;
             }
 
             try {
                 World world = Bukkit.createWorld(new WorldCreator(worldName));
                 if (world != null) {
-                    plugin.getLogger().info("已自动加载世界: " + worldName);
+                    plugin.getLogger().info("World loaded automatically: " + worldName);
                 }
             } catch (Exception exception) {
-                plugin.getLogger().log(Level.WARNING, "自动加载世界失败: " + worldName, exception);
+                plugin.getLogger().log(Level.WARNING, "Failed to load world automatically: " + worldName, exception);
             }
         }
     }
@@ -290,7 +291,7 @@ public final class ArenaManager {
         try {
             disk.save(arenasFile);
         } catch (IOException exception) {
-            plugin.getLogger().log(Level.WARNING, "写入大厅出生点失败", exception);
+            plugin.getLogger().log(Level.SEVERE, "Failed to save the lobby spawn", exception);
             return false;
         }
 
@@ -303,7 +304,7 @@ public final class ArenaManager {
         configuration.set("lobby.spawn.yaw", (double) location.getYaw());
         configuration.set("lobby.spawn.pitch", (double) location.getPitch());
 
-        plugin.getLogger().info("大厅出生点已更新: " + location.getWorld().getName()
+        plugin.getLogger().info("Lobby spawn updated: " + location.getWorld().getName()
                 + " (" + String.format("%.1f", location.getX()) + ", "
                 + String.format("%.1f", location.getY()) + ", "
                 + String.format("%.1f", location.getZ()) + ")");
@@ -369,7 +370,7 @@ public final class ArenaManager {
             for (int index = 0; index < rawSpawns.size(); index++) {
                 Object raw = rawSpawns.get(index);
                 if (!(raw instanceof Map<?, ?> map)) {
-                    plugin.getLogger().warning("跳过无效生成点 " + id + ".spawn-points." + index);
+                    plugin.getLogger().warning("Skipping invalid spawn point " + id + ".spawn-points." + index);
                     continue;
                 }
                 // 注意：不能用 getConfigurationSection("spawn-points.0")——Bukkit 不支持用路径索引 YAML 列表，
@@ -385,7 +386,7 @@ public final class ArenaManager {
             for (int index = 0; index < rawMobSpawns.size(); index++) {
                 Object raw = rawMobSpawns.get(index);
                 if (!(raw instanceof Map<?, ?> map)) {
-                    plugin.getLogger().warning("跳过无效怪物刷怪点 " + id + ".mob-spawn-points." + index);
+                    plugin.getLogger().warning("Skipping invalid mob spawn point " + id + ".mob-spawn-points." + index);
                     continue;
                 }
                 mobSpawns.add(readLocationFromMap(map, worldName, id + ".mob-spawn-points." + index));
@@ -488,7 +489,7 @@ public final class ArenaManager {
         try {
             return readLocation(section, worldName, path);
         } catch (IllegalArgumentException exception) {
-            plugin.getLogger().warning("忽略损坏的位置节点 " + path + "：" + exception.getMessage());
+            plugin.getLogger().warning("Ignoring damaged location entry " + path + ": " + exception.getMessage());
             return null;
         }
     }
@@ -515,7 +516,7 @@ public final class ArenaManager {
         // 这里也按同样口径匹配 YAML 键，避免大小写不一致导致「重置」静默失败
         String key = findArenaKey(disk, arenaId);
         if (key == null) {
-            plugin.getLogger().warning("清空部署数据失败：arenas.yml 中不存在竞技场 " + arenaId);
+            plugin.getLogger().warning("Failed to clear deployment data: arenas.yml has no arena named " + arenaId);
             return false;
         }
         String path = "arenas." + key;
@@ -539,13 +540,13 @@ public final class ArenaManager {
         try {
             disk.save(arenasFile);
         } catch (IOException exception) {
-            plugin.getLogger().log(Level.WARNING, "清空竞技场部署数据失败: " + arenaId, exception);
+            plugin.getLogger().log(Level.SEVERE, "Failed to clear arena deployment data: " + arenaId, exception);
             return false;
         }
 
         // 重建 registry：内存中的旧定义还带着刚被删掉的 core / spawn-points
         load();
-        plugin.getLogger().info("已清空竞技场部署数据: " + arenaId);
+        plugin.getLogger().info("Cleared arena deployment data: " + arenaId);
         return true;
     }
 
@@ -568,16 +569,16 @@ public final class ArenaManager {
                                     int victoryWaves, int waveIntervalSeconds) {
         if (arenaId == null || arenaId.isBlank()) return false;
         if (!validGameParams(minPlayers, maxPlayers, victoryWaves, waveIntervalSeconds)) {
-            plugin.getLogger().warning("拒绝写入非法的竞技场游戏参数: " + arenaId
-                    + "（人数 " + minPlayers + "-" + maxPlayers + "，波数 " + victoryWaves
-                    + "，间隔 " + waveIntervalSeconds + "）");
+            plugin.getLogger().warning("Refusing to write invalid arena game settings for " + arenaId
+                    + " (players " + minPlayers + "-" + maxPlayers + ", waves " + victoryWaves
+                    + ", interval " + waveIntervalSeconds + "s)");
             return false;
         }
 
         YamlConfiguration disk = YamlConfiguration.loadConfiguration(arenasFile);
         String key = findArenaKey(disk, arenaId);
         if (key == null) {
-            plugin.getLogger().warning("写入游戏参数失败：arenas.yml 中不存在竞技场 " + arenaId);
+            plugin.getLogger().warning("Failed to write game settings: arenas.yml has no arena named " + arenaId);
             return false;
         }
 
@@ -590,15 +591,15 @@ public final class ArenaManager {
         try {
             disk.save(arenasFile);
         } catch (IOException exception) {
-            plugin.getLogger().log(Level.WARNING, "写入竞技场游戏参数失败: " + arenaId, exception);
+            plugin.getLogger().log(Level.SEVERE, "Failed to write arena game settings: " + arenaId, exception);
             return false;
         }
 
         // 重建 registry：内存中的旧定义还带着改之前的 4 个数值
         load();
-        plugin.getLogger().info("已更新竞技场游戏参数: " + arenaId
-                + "（人数 " + minPlayers + "-" + maxPlayers + "，波数 " + victoryWaves
-                + "，间隔 " + waveIntervalSeconds + "s）");
+        plugin.getLogger().info("Updated arena game settings: " + arenaId
+                + " (players " + minPlayers + "-" + maxPlayers + ", waves " + victoryWaves
+                + ", interval " + waveIntervalSeconds + "s)");
         return true;
     }
 

@@ -399,7 +399,7 @@ public class WaveManager {
             removed++;
         }
         if (removed > 0) {
-            gameManager.getPlugin().getLogger().info("已清理 " + removed + " 只残留波次怪 (竞技场 "
+            gameManager.getPlugin().getLogger().info("Cleaned up " + removed + " leftover wave monster(s) (arena "
                     + gameManager.getArenaId() + ")");
         }
         return removed;
@@ -427,7 +427,7 @@ public class WaveManager {
             }
         }
         if (removed > 0) {
-            plugin.getLogger().info("已清理 " + removed + " 只残留波次怪（启动清扫）");
+            plugin.getLogger().info("Cleaned up " + removed + " leftover wave monster(s) (startup sweep)");
         }
         return removed;
     }
@@ -542,8 +542,8 @@ public class WaveManager {
             spawned = world.spawnEntity(location, entityType);
         } catch (Exception e) {
             // 类型不可生成时只跳过这一只怪物，不能让异常冒泡终止整个刷怪任务
-            gameManager.getPlugin().getLogger().warning("无法生成 explode-beetle（实体类型 " + entityType
-                    + "）：" + e.getMessage() + "，已跳过该怪物");
+            gameManager.getPlugin().getLogger().warning("Failed to spawn explode-beetle (entity type " + entityType
+                    + "): " + e.getMessage() + ", monster skipped");
             return;
         }
         if (!(spawned instanceof Mob spider)) {
@@ -590,8 +590,8 @@ public class WaveManager {
             spawned = world.spawnEntity(location, entityType);
         } catch (Exception e) {
             // 类型不可生成时只跳过这一只怪物，不能让异常冒泡终止整个刷怪任务
-            gameManager.getPlugin().getLogger().warning("无法生成 hook-claw-hunter（实体类型 " + entityType
-                    + "）：" + e.getMessage() + "，已跳过该怪物");
+            gameManager.getPlugin().getLogger().warning("Failed to spawn hook-claw-hunter (entity type " + entityType
+                    + "): " + e.getMessage() + ", monster skipped");
             return;
         }
         if (!(spawned instanceof Mob skeleton)) {
@@ -643,8 +643,8 @@ public class WaveManager {
             spawned = world.spawnEntity(location, entityType);
         } catch (Exception e) {
             // 类型不可生成时只跳过这一只怪物，不能让异常冒泡终止整个刷怪任务
-            gameManager.getPlugin().getLogger().warning("无法生成 flying-dropper（实体类型 " + entityType
-                    + "）：" + e.getMessage() + "，已跳过该怪物");
+            gameManager.getPlugin().getLogger().warning("Failed to spawn flying-dropper (entity type " + entityType
+                    + "): " + e.getMessage() + ", monster skipped");
             return;
         }
         if (!(spawned instanceof Mob phantom)) {
@@ -712,9 +712,9 @@ public class WaveManager {
             if (core == null) return null;
             if (!ringSpawnWarningLogged) {
                 ringSpawnWarningLogged = true;
-                gameManager.getPlugin().getLogger().warning("竞技场 " + gameManager.getArenaId()
-                        + " 的 mob-spawn-points 与 spawn-points 均为空，已回退到「以核心为中心、半径 "
-                        + radiusMin + "-" + radiusMax + "」的环形刷怪；建议用 /hilltop deploy addmobspawn 补部署刷怪点");
+                gameManager.getPlugin().getLogger().warning("Arena " + gameManager.getArenaId()
+                        + " has neither mob-spawn-points nor spawn-points; falling back to ring spawning around the core (radius "
+                        + radiusMin + "-" + radiusMax + "). Deploy mob spawn points with /hilltop deploy addmobspawn");
             }
             // fix4 G1b：环形候选同样必须过安全落点检测——候选落在虚空/水面上时怪会直接
             // 掉出世界（作者实测：日志成片 fell out of the world）。8 次重试全部不安全则

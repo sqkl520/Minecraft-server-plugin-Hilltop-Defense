@@ -49,7 +49,7 @@ wave-timeout-seconds: 0          # wave-timeout safeguard: off by default (0); h
 defeat-countdown-seconds: 20     # time from battle report to teleport back to lobby
 villager-health: 20.0            # villager max health (all dead = defeat)
 rejoin-timeout-seconds: 60       # reconnect window, 0 = disable reconnecting
-empty-arena-end-seconds: 60      # empty-arena auto-end: end the match once 0 players stay online for this long, 0 or negative = disabled (not recommended)
+empty-arena-end-seconds: 120     # empty-arena auto-end: end the match once 0 players stay online for this long, 0 or negative = disabled (not recommended)
 
 map-restore:
   enabled: true                  # roll back block changes when a match ends

@@ -112,7 +112,7 @@ public class MultiArenaManager {
                 // 离线：只清理竞技场状态，物品快照保留在磁盘上供下次登录归还
                 arena.removeOfflinePlayer(entry.getKey(), pending.playerName());
             }
-            plugin.getLogger().info("重连窗口超时，玩家已移出竞技场: " + pending.playerName());
+            plugin.getLogger().info("Rejoin window expired, player removed from the arena: " + pending.playerName());
         }
     }
 
@@ -254,23 +254,23 @@ public class MultiArenaManager {
         }
 
         if (definition == null) {
-            plugin.getLogger().warning("竞技场定义不存在: " + arenaId);
+            plugin.getLogger().warning("Arena definition not found: " + arenaId);
             return false;
         }
         if (!definition.isEnabled()) {
-            plugin.getLogger().warning("竞技场在配置中已禁用（enabled: false）: " + arenaId);
+            plugin.getLogger().warning("Arena is disabled in the config (enabled: false): " + arenaId);
             return false;
         }
         // 未部署核心（arenas.yml 无 core）时不能启用：ArenaInstance 构造要用 coreLocation.getWorld()，null 会 NPE
         if (definition.getCore() == null) {
-            plugin.getLogger().warning("拒绝启用竞技场 " + arenaId
-                    + "：尚未部署核心（arenas.yml 中该竞技场缺少 core 配置）");
+            plugin.getLogger().warning("Refusing to enable arena " + arenaId
+                    + ": no core deployed (arenas.yml has no core section for this arena)");
             return false;
         }
 
         enableQueue.add(arenaId);
         statuses.put(arenaId, ArenaStatus.QUEUED);
-        plugin.getLogger().info("竞技场 " + arenaId + " 已加入启用队列");
+        plugin.getLogger().info("Arena " + arenaId + " added to the enable queue");
 
         ensureEnableQueueTaskRunning();
         return true;
@@ -303,8 +303,8 @@ public class MultiArenaManager {
 
         // 兜底：定义入队后 core 可能被移除/重载（未部署核心），此路径绝不能走到 new ArenaInstance(...)
         if (definition.getCore() == null) {
-            plugin.getLogger().warning("拒绝启用竞技场 " + arenaId
-                    + "：尚未部署核心（arenas.yml 中该竞技场缺少 core 配置）");
+            plugin.getLogger().warning("Refusing to enable arena " + arenaId
+                    + ": no core deployed (arenas.yml has no core section for this arena)");
             statuses.put(arenaId, ArenaStatus.DISABLED);
             return;
         }
@@ -312,9 +312,9 @@ public class MultiArenaManager {
         // 一个世界只能对应一个竞技场：同世界的另一个竞技场已就绪/排队时拒绝启用
         String conflict = findWorldConflict(arenaId, definition.getWorldName());
         if (conflict != null) {
-            plugin.getLogger().severe("拒绝启用竞技场 " + arenaId + "：世界 " + definition.getWorldName()
-                    + " 已被竞技场 " + conflict + " 占用（一个世界只能对应一个竞技场，"
-                    + "共用世界会导致地图回滚互相破坏）");
+            plugin.getLogger().warning("Refusing to enable arena " + arenaId + ": world " + definition.getWorldName()
+                    + " is already owned by arena " + conflict + " (one world can only back one arena;"
+                    + " sharing a world would make the two map rollbacks corrupt each other)");
             statuses.put(arenaId, ArenaStatus.DISABLED);
             return;
         }
@@ -327,8 +327,9 @@ public class MultiArenaManager {
             enableQueue.addLast(arenaId);
             statuses.put(arenaId, ArenaStatus.QUEUED);
             if (quarantineDeferred.add(arenaId)) {
-                plugin.getLogger().info("竞技场 " + arenaId + " 暂缓启用：世界 " + worldName
-                        + " 仍处于上一个实例的延迟 reset 隔离窗口或地图回滚中，稍后自动重试");
+                plugin.getLogger().info("Arena " + arenaId + " deferred: world " + worldName
+                        + " is still in the previous instance's retire quarantine or is still rolling back;"
+                        + " will retry automatically");
             }
             return;
         }
@@ -338,8 +339,8 @@ public class MultiArenaManager {
 
         // 1) 确保世界已加载
         if (!ensureWorldLoaded(definition.getWorldName())) {
-            plugin.getLogger().severe("竞技场 " + arenaId + " 启用失败：世界 " + definition.getWorldName()
-                    + " 无法加载（服务器根目录下是否缺少该世界文件夹？）");
+            plugin.getLogger().warning("Failed to enable arena " + arenaId + ": world " + definition.getWorldName()
+                    + " could not be loaded (is the world folder missing from the server root?)");
             statuses.put(arenaId, ArenaStatus.DISABLED);
             return;
         }
@@ -349,9 +350,9 @@ public class MultiArenaManager {
             ArenaInstance arena = new ArenaInstance(plugin, definition);
             activeArenas.put(arenaId, arena);
             statuses.put(arenaId, ArenaStatus.READY);
-            plugin.getLogger().info("竞技场已就绪: " + arenaId);
+            plugin.getLogger().info("Arena ready: " + arenaId);
         } catch (Exception exception) {
-            plugin.getLogger().log(java.util.logging.Level.SEVERE, "竞技场 " + arenaId + " 初始化失败", exception);
+            plugin.getLogger().log(java.util.logging.Level.SEVERE, "Failed to initialize arena " + arenaId, exception);
             statuses.put(arenaId, ArenaStatus.DISABLED);
         }
     }
@@ -367,7 +368,7 @@ public class MultiArenaManager {
         try {
             return Bukkit.createWorld(new WorldCreator(worldName)) != null;
         } catch (Exception exception) {
-            plugin.getLogger().log(java.util.logging.Level.WARNING, "加载世界失败: " + worldName, exception);
+            plugin.getLogger().log(java.util.logging.Level.WARNING, "Failed to load world: " + worldName, exception);
             return false;
         }
     }
@@ -416,7 +417,7 @@ public class MultiArenaManager {
         activeArenas.remove(arenaId);
         statuses.put(arenaId, ArenaStatus.DISABLED);
 
-        plugin.getLogger().info("竞技场已禁用: " + arenaId);
+        plugin.getLogger().info("Arena disabled: " + arenaId);
         return "deploy.ok";
     }
 
@@ -509,7 +510,7 @@ public class MultiArenaManager {
             arena.resetNow();
         } catch (RuntimeException exception) {
             plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "同步停止竞技场失败，已跳过: " + arenaId, exception);
+                    "Failed to stop arena synchronously, skipped: " + arenaId, exception);
         }
     }
 
@@ -530,8 +531,8 @@ public class MultiArenaManager {
         int graceSeconds = computeRetireGraceSeconds(retiredState);
         retiredArenas.put(arenaId, new RetiredArena(arena, worldName, graceSeconds));
         ensureRetiredCleanupTaskRunning();
-        plugin.getLogger().info("竞技场 " + arenaId + " 已退役：世界 " + worldName
-                + " 隔离 " + graceSeconds + " 秒，等待其延迟 reset 失效");
+        plugin.getLogger().info("Arena " + arenaId + " retired: world " + worldName
+                + " quarantined for " + graceSeconds + "s until its delayed reset expires");
     }
 
     /**
@@ -590,14 +591,15 @@ public class MultiArenaManager {
                 continue;
             }
             if (restoring) {
-                plugin.getLogger().warning("竞技场 " + entry.getKey() + " 的隔离窗口已超出等待上限，"
-                        + "但世界 " + retired.worldName() + " 仍在回滚中；解除隔离（新对局会自行等待回滚完成）");
+                plugin.getLogger().warning("Arena " + entry.getKey() + " exceeded the maximum quarantine wait but world "
+                        + retired.worldName() + " is still rolling back; releasing the quarantine"
+                        + " (a new match will wait for the rollback itself)");
             }
 
             retiredArenas.remove(entry.getKey());
             releasedAny = true;
-            plugin.getLogger().info("竞技场 " + entry.getKey() + " 的隔离窗口已结束，世界 "
-                    + retired.worldName() + " 可以重新启用");
+            plugin.getLogger().info("Arena " + entry.getKey() + " quarantine finished, world "
+                    + retired.worldName() + " can be enabled again");
         }
 
         // 有世界被解封且仍有排队请求时，恢复启用队列处理
@@ -882,7 +884,7 @@ public class MultiArenaManager {
                 gameManager.getAdminDeployManager().loadSpawnPoints();
             } catch (Exception exception) {
                 plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                        "重读竞技场部署数据失败，已跳过: " + arena.getArenaId(), exception);
+                        "Failed to reload arena deployment data, skipped: " + arena.getArenaId(), exception);
             }
         }
     }

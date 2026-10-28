@@ -104,7 +104,7 @@ public class VillagerSystem {
 
         List<Location> positions = gameManager.getAdminDeployManager().getVillagers();
         if (positions.isEmpty()) {
-            plugin.getLogger().warning("竞技场 " + gameManager.getArenaId() + " 未部署村民，村民全灭判定不会触发");
+            plugin.getLogger().warning("Arena " + gameManager.getArenaId() + " has no villagers deployed; the all-villagers-slain defeat will never trigger");
             return;
         }
 
@@ -141,7 +141,7 @@ public class VillagerSystem {
             villagers.add(villager);
         }
 
-        plugin.getLogger().info("竞技场 " + gameManager.getArenaId() + " 已生成 " + villagers.size() + " 个待保护村民");
+        plugin.getLogger().info("Arena " + gameManager.getArenaId() + " spawned " + villagers.size() + " villager(s) to protect");
     }
 
     /** 清理全部村民实体（游戏结束 / 竞技场重置时调用） */
@@ -166,7 +166,7 @@ public class VillagerSystem {
             removed++;
         }
         if (removed > 0) {
-            plugin.getLogger().info("已清理 " + removed + " 个残留村民实体");
+            plugin.getLogger().info("Cleaned up " + removed + " leftover villager entity(ies)");
         }
     }
 

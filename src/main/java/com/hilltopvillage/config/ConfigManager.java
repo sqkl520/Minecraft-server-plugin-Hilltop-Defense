@@ -149,8 +149,8 @@ public class ConfigManager {
         try {
             disk = YamlConfiguration.loadConfiguration(settingsFile);
         } catch (Exception exception) {
-            plugin.getLogger().severe("重读 game-settings.yml 失败，跳过外部修改合并（以内存值保存）: "
-                    + exception.getMessage());
+            plugin.getLogger().severe("Failed to re-read game-settings.yml, skipping the external-change merge "
+                    + "(in-memory values will be saved): " + exception.getMessage());
             return;
         }
         GameConfig baseline = lastSavedSnapshot;
@@ -311,8 +311,8 @@ public class ConfigManager {
      */
     private List<GameConfig.StarterKitItem> normalizeStarterKitItems(List<GameConfig.StarterKitItem> parsed) {
         if (GameConfig.isLegacyDefaultStarterKit(parsed)) {
-            plugin.getLogger().warning("检测到旧默认 starter-kit（石剑/面包/火把），已升级为新默认"
-                    + "（追加皮革四件套）");
+            plugin.getLogger().warning("Legacy default starter-kit detected (stone sword / bread / torches), "
+                    + "upgraded to the new default (leather armor set added)");
             return GameConfig.defaultStarterKitItems();
         }
         return parsed;
@@ -335,22 +335,34 @@ public class ConfigManager {
     }
 
     /**
-     * fix5 M-04：空置自动结束与重连超时的阈值交叉告警。
+     * fix5 M-04：空置自动结束与重连超时的阈值交叉提示。
      *
      * <p>两者都对「全员离线」场景计时。代码层已让「有重连窗口时空置出口让位」（见
      * {@code ArenaInstance} 空置任务的 {@code hasPendingRejoinForArena} 守卫），
      * 此处仅提示管理员把两个阈值错开（empty-arena-end-seconds &gt; rejoin-timeout-seconds），
      * 使两条出口的先后顺序按意图可预期。</p>
+     *
+     * <p>等级为 {@code info}：这是提示性建议而非故障，出厂配置本身即可正常工作。
+     * 旧出厂默认组合（empty=60 / rejoin=60，fix5 及更早的模板）不提示——存量服务器
+     * 什么都没配错，不该每次加载都收到一条提示；出厂默认已改为 120 / 60，不再触发。</p>
      */
     private void warnIfEmptyArenaThresholdCollision() {
         int empty = activeConfig.getEmptyArenaEndSeconds();
         int rejoin = activeConfig.getRejoinTimeoutSeconds();
-        if (empty > 0 && rejoin > 0 && empty <= rejoin) {
-            plugin.getLogger().warning("empty-arena-end-seconds (" + empty
-                    + ") 不大于 rejoin-timeout-seconds (" + rejoin
-                    + ")：全员离线时两套计时口径重叠，建议把空置阈值调为大于重连超时（fix5 M-04）");
+        boolean legacyFactoryPair = empty == LEGACY_DEFAULT_EMPTY_ARENA_END_SECONDS
+                && rejoin == LEGACY_DEFAULT_REJOIN_TIMEOUT_SECONDS;
+        if (empty > 0 && rejoin > 0 && empty <= rejoin && !legacyFactoryPair) {
+            plugin.getLogger().info("empty-arena-end-seconds (" + empty
+                    + ") is not greater than rejoin-timeout-seconds (" + rejoin
+                    + "): with everyone offline the two timers overlap; set the empty-arena threshold higher "
+                    + "than the rejoin timeout");
         }
     }
+
+    /** 旧出厂模板（fix5 及更早）的 empty-arena-end-seconds 默认值，仅用于识别「未配置过」的组合。 */
+    private static final int LEGACY_DEFAULT_EMPTY_ARENA_END_SECONDS = 60;
+    /** 旧出厂模板（与上一条配套）的 rejoin-timeout-seconds 默认值；现行默认仍为 60。 */
+    private static final int LEGACY_DEFAULT_REJOIN_TIMEOUT_SECONDS = 60;
 
     public void saveToFile() {
         // M-15：save 前检测外部修改。文件 mtime 与上次读/写记录不一致 → 有人在游戏外
@@ -360,8 +372,8 @@ public class ConfigManager {
         if (settingsFile.lastModified() != settingsLastModified) {
             mergeExternalChanges();
             settingsYaml = YamlConfiguration.loadConfiguration(settingsFile);
-            plugin.getLogger().info("检测到 game-settings.yml 在外部被修改，已合并外部改动后保存"
-                    + "（本次会话经 GUI 修改的键仍以游戏内为准）");
+            plugin.getLogger().info("game-settings.yml was modified externally; external changes merged and saved "
+                    + "(keys changed via the GUI in this session still win)");
         }
 
         settingsYaml.set("world-name", activeConfig.getWorldName());
@@ -658,11 +670,11 @@ public class ConfigManager {
                     plugin.getLogger().warning("Invalid legacy repair-item material '" + legacyRepairItem
                             + "' (unknown or not a carryable item), keeping default");
                 }
-                plugin.getLogger().warning("检测到旧配置键 nodes.repair-item，已自动迁移到 nodes.repair-cost-item");
+                plugin.getLogger().warning("Legacy config key nodes.repair-item detected, migrated automatically to nodes.repair-cost-item");
                 // 新键原本缺失，补写入迁移后的值，避免删除旧键后配置丢失
                 settingsYaml.set("nodes.repair-cost-item", activeConfig.getRepairCostItem().name());
             } else if (hasLegacyRepairItem) {
-                plugin.getLogger().warning("检测到已废弃的配置键 nodes.repair-item，当前使用 nodes.repair-cost-item，该旧键将被忽略");
+                plugin.getLogger().warning("Deprecated config key nodes.repair-item detected; nodes.repair-cost-item is in use and the legacy key will be ignored");
             }
 
             // 2) 单次修复量：同样仅在未部署新键时迁移
@@ -751,24 +763,25 @@ public class ConfigManager {
                     activeConfig.setCurrencyDropChance(1.0);
                     activeConfig.setCurrencyDropMin(1);
                     activeConfig.setCurrencyDropMax(2);
-                    plugin.getLogger().warning("检测到旧配置键 shop.currency-drop-amount（旧默认 0.4 概率 × 1 个），"
-                            + "已升级为新默认：每杀必掉 1~2 个（shop.currency-drop-chance/min/max）");
+                    plugin.getLogger().warning("Legacy config key shop.currency-drop-amount detected "
+                            + "(old default: 0.4 chance x 1 item), upgraded to the new default: "
+                            + "1-2 items per kill (shop.currency-drop-chance/min/max)");
                 } else {
                     int qty = Math.max(1, legacyAmount);
                     // 保形迁移：概率与固定数量都原样保留
                     activeConfig.setCurrencyDropChance(legacyChance);
                     activeConfig.setCurrencyDropMin(qty);
                     activeConfig.setCurrencyDropMax(qty);
-                    plugin.getLogger().warning("检测到旧配置键 shop.currency-drop-amount，已迁移到 "
-                            + "shop.currency-drop-min / -max（原概率 " + legacyChance + " 保留，每次掉落数量 "
-                            + qty + " 不变）");
+                    plugin.getLogger().warning("Legacy config key shop.currency-drop-amount detected, migrated to "
+                            + "shop.currency-drop-min / -max (chance " + legacyChance + " kept, "
+                            + qty + " item(s) per drop unchanged)");
                 }
                 settingsYaml.set("shop.currency-drop-chance", activeConfig.getCurrencyDropChance());
                 settingsYaml.set("shop.currency-drop-min", activeConfig.getCurrencyDropMin());
                 settingsYaml.set("shop.currency-drop-max", activeConfig.getCurrencyDropMax());
             } else {
-                plugin.getLogger().warning("检测到已废弃的配置键 shop.currency-drop-amount"
-                        + "（新键 shop.currency-drop-min/-max 已存在），该旧键将被忽略并移除");
+                plugin.getLogger().warning("Deprecated config key shop.currency-drop-amount detected "
+                        + "(the new shop.currency-drop-min/-max keys already exist); the legacy key will be ignored and removed");
             }
             settingsYaml.set("shop.currency-drop-amount", null);
             try {
@@ -803,8 +816,8 @@ public class ConfigManager {
                 }
             }
             if (!unknownMonsters.isEmpty()) {
-                plugin.getLogger().warning("game-settings.yml 的 monsters 段存在无法识别的怪物键"
-                        + "（拼写错误？这些配置不会生效）: " + String.join(", ", unknownMonsters));
+                plugin.getLogger().warning("game-settings.yml has unrecognized monster keys under monsters "
+                        + "(typo? these entries will not take effect): " + String.join(", ", unknownMonsters));
             }
             for (String key : monsterSection.getKeys(false)) {
                 GameConfig.MonsterConfig mc = activeConfig.getMonsters().get(key);
@@ -893,8 +906,8 @@ public class ConfigManager {
             }
         }
         if (!unknown.isEmpty()) {
-            plugin.getLogger().warning("game-settings.yml 存在无法识别的顶层配置键（拼写错误？这些键不会生效）: "
-                    + String.join(", ", unknown));
+            plugin.getLogger().warning("game-settings.yml has unrecognized top-level keys "
+                    + "(typo? these keys will not take effect): " + String.join(", ", unknown));
         }
     }
 

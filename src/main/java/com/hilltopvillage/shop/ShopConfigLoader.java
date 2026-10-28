@@ -140,7 +140,7 @@ public class ShopConfigLoader {
             // 却 slot 越界（如 slot 60）是配置写错而非旧盘升级场景，提示旧值只会误导。
             plugin.getLogger().warning("shop.yml: item '" + id + "' slot " + slot
                     + " out of GUI size " + guiSize + ", skipped"
-                    + (guiSize < 54 ? " (1.1.0 的完整商品布局需要 gui.size: 54，请检查本文件头部 gui.size 是否为旧值)" : ""));
+                    + (guiSize < 54 ? " (the full 1.1.0 item layout needs gui.size: 54; check whether gui.size at the top of this file is an old value)" : ""));
             return null;
         }
 
