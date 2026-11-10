@@ -1,6 +1,73 @@
 # Changelog
 
 
+## [1.1.0-SNAPSHOT-fix3] - 2026-11-11
+
+> 1.1.0 的第三个修复版：计分板与 Tab 栏改造轮 + round5 深入审计轮的合并交付。
+> 本版首次引入 `display.yml`（侧边栏与 Tab 栏的布局配置文件），并修复侧边栏 8 条渲染缺陷
+> （其中 1 条会导致行序错乱的 Major）。round5 的 10 项缺陷（waves 波次载入重建 / 键集对齐 /
+> 配置菜单白名单 / 数值钳制 / 结点只读守卫 / 只读测试守卫 / 白名单补键等）同版落地。
+> 测试套件首次入库：78 个测试文件、**846 项**（Failures 0 / Errors 0 / Skipped 1）。
+> 审查产物：`docs/01-reviews/scoreboard-tab/`（11 份报告）；`docs/reports/round5/`（38 份报告）。
+>
+> ⚠️ **本版与 `1.1.0-SNAPSHOT-fix2` tag 的对应关系说明**：`1.1.0-SNAPSHOT-fix2` 这个 tag
+> 实际指向 2026-10-28 的 README 提交（`af2c69f`），**不包含**计分板改造与 round5 的任何内容；
+> 其名下 GitHub Release 的 JAR 同样不含。本版 `1.1.0-SNAPSHOT-fix3` 是第一个真正包含
+> 上述全部改动的 tag。若你此前装过 fix2 的包，建议直接跳到本版。
+
+### Added（2026-10-31 ~ 11-11 — 计分板与 Tab 栏改造）
+
+- **新增 `display.yml` 展示配置**：侧边栏与 Tab 栏的布局从硬编码改为配置驱动。四种行型——分隔线（`separator: N`）、空行（`blank: true`）、静态文本（`key: <i18n 键>`）、动画（`anim: [键1, 键2]` + `frame-ticks`）。每行可用 `when` 条件（11 个）与 `args` 参数（18 个）绑定运行时数据。文件由服主手写，**插件只读不写**，因此注释长期保留
+- **新增 Tab 栏管理（`TabListManager`）**：每个玩家独立的头/尾（大厅 / 对局 / 观战三种上下文），玩家列表名按状态着色（存活 / 阵亡待复活 / 观战 / 管理员），排序用 Paper 官方 `Player#setPlayerListOrder(int)` 做分带——不篡改玩家名、不伪造前缀
+- **Tab 的上下文开关管全接管**：`tab.contexts.lobby/arena/spectator` 关掉时不仅停发头/尾，还会主动把名字与排序复位成客户端默认，避免与别的插件抢（此前只停头尾、仍覆盖名字）
+- **新增 `/hub` 与 `/lobby` 两个顶层命令**：任意世界执行都能回大厅；`/lobby setspawn` 设大厅出生点（`/hub` 等价于 `/hilltop lobby`）
+- **新增 17 个 i18n 键**（en / zh 双语）：`scoreboard.separator` / `next-wave` / `mobs` / `arena` / `state` / `tip.loading` / `tip.fallback`，`tab.header.*` 5 个，`tab.name.*` 4 个。既有键文本一律未改（哈希基线不可重生成）
+- **`/hilltop reloadconfig` 覆盖 `display.yml`**：布局、文案、开关全部热生效，无需重启
+
+### Fixed（2026-10-31 — 侧边栏渲染缺陷，8 项）
+
+- **【Major】侧边栏行序错乱修复**：`setScore` 此前只在「首次建行」那一帧调用，行数变化（开局倒计时行出现/消失、玩家数据行整体增删）后旧行分数不重算，产生重复分数与行序随机跳动。现改为无条件执行 + `int[]` 缓存比对，仅值变时下发
+- **【Major】缩行残留幽灵空行修复**：行数减少时只 `unregister()` 队伍、未 `resetScores()` 分数条目。`Team#unregister()` 只解除条目归属、**不删** objective 上的 score（已字节码核实），被移除的行以空白形式永久占据侧边栏。现改为先 `resetScores` 再 `unregister`
+- **【Major】签名遗漏玩家级可见性输入**：`when: alive` / `when: spectator` 依赖每个玩家自己的状态，但这两个输入不在刷新签名里。「A 死亡、B 复活」这类两人互换在聚合值上完全抵消（alive 不变、spectators 不变），签名命中短路后整帧不重绘，玩家看到错误的个人数据行
+- **【Major】刷新任务异常后永久停更**：`CraftScheduler` 对抛未捕获异常的任务会记录一次并**静默取消**，而 `updateTask` 字段仍指向那个已被取消的句柄，后续 `show()` 全被误判为「任务还活着」。现加 `try/catch` + `isCancelled()` 判据，异常只跳过该帧不冻结整局
+- **隐藏右侧红色分数**：调用 `Objective#numberFormat(NumberFormat.blank())`。此前每行尾部一直显示红色 1~15 数字（Paper 1.20.3 起引入），玩家会误读成正文
+- **删除 64 字符截断**：MC 1.13 起队伍 prefix/suffix 是 Adventure `Component`，`CraftTeam#setPrefix` 无任何长度前置条件。原 `substring(0, 64)` 会切断颜色码 `§` 或 UTF-16 代理对（中文/emoji），导致行尾乱码且永不自愈
+- **`scoreboard.enabled` 热关闭生效**：开关此前只在 `show()` 读一次，中途关闭对已显示的侧边栏无效。现刷新任务每轮先判开关，关闭即拆板
+- **竞技场重置误伤其它场玩家修复**：`clear()` 未校验计分板归属，A 场重置会把已转场到 B 场的玩家侧边栏一并拆掉。现加 `getScoreboard() == state.board` 守卫
+- **其它**：行数上限 10→15（超限打 WARN 而非静默裁尾，原会静默丢弃玩家个人数据行）；重复 `show()` 时显式注销旧 `Objective`；村民计数从「每玩家一次全量遍历」降为「每竞技场一次」
+
+### Fixed（2026-11-10 — round5 深入审计，10 项）
+
+- **【P1】waves 波次载入重建（F2 + 症状 2）**：`default.compositions` 缺失时的回填链修正，修复「波次配比在特定组合下整条丢失」
+- **【P2】waves 键集对齐（症状 1）+ F3 default 配比对齐**：内存键集与磁盘键集精确一致（`memoryWaveKeysMatchDiskExactly` 由红转绿），修复「GUI 改了波次、重启后部分键复活/丢失」
+- **【N1】配置菜单点击白名单**：裸 `else` → `else if (action == LEFT)`，修复右键误触（全库 16 处）
+- **【N2】数值输入钳制**：`NumericInputHandler` 补 min/max 钳制重载，修复超范围输入直接落盘
+- **【F6】`monsters-config.yml` 白名单补键**
+- **【F7】删除 `GameConfig.nodeBlockTypes` 死字段**
+- **保存按钮消费返回值**：`MainConfigMenu` 保存失败时提示（新增 `config.menu.main.save-failed`），不再静默
+- **`NodeSystem` 删除空表补默认值**：空 `buff-effects` 不再被静默填充默认值，改为按键存在性判据
+- **只读测试守卫**：`YamlFileGateTest` 的只读用例从「依赖文件权限」改为「写进不可写目录」，总数恒定
+- **日志英文化与等级修正**：全库 `getLogger()` 输出统一英文；`arenas.yml` 写盘失败 6 个入口统一 SEVERE；`MapRestoreManager` 逐块失败日志每 tick 最多 5 条
+
+### Changed（2026-11-11 — 工程基建）
+
+- **测试套件首次入库**：78 个测试文件、846 项（MockBukkit + Mockito 基础设施 + 探针测试）
+- **新增 `build.sh` / `build.cmd`**：自动探测并切换 JDK 21 后再调 Maven，解决本机默认 `JAVA_HOME` 是 17 导致的 `maven-enforcer-plugin` 拦截
+- **新增 CI**（`.github/workflows/build.yml`）：Linux + JDK 21 上跑 `clean test`，只构建不分发
+- **新增 `.gitattributes`**：`*.sh` 强制 LF / `*.cmd` 强制 CRLF / 源码与文档统一 LF
+- **`.gitignore` 新增 `/.work/`**：多智能体流水线的过程产物不入库
+
+### ⚠️ 升级提示（升级到本版必读）
+
+- **新增 `display.yml`**：首次启动会自动生成到 `plugins/HilltopVillage/`。**你不需要做任何事**——出厂默认布局与你此前看到的 10 行完全一致，观感不变
+- **两处行为变更**：
+  1. `waves` 段的载入语义改为「键集精确对齐」，磁盘上多余的 waves 子键会被清理
+  2. `nodes.buff-effects` 改为按键存在性判据，空表不再被静默补默认值
+- **侧边栏右侧的红色数字会消失**：这是本版刻意消除的（此前每个行尾都挂着一个 1~15 的红字，容易误读）
+- **Tab 栏会开始有内容**：此前完全空白。若你在用别的插件管 tab，把 `display.yml` 的 `tab.enabled` 设为 `false`，或对应上下文设为 `false`
+- **`/hub` 与 `/lobby` 是新增命令**：`plugin.yml` 已声明，无需改任何权限配置即可使用
+- 服务端无需其它动作；升级前建议备份 `plugins/HilltopVillage/`
+
 ## [1.1.0-SNAPSHOT-fix2] - 2026-10-22
 
 > 1.1.0 的第二个修复版：fix6 全量审查轮（12 专家通道全库审查 + V1 横向对账 + V2 对抗证伪，合并清单 ~40 条：P0=0/P1=3/P2=11/P3=~26）的四路并行修复 + 四路锐评轮裁定修正。
