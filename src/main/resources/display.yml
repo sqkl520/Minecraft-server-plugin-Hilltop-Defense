@@ -1,0 +1,159 @@
+# ============================================================
+#  Hilltop Village — 展示配置
+#  display.yml
+# ============================================================
+#  侧边栏（scoreboard）与玩家列表（tab）的布局。
+#  玩家可见文本一律来自 messages.yml 的 en / zh 两份，本文件只写键名，不写任何文本。
+#
+#  生效条件（两个开关取「与」）：
+#    侧边栏 = game-settings.yml 的 scoreboard.enabled  AND  本文件 scoreboard.enabled
+#    （保留 game-settings.yml 的旧开关只为向后兼容，两者都为 true 才显示）
+#    tab 没有历史开关，本文件 tab.enabled 就是唯一开关。
+#
+#  热重载：改完执行 /hilltop reloadconfig —— 布局、文案、开关全部立即生效，无需重启。
+#  本文件是只读的出厂模板：插件任何路径都不会改写它，所以下面的注释永久保留。
+#
+#  出错时不会让侧边栏变空白：
+#    · 单行写错 → 只跳过该行，控制台输出一条英文 WARN，其余行照常渲染；
+#    · 整份文件不可用 → 沿用内置默认布局（内容与下面的出厂布局一致）。
+#
+#  想清空侧边栏：把 lines 写成空列表（lines: []）—— 只留标题。
+#  想恢复出厂布局：删掉整个 lines 段（注意不是写空列表），再 reload。
+#
+#  ── 行型（每行四选一；同时写了多个时按 separator > blank > anim > key 取一个）──
+#    separator: <宽度>        分隔线，宽度 1-40（渲染为对应数量的破折号）
+#    blank: true              空行（间距）
+#    key: <i18n 键>           静态行，文本来自 messages.yml
+#    anim: [<键>, <键>, ...]  动画行，2-8 帧，按 frame-ticks 循环播放
+#
+#  ── 公共可选字段 ──
+#    args: [<名字>, ...]      该行 {0}{1}... 的取值来源，顺序即占位符位置（大小写敏感）
+#    when: <条件名>           该行可见条件（大小写不敏感，写错 = 该行永不显示 + WARN）
+#    frame-ticks: <tick>      仅 anim：每帧持续 tick 数，1-200（20 tick = 1 秒）
+#
+#  ── 条件名（闭集，不是表达式）──
+#    always              恒显示（缺省值）
+#    waiting             等待玩家（WAITING）
+#    starting            开局倒计时（STARTING）
+#    running             对局进行中（RUNNING）
+#    intermission        波次休整期（WAVE_INTERMISSION）
+#    in-game             STARTING / RUNNING / WAVE_INTERMISSION 任一
+#    finished            胜利 / 失败 / 结束结算中
+#    start-countdown     开局倒计时数字可用时（精确对应 starting 那一行）
+#    waiting-for-players 等待中且人数不足
+#    alive               观察者存活（按玩家求值）
+#    spectator           观察者是观战者（按玩家求值）
+#
+#  ── args 可用名字（大小写敏感，恰为下列拼写）──
+#    wave totalWaves alivePlayers spectators activeNodes totalNodes
+#    aliveVillagers totalVillagers playerKills playerDeaths playerCrystals
+#    startCountdown playerCount minPlayers remainingMobs
+#    nextWaveSeconds arenaName gameState
+#
+#  ── 上限 ──
+#    侧边栏最多声明 15 行；tab 的 header / footer 各最多 8 行。
+#    「声明行数」按列表长度算：用 when 让多行互斥、实际渲染更少是正常用法。
+#
+#  ── 板级字段（可选，缺省即出厂值）──
+#    scoreboard.enabled        本文件的侧边栏开关（与 game-settings.yml 的同名开关取「与」）
+#    scoreboard.title          标题的 i18n 键（留空回退到 scoreboard.title）
+#    scoreboard.refresh-ticks  整板重算周期 tick，5-200（出厂 10 = 0.5 秒）
+#    tab.enabled               tab 总开关；关闭时会主动还原名字与排序，不只是停止发送
+#    tab.refresh-ticks         头/尾刷新周期 tick，1-200（出厂 20 = 1 秒）
+#    tab.contexts.lobby / arena / spectator  是否接管该上下文玩家（布尔，缺省 true）
+#    tab.player-name.alive / dead / spectator  名字格式的 i18n 键（值必须是键名，不是文本）
+#
+#  ── 以下行型出厂默认不启用（升级后布局保持不变），需要时可取消注释 ──
+#    - separator: 20
+#    - blank: true
+#    - anim: [scoreboard.tip.loading, scoreboard.tip.fallback]
+#      frame-ticks: 60
+#      when: waiting
+# ============================================================
+
+scoreboard:
+  enabled: true
+  title: scoreboard.title
+  # 整板重算周期（tick）。10 tick = 0.5 秒，给倒计时行留出跟手的速度；
+  # 静止时由输入签名短路，不会真的每 0.5 秒发包。
+  refresh-ticks: 10
+
+  # 顺序即渲染顺序。此出厂布局复刻旧版硬编码的 10 行，升级后玩家看到的顺序不变。
+  lines:
+    - key: scoreboard.wave
+      args: [wave, totalWaves]
+      when: in-game
+
+    - key: scoreboard.alive
+      args: [alivePlayers]
+      when: in-game
+
+    # 开局倒计时（仅 STARTING，且数字可用时）
+    - key: scoreboard.starting
+      args: [startCountdown]
+      when: start-countdown
+
+    # 等待期差员进度（与上一行互斥：WAITING vs STARTING）
+    - key: scoreboard.waiting
+      args: [playerCount, minPlayers]
+      when: waiting-for-players
+
+    - key: scoreboard.spectators
+      args: [spectators]
+      when: in-game
+
+    - key: scoreboard.nodes
+      args: [activeNodes, totalNodes]
+      when: in-game
+
+    - key: scoreboard.villagers
+      args: [aliveVillagers, totalVillagers]
+      when: in-game
+
+    # 个人数据：只对存活玩家显示（观战者不显示「你的击杀」）
+    - key: scoreboard.kills
+      args: [playerKills]
+      when: alive
+
+    - key: scoreboard.deaths
+      args: [playerDeaths]
+      when: alive
+
+    - key: scoreboard.crystals
+      args: [playerCrystals]
+      when: alive
+
+# ------------------------------------------------------------
+#  注意：Minecraft 的 tab 列表是服务器级的 —— 大厅玩家与竞技场玩家互相可见。
+#  contexts 开关只控制「本插件是否管理这个上下文玩家的头/尾/名字」，
+#  不控制可见性（Bukkit 没有低成本的可见性隔离手段）。
+#
+#  死亡待复活与观战在客户端渲染上无法区分（游戏模式同为 SPECTATOR 且强制斜体），
+#  只能靠名字前缀文本区分。
+# ------------------------------------------------------------
+tab:
+  enabled: true
+  # 头/尾刷新周期（tick）。20 tick = 1 秒；只有内容变化时才真正发包。
+  refresh-ticks: 20
+
+  contexts:
+    lobby: true
+    arena: true
+    spectator: true
+
+  # 头/尾：与侧边栏同一套行 schema，最终用换行符拼成一个整体，各最多 8 行
+  header:
+    - key: tab.header.title
+    - key: tab.header.arena
+      args: [arenaName, gameState]
+      when: in-game
+
+  footer:
+    - key: tab.footer.hint
+
+  # 玩家名字格式：值必须是 messages.yml 里的 i18n 键，不是字面量文本。
+  # 文本里的 {0} 由 messages.yml 的占位符替换器填充（当前实现传入玩家原名）。
+  player-name:
+    alive: tab.name.alive
+    dead: tab.name.dead
+    spectator: tab.name.spectator
