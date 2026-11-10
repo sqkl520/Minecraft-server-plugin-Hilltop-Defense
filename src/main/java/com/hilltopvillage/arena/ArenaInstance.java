@@ -6,6 +6,7 @@ import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.core.PlayerData;
+import com.hilltopvillage.core.PlayerGoodsManager;
 import com.hilltopvillage.mechanics.ArenaScoreboard;
 import com.hilltopvillage.mechanics.NodeSystem;
 import com.hilltopvillage.mechanics.VillagerSystem;
@@ -384,6 +385,36 @@ public class ArenaInstance implements IArena {
         }
     }
 
+    /**
+     * 无物品快照时是否必须清空玩家的背包（fix-critical D2）。
+     *
+     * <p>{@link #removePlayer(Player)} 的保底分支在 {@code PlayerGoodsManager.restore()}
+     * 返回 false 时被触发，而「无快照」有两种成因，破坏性完全不同：</p>
+     * <ul>
+     *   <li><b>成因 A（真异常）</b>：玩家确实带着局内物品离场，快照丢失或管理器初始化失败。
+     *       此时必须清空，否则初始套装与局内货币会被带出竞技场，污染大厅经济。</li>
+     *   <li><b>成因 B（合法时序）</b>：玩家早已通过 Join 路径正常离场、快照已被归还并消耗，
+     *       本实例只是残留了他的 UUID（幽灵成员）。此刻背包里是玩家<b>自己的</b>物品，
+     *       清空等于毁掉他的全部家当。</li>
+     * </ul>
+     *
+     * <p>两种成因无法靠「背包里有没有东西」区分（正常玩家也会有东西），只能用状态判定：
+     * {@code STARTING} / {@code RUNNING} / {@code WAVE_INTERMISSION} 三态下玩家必然已拿到
+     * starter-kit（{@code onGameStart}）或局内物品，无快照离场属于成因 A；
+     * 其余状态（{@code WAITING} 尚未发套装，{@code VICTORY} / {@code DEFEAT} / {@code ENDING}
+     * 是结算与重置窗口，幽灵成员只可能出现在这里）一律归入成因 B，只把游戏模式拉回生存。</p>
+     *
+     * <p>静态纯函数，便于单测覆盖全部 7 个 {@link GameState} 值。</p>
+     *
+     * @param state 离场瞬间的竞技场状态；{@code null} 视同未知/非对局中，按成因 B 处理（不清背包）
+     * @return true 表示必须清空游戏物品
+     */
+    static boolean shouldClearInventoryOnMissingSnapshot(GameState state) {
+        return state == GameState.STARTING
+                || state == GameState.RUNNING
+                || state == GameState.WAVE_INTERMISSION;
+    }
+
     @Override
     public void removePlayer(Player player) {
         UUID uuid = player.getUniqueId();
@@ -428,13 +459,37 @@ public class ArenaInstance implements IArena {
         player.teleport(lobbySpawn != null ? lobbySpawn : Bukkit.getWorlds().get(0).getSpawnLocation());
 
         // 归还玩家原版状态（背包/经验/血量/模式…）
-        // P2-34：管理器初始化失败时为 null → 视同「无快照」，走下面的保底清理分支
-        if (plugin.getPlayerGoodsManager() == null || !plugin.getPlayerGoodsManager().restore(player)) {
-            // 无快照（异常情况）：退回生存模式并清空游戏物品
-            player.getInventory().clear();
-            player.setGameMode(GameMode.SURVIVAL);
-            player.setHealth(player.getMaxHealth());
-            player.setFoodLevel(20);
+        // P2-34：管理器初始化失败时为 null → 视同「无快照」，走下面的保底分支
+        PlayerGoodsManager goods = plugin.getPlayerGoodsManager();
+        if (goods == null || !goods.restore(player)) {
+            // 无快照。只有在「确实处于对局中」时才清空游戏物品；
+            // 结算/重置窗口的幽灵成员（快照已由 Join 路径正常归还）绝不能清背包。
+            // 详见 shouldClearInventoryOnMissingSnapshot 的成因 A / B 说明。
+            if (shouldClearInventoryOnMissingSnapshot(state)) {
+                // 成因 A：玩家真的带着游戏物品离场（快照丢失 / 管理器初始化失败）
+                // → 必须清空游戏物品，否则套装与局内货币会被带出竞技场
+                player.getInventory().clear();
+                player.setGameMode(GameMode.SURVIVAL);
+                player.setHealth(player.getMaxHealth());
+                player.setFoodLevel(20);
+                plugin.getLogger().warning("Player " + player.getName() + " left arena " + arenaId
+                        + " without a snapshot (state=" + state
+                        + "); game items were cleared (the original items may be lost)");
+            } else {
+                // 成因 B：幽灵成员时序——玩家早已通过正常路径离场（快照已归还并消耗），
+                // 本实例只是残留了 UUID。此刻背包里是玩家【自己的】物品，绝不能清。
+                player.setGameMode(GameMode.SURVIVAL);   // 只把模式拉回生存（幂等、无破坏）
+                plugin.getLogger().info("Ignoring stale membership for " + player.getName()
+                        + " in arena " + arenaId + " (state=" + state
+                        + "); inventory left untouched");
+            }
+        }
+        // GameManager 侧本局的 PlayerData 必须收口：成功 restore 的路径已由上面的
+        // gameManager.removePlayer 移除；无快照路径里那份数据已在上面用于统计落库，
+        // 留着会被下一次 addPlayer 的 computeIfAbsent 复用成脏数据（继承上一局的击杀/阵亡）。
+        // removeOfflinePlayer 幂等，且此时非对局中不会触发判负。
+        if (gameManager.getPlayerData(uuid) != null) {
+            gameManager.removeOfflinePlayer(uuid);
         }
 
         // Broadcast leave message
@@ -564,6 +619,90 @@ public class ArenaInstance implements IArena {
     @Override
     public boolean isPlayer(UUID uuid) {
         return players.contains(uuid);
+    }
+
+    /**
+     * 静默摘除一名成员的竞技场成员资格（fix-critical D2）。
+     *
+     * <p>用于「玩家已经通过别的路径正常离场，但实例的 players 集合仍残留其 UUID」的时序。
+     * 典型链路：{@code auto-leave-on-quit=false} → 玩家等待期退服（保留位置）→
+     * {@code /hilltop disable}（踢人循环只遍历在线玩家，漏掉他）→ 玩家在延迟 reset 前重登，
+     * 由 Join 路径归还物品并消耗快照 → 本实例仍认为他在场。</p>
+     *
+     * <p>与 {@link #removePlayer(Player)} 的关键区别（<b>为什么本方法绝不能碰背包</b>）：
+     * 调用本方法时，玩家的物品快照可能<b>已经被 Join 路径正常归还并消耗</b>。如果这里像
+     * {@code removePlayer} 那样走 {@code restore()}，它会返回 false，触发保底分支——
+     * 在旧实现里就是 {@code getInventory().clear()}，即把一个刚被正确归还的物品整包清空。
+     * 因此本方法只做集合与统计层面的清理：</p>
+     * <ul>
+     *   <li><b>不</b>传送、<b>不</b>碰背包/经验/血量/游戏模式 —— 调用方已确认该玩家的状态是正常的</li>
+     *   <li><b>不</b>归还快照 —— 快照可能已被消耗；即使还在，也不该由本方法决定归属</li>
+     *   <li><b>不</b>广播 player-left —— 玩家不在场，播报无受众且会误导</li>
+     *   <li><b>不</b>触发人数不足判负 —— GameManager 侧的玩家集合已由调用方另行清理。
+     *       调用点只有 {@code MultiArenaManager.dropFromRetired} 与 {@code retireArena}，
+     *       两处都在 {@code stopGame()} 之后（state 已 ENDING / GameManager 已 stopGame），
+     *       {@code GameManager.removeOfflinePlayer} 的判负条件 {@code isGameRunning()} 为 false</li>
+     *   <li>统计按「中途离开」结算（{@code sessionVictory}，可能为 null），与
+     *       {@link #removeOfflinePlayer(UUID, String)} 的口径一致</li>
+     * </ul>
+     *
+     * <p><b>时序约束（勿动）</b>：{@code HilltopVillagePlugin#onPlayerJoin} 必须先执行
+     * {@code goods.restore()}、后执行 {@code tryRejoin}；全部现有调用路径都建立在这条顺序上。
+     * 若将来有人调整 Join 事件里的顺序，必须先重新审视本方法的「不碰快照」前提。</p>
+     *
+     * @param uuid 要摘除的成员
+     * @return true 表示本次真的摘除了一个成员；false 表示本来就不在（幂等）
+     */
+    public boolean dropMember(UUID uuid) {
+        if (!players.remove(uuid)) {
+            return false;
+        }
+        spectators.remove(uuid);
+        plugin.getMultiArenaManager().forgetPlayerArena(uuid);
+
+        // 统计：与 removeOfflinePlayer 同一口径（sessionVictory=null 表示中途离开，不计胜负）
+        // 必须在 gameManager.removeOfflinePlayer() 之前取数，否则拿到的是全新空 PlayerData
+        PlayerData sessionData = gameManager.getPlayerData(uuid);
+        if (sessionData != null && plugin.getStatsManager() != null) {
+            OfflinePlayer offline = Bukkit.getOfflinePlayer(uuid);
+            String name = offline != null ? offline.getName() : null;
+            plugin.getStatsManager().recordOffline(uuid, name, sessionData, sessionVictory,
+                    Math.max(gameManager.getCurrentWave(), sessionWave));
+        }
+
+        // 按 UUID 移除，不做任何实体操作（GameManager#removeOfflinePlayer）
+        // 时序断言（D2.4-④）：调用点都在收尾之后，若这里仍处于对局中，说明出现了意外的
+        // 调用时序——只记日志，不阻断（数据清理比时序告警更重要）。
+        if (gameManager.isGameRunning()) {
+            plugin.getLogger().warning("Arena " + arenaId + " dropMember called while the game is still running"
+                    + " (state=" + state + ", player=" + uuid + "); this is an unexpected call order");
+        }
+        gameManager.removeOfflinePlayer(uuid);
+
+        // hide 对离线玩家只摘内存条目（不调 setScoreboard），传可能已离线的引用是安全的
+        Player online = Bukkit.getPlayer(uuid);
+        if (online != null) {
+            scoreboard.hide(online);
+        }
+        return true;
+    }
+
+    /**
+     * 当前在 {@link #players} 集合里、但已不在线的成员 UUID 快照。
+     *
+     * <p>供退役路径（{@code MultiArenaManager.retireArena}）一次性摘除幽灵成员：
+     * {@link #getPlayers()} 只返回在线玩家，踢人循环因此永远看不到他们。
+     * 返回的是副本，调用方可以安全地在遍历中调用 {@link #dropMember(UUID)}。</p>
+     */
+    public List<UUID> getOfflineMembers() {
+        List<UUID> result = new ArrayList<>();
+        for (UUID uuid : players) {
+            Player player = Bukkit.getPlayer(uuid);
+            if (player == null || !player.isOnline()) {
+                result.add(uuid);
+            }
+        }
+        return result;
     }
 
     /** 当前旁观（等待波次刷新复活）的玩家数 */
@@ -813,6 +952,22 @@ public class ArenaInstance implements IArena {
                                 int victoryWaves, int waveIntervalSeconds) {
         this.definition = definition.withGameParams(minPlayers, maxPlayers, victoryWaves, waveIntervalSeconds);
         checkAutoStart();
+    }
+
+    /**
+     * 用刚写入 arenas.yml 的等待区位置刷新本实例的定义（部署命令 / 向导第 2 步之后调用）。
+     *
+     * <p><b>为什么需要推送：</b>{@link #getLobbySpawn()} 直接读 {@code definition} 的等待区
+     * （不像 core / spawn-points 那样实时读 {@link GameManager}）。不推送的话，管理员在同一局
+     * 服务器里改完等待区后，下一次 {@code /hilltop join} 仍会传到旧位置，必须重启才生效。</p>
+     *
+     * <p>只替换等待区一个字段，其余坐标（core / spawn-points / villagers / shop-npc）原样保留，
+     * 因此不会与 {@code AdminDeployManager} 持有的副本产生不同步。调用方必须已完成校验与落盘。</p>
+     *
+     * @param waitingLocation 新的等待区位置；null = 未单独设置（回退到 core）
+     */
+    public void applyWaitingLocation(Location waitingLocation) {
+        this.definition = definition.withWaitingLocation(waitingLocation);
     }
 
     /**
@@ -1345,6 +1500,12 @@ public class ArenaInstance implements IArena {
         // List.add 与数组扩容。收益不算大，但改法零风险、语义完全一致。
         int removed = 0;
         for (org.bukkit.entity.Item item : world.getEntitiesByClass(org.bukkit.entity.Item.class)) {
+            // 跳过已付对价的商店掉落（ShopListener#PAID_DROP_KEY），避免「付了钱拿不到货」
+            if (item.getPersistentDataContainer().has(
+                    com.hilltopvillage.shop.ShopListener.PAID_DROP_KEY,
+                    org.bukkit.persistence.PersistentDataType.BYTE)) {
+                continue;
+            }
             item.remove();
             removed++;
         }

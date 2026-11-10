@@ -82,17 +82,21 @@ public class NodeSettingsMenu extends AbstractConfigMenu {
                 clickType -> {
                     if (clickType == ClickType.SHIFT_LEFT || clickType == ClickType.SHIFT_RIGHT) {
                         admin.closeInventory();
+                        // 区间随 helper 一起传给 handler：聊天输入走同一份 clamp（slice-08-logic-001）
                         NumericInputHandler.requestNumber(plugin, admin,
                                 lang.getFor(admin, "config.menu.common.setting-prefix") + name + " (" + lang.getFor(admin, "config.menu.common.current") + String.format("%.1f", getter.getAsDouble()) + ")",
+                                min, max,
                                 v -> { setter.accept(v); reopen(); },
                                 this::reopen, lang);
                     } else if (clickType == ClickType.RIGHT) {
                         double val = getter.getAsDouble() - step;
-                        if (val >= min) setter.accept(val);
+                        // slice-08-logic-008：按步长容差比较并收敛到声明区间，避免累加误差
+                        // 让声明的 min/max 永远点不到（见 AbstractConfigMenu#stepTolerance）
+                        if (val >= min - stepTolerance(step)) setter.accept(Math.max(min, val));
                         reopen();
-                    } else {
+                    } else if (clickType == ClickType.LEFT) {
                         double val = getter.getAsDouble() + step;
-                        if (val <= max) setter.accept(val);
+                        if (val <= max + stepTolerance(step)) setter.accept(Math.min(max, val));
                         reopen();
                     }
                 });

@@ -137,14 +137,34 @@ public abstract class AbstractConfigMenu implements InventoryHolder, Listener {
         return ChatColor.GRAY + label + ": " + ChatColor.AQUA + value;
     }
 
+    /**
+     * 浮点步进比较的容差（slice-08-logic-008）。
+     *
+     * <p>{@code 0.1 + 0.05 × 37 == 1.950000000000001}，下一次 {@code +0.05} 得
+     * {@code 2.000000000000001 > 2.0}，被 {@code val <= max} 判为越界 —— 界面上声明到 2.0
+     * 的槽位实际永远点不到，而 {@link #formatValue(String, double)} 又把 1.95 显示成 "2.0"，
+     * 现场观感就是「+ 按钮坏了」。容差按步长相对取值：只吸收累加误差，不放宽真实越界
+     * （0.05 步长的容差为 5e-8，远小于一次步进）。</p>
+     */
+    protected static double stepTolerance(double step) {
+        return Math.max(1e-9, Math.abs(step) * 1e-6);
+    }
+
     @EventHandler
     public void onClick(InventoryClickEvent event) {
         if (!(event.getWhoClicked() instanceof Player)) return;
         if (!event.getWhoClicked().equals(admin)) return;
+        // 先按 top inventory 取消：点击可能落在玩家自己的背包（shift-click），此时
+        // getClickedInventory() 不是本菜单，若不在这里取消，物品会被塞进 GUI。
+        if (!event.getView().getTopInventory().equals(inventory)) return;
+
+        event.setCancelled(true);
+
+        // 取消之后才分发动作：动作只属于本菜单的槽位，点击玩家背包时 slot 会撞上
+        // 同号槽位，必须用 getClickedInventory() 把两者区分开。
         if (event.getClickedInventory() == null) return;
         if (!event.getClickedInventory().equals(inventory)) return;
 
-        event.setCancelled(true);
         int slot = event.getSlot();
         ClickAction action = clickActions.get(slot);
         if (action != null) {

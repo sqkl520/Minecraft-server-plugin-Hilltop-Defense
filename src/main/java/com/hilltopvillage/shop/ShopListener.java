@@ -3,7 +3,9 @@ package com.hilltopvillage.shop;
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.GameMode;
+import org.bukkit.NamespacedKey;
 import org.bukkit.Sound;
+import org.bukkit.persistence.PersistentDataType;
 import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
@@ -33,6 +35,9 @@ public class ShopListener implements Listener {
 
     /** 购买操作冷却（ms），屏蔽双击/同 tick 多次点击 */
     private static final long BUY_COOLDOWN_MS = 250L;
+
+    /** 已付对价掉落物标记：商店溢出落地时打标，竞技场重置清理掉落物时跳过 */
+    public static final NamespacedKey PAID_DROP_KEY = new NamespacedKey("hilltopvillage", "shop_paid_drop");
 
     public ShopListener(ShopManager shopManager, LanguageManager lang) {
         this.plugin = shopManager.getPlugin();
@@ -147,7 +152,8 @@ public class ShopListener implements Listener {
         java.util.Map<Integer, ItemStack> overflow = player.getInventory().addItem(product);
         if (!overflow.isEmpty()) {
             for (ItemStack leftover : overflow.values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+                player.getWorld().dropItemNaturally(player.getLocation(), leftover)
+                        .getPersistentDataContainer().set(PAID_DROP_KEY, PersistentDataType.BYTE, (byte) 1);
             }
             player.sendMessage(lang.getFor(player, "shop.inventory-full"));
         }
@@ -177,10 +183,20 @@ public class ShopListener implements Listener {
      */
     private void refundCurrency(Player player, ShopItem item) {
         if (item.getPrice() > 0) {
-            java.util.Map<Integer, ItemStack> refundOverflow =
-                    player.getInventory().addItem(shopManager.createCurrencyItem(item.getPrice()));
-            for (ItemStack leftover : refundOverflow.values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), leftover);
+            // dc-001：本方法在 deliverItem 的 catch 块内被调用，自身抛异常会直接穿出
+            // onInventoryClick（此时货币已在 purchase 扣掉、货未生成、玩家无任何反馈）。
+            // 这里把补偿动作的抛面收敛为日志，供管理员按玩家名/数量手工补偿。
+            try {
+                java.util.Map<Integer, ItemStack> refundOverflow =
+                        player.getInventory().addItem(shopManager.createCurrencyItem(item.getPrice()));
+                for (ItemStack leftover : refundOverflow.values()) {
+                    player.getWorld().dropItemNaturally(player.getLocation(), leftover)
+                            .getPersistentDataContainer().set(PAID_DROP_KEY, PersistentDataType.BYTE, (byte) 1);
+                }
+            } catch (RuntimeException ex) {
+                plugin.getLogger().severe("Shop refund FAILED for " + player.getName() + " item '"
+                        + item.getId() + "' amount " + item.getPrice()
+                        + " — manual compensation required: " + ex);
             }
         }
     }

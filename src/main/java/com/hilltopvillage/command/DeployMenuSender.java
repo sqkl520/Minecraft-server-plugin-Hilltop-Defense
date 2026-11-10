@@ -34,6 +34,9 @@ public class DeployMenuSender {
         sendClickableLine(sender, "usage-join", "/hilltop join ", hover);
         sendClickableLine(sender, "usage-leave", "/hilltop leave", hover);
         sendClickableLine(sender, "usage-lobby", "/hilltop lobby", hover);
+        // 顶层快捷命令：/hub 与 /lobby 与 /hilltop lobby 等价（同一实现，见 HilltopCommandHandler.handle）
+        sendClickableLine(sender, "usage-hub", "/hub", hover);
+        sendClickableLine(sender, "usage-lobby-shortcut", "/lobby", hover);
         sendClickableLine(sender, "usage-gui", "/hilltop gui", hover);
         sendClickableLine(sender, "usage-status", "/hilltop status", hover);
         sendClickableLine(sender, "usage-list", "/hilltop list", hover);
@@ -50,6 +53,7 @@ public class DeployMenuSender {
             sendClickableLine(sender, "usage-fireball", "/hilltop fireball", hover);
             sendClickableLine(sender, "usage-setup", "/hilltop setup", hover);
             sendClickableLine(sender, "usage-deploy", "/hilltop deploy", hover);
+            sendClickableLine(sender, "usage-deploy-setwaiting", "/hilltop deploy setwaiting", hover);
             sendClickableLine(sender, "usage-config", "/hilltop config", hover);
             sendClickableLine(sender, "usage-reloadconfig", "/hilltop reloadconfig", hover);
             sendClickableLine(sender, "usage-arenas", "/hilltop arenas", hover);
@@ -79,6 +83,8 @@ public class DeployMenuSender {
                 lang.getFor(player, "deploy.desc-setup"));
         sendClickableLine(player, "deploy.cmd-setcore", "/hilltop deploy setcore", hover,
                 lang.getFor(player, "deploy.desc-setcore"));
+        sendClickableLine(player, "deploy.cmd-setwaiting", "/hilltop deploy setwaiting", hover,
+                lang.getFor(player, "deploy.desc-setwaiting"));
         sendClickableLine(player, "deploy.cmd-addspawn", "/hilltop deploy addspawn", hover,
                 lang.getFor(player, "deploy.desc-addspawn"));
         sendClickableLine(player, "deploy.cmd-listspawns", "/hilltop deploy listspawns", hover,

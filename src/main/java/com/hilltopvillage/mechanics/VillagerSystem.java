@@ -87,6 +87,16 @@ public class VillagerSystem {
     private final NamespacedKey villagerKey;
     private final List<Villager> villagers = new CopyOnWriteArrayList<>();
 
+    /**
+     * 本局部署的村民总数（分母真源，不随阵亡递减）。
+     *
+     * <p>{@link #getAliveCount()} 与 {@link #getTotalCount()} 若同读 {@code villagers}，
+     * 分母会跟着 {@link #handleVillagerDeath} 的 {@code remove} 一起缩小
+     * （部署 3 只、死 1 只后显示 {@code 2/2} 而非 {@code 2/3}），玩家无从判断总共要守几只。
+     * 故在 {@link #spawnAll()} 填充列表后固化一份总数，仅在重新生成 / 清理时刷新。</p>
+     */
+    private volatile int deployedTotal;
+
     public VillagerSystem(HilltopVillagePlugin plugin, GameManager gameManager) {
         this.plugin = plugin;
         this.gameManager = gameManager;
@@ -141,6 +151,8 @@ public class VillagerSystem {
             villagers.add(villager);
         }
 
+        // 分母在此固化（仅本方法填充 villagers），此后阵亡 remove 不再影响总数
+        deployedTotal = villagers.size();
         plugin.getLogger().info("Arena " + gameManager.getArenaId() + " spawned " + villagers.size() + " villager(s) to protect");
     }
 
@@ -152,6 +164,8 @@ public class VillagerSystem {
             }
         }
         villagers.clear();
+        // 重置分母：否则下一局在 spawnAll 前会沿用上一局的部署总数
+        deployedTotal = 0;
     }
 
     /** 清理世界中残留的村民实体（崩溃 / 重载后的孤儿实体） */
@@ -180,8 +194,15 @@ public class VillagerSystem {
         return count;
     }
 
+    /**
+     * 本局部署的村民<b>总数</b>（分母，不随阵亡递减）。
+     *
+     * <p>返回值取自 {@link #deployedTotal}，而不是 {@code villagers.size()}——
+     * 后者会因 {@link #handleVillagerDeath} 的 {@code remove} 而缩小，导致
+     * 记分板 / TabList 的 {@code Villagers: {0}/{1}} 显示成 {@code 2/2} 这类"分母跟着死"的假象。</p>
+     */
     public int getTotalCount() {
-        return villagers.size();
+        return deployedTotal;
     }
 
     public boolean hasAlive() {

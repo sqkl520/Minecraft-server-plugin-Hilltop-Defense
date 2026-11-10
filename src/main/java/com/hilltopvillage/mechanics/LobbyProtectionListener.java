@@ -243,14 +243,18 @@ public class LobbyProtectionListener implements Listener {
         event.setCancelled(true);
     }
 
-    /** 阻止大厅内伤害盔甲架 / 展示框 / 商店村民 */
+    /** 阻止大厅内伤害盔甲架 / 展示框 / 商店村民（无论伤害来源是玩家、生物还是环境） */
     @EventHandler(priority = EventPriority.HIGH, ignoreCancelled = true)
     public void onEntityDamage(org.bukkit.event.entity.EntityDamageByEntityEvent event) {
         Entity victim = event.getEntity();
         if (!(victim instanceof ArmorStand) && !(victim instanceof ItemFrame)
                 && !(victim instanceof Villager)) return;
-        if (!(event.getDamager() instanceof Player player)) return;
-        if (exempt(player)) return;
+        // 按受害实体所在世界判定：竞技场内的村民必须照常被怪物攻击（核心玩法），
+        // 不能因为受害类型在大厅受保护就被一并拦下。
+        if (!inLobby(victim)) return;
+        // 玩家伤害源保留建造模式豁免；非玩家伤害源（生物近战 / 箭 / 火焰 / 岩浆 / 仙人掌）
+        // 无豁免可言，一律拦下——否则大厅装饰会被生物或环境破坏，而大厅不在回滚范围内。
+        if (event.getDamager() instanceof Player player && exempt(player)) return;
         event.setCancelled(true);
     }
 

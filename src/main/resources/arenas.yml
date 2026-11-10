@@ -46,7 +46,9 @@ arenas:
     enabled: true
     world: hilltop_arena1          # 竞技场世界名（必须与大厅不同）
 
-    # 等待区：玩家加入竞技场后、开局前的落点
+    # 等待区：玩家加入竞技场后、开局前的落点（可选）
+    # 删掉这一段则运行时回退到下面的 core，玩家会在核心重生点上等待开局。
+    # 推荐用 /hilltop setup 第 2 步的 [设为等待区] 或 /hilltop deploy setwaiting 写入。
     waiting-location:
       x: 100.5
       y: 80.0

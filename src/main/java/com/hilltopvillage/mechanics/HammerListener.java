@@ -294,23 +294,28 @@ public class HammerListener implements Listener {
             }
         }
 
-        if (!isOnGroundNow) return;
-        if (recentlyLanded.contains(player.getUniqueId())) return;
-
-        double fallDistance = startY(player, data, currentY);
         long currentTick = gameManager.getGameWorld().getGameTime();
         long tickLimit = plugin.getConfigManager().getActiveConfig().getHammerSmashTimeoutTicks();
 
+        // 续期（自动续计）：本帧相对上一帧在下降 → 视为「仍在主动下落」，重置计时起点。
+        // 必须每帧执行且不受落地判定约束，否则滞空（梯子/水中/鞘翅/漂浮）期间既不续期也不超时。
         if (currentY < data.getLastSmashY() - 0.01) {
             data.setSmashActivateTick(currentTick);
         }
         data.setLastSmashY(currentY);
 
+        // 超时每帧判定、先于空中早退：滞空不落地的玩家同样必须被回收蓄力，
+        // 否则 BossBar 常驻且 onFallDamage 的免摔落永久生效（且 isSmashActive 会挡住重新蓄力）。
         if (currentTick - data.getSmashActivateTick() > tickLimit) {
             data.deactivateSmash();
             removeChargeBar(player);
             return;
         }
+
+        if (!isOnGroundNow) return;
+        if (recentlyLanded.contains(player.getUniqueId())) return;
+
+        double fallDistance = startY(player, data, currentY);
 
         if (fallDistance >= 1.0) {
             executeSmash(player, data, fallDistance);

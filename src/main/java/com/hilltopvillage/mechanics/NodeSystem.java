@@ -4,6 +4,7 @@ import com.hilltopvillage.config.GameConfig;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.PlayerData;
 import com.hilltopvillage.util.LanguageManager;
+import com.hilltopvillage.util.YamlFiles;
 import org.bukkit.*;
 import org.bukkit.block.Block;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -16,8 +17,41 @@ import java.io.File;
 import java.io.IOException;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.logging.Logger;
 
 public class NodeSystem {
+
+    /**
+     * nodes.yml 的只读降级标记（按绝对路径）。
+     *
+     * <p><b>为什么是静态的：</b>{@link #writeNodes} / {@link #clearNodesForWorld} /
+     * {@link #removeNodeEntryForWorld} 都是 static（竞技场管理 GUI 对未启用竞技场也要能改文件），
+     * 拿不到实例上的 gate。用「路径 → 只读」的静态表让这些静态写入口共享同一份降级结论。</p>
+     *
+     * <p>键是绝对路径：{@code dataFolder} 在一个进程内不变，不会泄漏成多个条目。</p>
+     */
+    private static final Set<String> NODES_READ_ONLY = ConcurrentHashMap.newKeySet();
+
+    /** 静态写入口的只读判定：命中标记即拒写（并打一行 warning）。 */
+    private static boolean nodesWritable(File nodesFile, Logger logger) {
+        if (!NODES_READ_ONLY.contains(nodesFile.getAbsolutePath())) return true;
+        logger.warning("Refusing to write nodes.yml: it was unreadable at load time");
+        return false;
+    }
+
+    /**
+     * 清除 nodes.yml 的只读降级标记（仅供 {@code /hilltop reloadconfig} 调用）。
+     *
+     * <p><b>这是全局行为：</b>{@link #NODES_READ_ONLY} 是静态集合（静态写入口 {@link #writeNodes} /
+     * {@link #clearNodesForWorld} / {@link #removeNodeEntryForWorld} 共享），清空后<b>本进程内所有世界 /
+     * 所有竞技场</b>的 nodes.yml 写入口一并解封，不只影响某个竞技场实例。</p>
+     *
+     * <p>解封只是清除缓存态，不保证文件已修好：下一次 {@link #loadNodesFromConfig()}（或任一静态读入口）
+     * 读盘仍会重新判定，文件依旧损坏时会把路径重新加入 {@link #NODES_READ_ONLY} 并重新打日志。</p>
+     */
+    public void resetReadOnlyGates() {
+        NODES_READ_ONLY.clear();
+    }
 
     private final GameManager gameManager;
     private final ConcurrentHashMap<Location, NodeData> nodes;
@@ -72,10 +106,11 @@ public class NodeSystem {
         buffEffects.clear();
         buffEffects.putAll(cfg.getNodeBuffEffects());
 
-        if (buffEffects.isEmpty()) {
-            buffEffects.put(PotionEffectType.RESISTANCE, 1);
-            buffEffects.put(PotionEffectType.REGENERATION, 0);
-        }
+        // round5 F4：空表不再补默认值。GameConfig 的构造器预置 RESISTANCE:0 / REGENERATION:0，
+        // 因此「空表」只可能来自管理员的显式配置（`nodes.buff-effects: []`）而不是「没配」——
+        // 旧实现此处无条件补一对默认值，把 `[]` 这个「想关掉全部节点增益」的意图又盖回去，
+        // 且补的是 RESISTANCE:1（与预置的 :0 还不一致），玩家拿到的等级无从解释。
+        // 空表 = 不施加任何增益，这是唯一自洽的语义。
     }
 
     // ========== 新增：手动注册节点系统 ==========
@@ -85,16 +120,40 @@ public class NodeSystem {
      *
      * <p>reload 时同坐标节点沿用原 NodeData，因此受损与已摧毁状态不会被重置；
      * 不再配置或方块材质无效的旧节点会先失效，再从注册表移除。</p>
+     *
+     * <p><b>文件损坏时保留现有节点</b>（不调 {@code invalidateAndClearNodes()}）：只有「文件不存在」
+     * 才是清空语义。同时把路径记入 {@link #NODES_READ_ONLY}，让本进程的所有写入口（含静态写入口）拒写。</p>
      */
     public void loadNodesFromConfig() {
         File nodesFile = new File(gameManager.getPlugin().getDataFolder(), "nodes.yml");
         if (!nodesFile.exists()) {
+            // 文件「不存在」有两种成因：① 从未部署过（正常，清空）；② 本次读盘失败被隔离成
+            // nodes.yml.corrupt。后者不能当成「空配置」——那会在 reloadnodes / 开局时把内存里的
+            // 节点静默清掉（而磁盘上的坏文件已被改名，看起来像「数据丢了」）。因此只读锁存在时早退。
+            if (NODES_READ_ONLY.contains(nodesFile.getAbsolutePath())) {
+                gameManager.getPlugin().getLogger().warning("nodes.yml is missing because it was quarantined "
+                        + "after a failed read; keeping the current " + nodes.size() + " node(s)");
+                return;
+            }
             invalidateAndClearNodes();
             gameManager.getPlugin().getLogger().info("nodes.yml not found, starting with empty node list.");
             return;
         }
 
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(nodesFile);
+        Logger logger = gameManager.getPlugin().getLogger();
+        YamlFiles.Loaded loaded = YamlFiles.load(nodesFile, YamlFiles.nodesValidator(), logger);
+        if (!loaded.usable()) {
+            // 不可用时不碰内存：保留现有节点，只把该文件锁成只读
+            NODES_READ_ONLY.add(nodesFile.getAbsolutePath());
+            logger.severe("nodes.yml is unusable; keeping the current " + nodes.size()
+                    + " node(s) and refusing all writes to it this run");
+            return;
+        }
+        // 真的读到并校验通过 → 解除只读（与 YamlFileGate 的 OK 分支同口径）
+        if (loaded.status() == YamlFiles.Status.OK) {
+            NODES_READ_ONLY.remove(nodesFile.getAbsolutePath());
+        }
+        YamlConfiguration config = loaded.config();
         List<Map<?, ?>> nodeList = config.getMapList("nodes");
         Set<Location> configuredLocations = new LinkedHashSet<>();
 
@@ -186,9 +245,11 @@ public class NodeSystem {
 
     /**
      * 保存节点列表到 nodes.yml（多竞技场隔离：保留其他世界的节点条目，只更新本竞技场世界的节点）
+     *
+     * @return true 表示已落盘；false 表示被只读降级拦下或写入失败（两种情形都已打日志）
      */
-    public void saveNodesToConfig() {
-        saveNodesToConfig(resolveArenaWorldNames());
+    public boolean saveNodesToConfig() {
+        return saveNodesToConfig(resolveArenaWorldNames());
     }
 
     /**
@@ -196,12 +257,22 @@ public class NodeSystem {
      *
      * <p>{@code arenaWorlds} 为空时不删除任何旧条目：调用方无法确定该清理哪个世界，
      * 保留现场比误删其它竞技场的数据安全。</p>
+     *
+     * @return true 表示已落盘；false 表示被只读降级拦下或写入失败（两种情形都已打日志）
      */
-    private void saveNodesToConfig(Set<String> arenaWorlds) {
+    private boolean saveNodesToConfig(Set<String> arenaWorlds) {
         File nodesFile = new File(gameManager.getPlugin().getDataFolder(), "nodes.yml");
-        YamlConfiguration config = nodesFile.exists()
-                ? YamlConfiguration.loadConfiguration(nodesFile)
-                : new YamlConfiguration();
+        Logger logger = gameManager.getPlugin().getLogger();
+        if (!nodesWritable(nodesFile, logger)) return false;
+
+        YamlFiles.Loaded loaded = YamlFiles.load(nodesFile, YamlFiles.nodesValidator(), logger);
+        if (!loaded.usable()) {
+            // 读不到就不能写：整份覆写会把其它世界/其它竞技场的条目抹掉
+            NODES_READ_ONLY.add(nodesFile.getAbsolutePath());
+            logger.warning("Refusing to write nodes.yml (unusable); node changes were NOT saved");
+            return false;
+        }
+        YamlConfiguration config = loaded.config();
 
         // 过滤掉本竞技场世界的旧条目，保留其他世界的节点
         List<Map<?, ?>> existing = config.getMapList("nodes");
@@ -229,10 +300,12 @@ public class NodeSystem {
         config.set("nodes", nodeList);
 
         try {
-            config.save(nodesFile);
-            gameManager.getPlugin().getLogger().info("Saved " + nodes.size() + " energy nodes to nodes.yml.");
-        } catch (Exception e) {
-            gameManager.getPlugin().getLogger().severe("Failed to save nodes.yml: " + e.getMessage());
+            YamlFiles.write(nodesFile, config);
+            logger.info("Saved " + nodes.size() + " energy nodes to nodes.yml.");
+            return true;
+        } catch (IOException e) {
+            logger.severe("Failed to save nodes.yml: " + e.getMessage());
+            return false;
         }
     }
 
@@ -312,7 +385,7 @@ public class NodeSystem {
     /**
      * 移除节点
      * @param location 节点坐标
-     * @return true=成功, false=不存在
+     * @return true=已删除并成功写回 nodes.yml；false=不存在，或写盘失败（内存已删但磁盘未更新）
      */
     public boolean removeNode(Location location) {
         Location normalized = normalizeLocation(location);
@@ -323,8 +396,15 @@ public class NodeSystem {
             removed.deactivate();
             activeNodes.remove(removed);
             nodes.remove(normalized, removed);
-            saveNodesToConfig();
-            return true;
+            if (saveNodesToConfig()) return true;
+
+            // 内存已删、磁盘未删。刻意不回滚内存删除：NodeData.deactivate() 不可逆，
+            // 重建一个新对象会把该节点的当前血量一起丢掉（等于免费修满）。
+            // 两条拒写路径都已各自打过日志，这里补一句把「重启后会复活」讲明白。
+            gameManager.getPlugin().getLogger().warning(
+                    "Node removed from memory but nodes.yml was NOT updated at " + normalized
+                            + "; it will reappear after a restart");
+            return false;
         }
 
         return false;
@@ -366,7 +446,17 @@ public class NodeSystem {
         File nodesFile = new File(dataFolder, "nodes.yml");
         if (!nodesFile.exists()) return locations;
 
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(nodesFile);
+        YamlFiles.Loaded loaded = YamlFiles.load(nodesFile, YamlFiles.nodesValidator(), staticLogger());
+        if (!loaded.usable()) {
+            // 不可用 → 锁成只读并返回空列表。调用方（ArenaResetService）会得到 0，
+            // 随后 expectedNodes>0 && removedNodes==0 的消歧分支会把重置判为失败，不会误报成功。
+            NODES_READ_ONLY.add(nodesFile.getAbsolutePath());
+            return locations;
+        }
+        if (loaded.status() == YamlFiles.Status.OK) {
+            NODES_READ_ONLY.remove(nodesFile.getAbsolutePath());
+        }
+        YamlConfiguration config = loaded.config();
         World world = Bukkit.getWorld(worldName); // 可能为 null：世界未加载时坐标照样返回，只是不携带 World
 
         for (Map<?, ?> nodeMap : config.getMapList("nodes")) {
@@ -392,7 +482,15 @@ public class NodeSystem {
         File nodesFile = new File(dataFolder, "nodes.yml");
         if (!nodesFile.exists()) return 0;
 
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(nodesFile);
+        YamlFiles.Loaded loaded = YamlFiles.load(nodesFile, YamlFiles.nodesValidator(), staticLogger());
+        if (!loaded.usable()) {
+            NODES_READ_ONLY.add(nodesFile.getAbsolutePath());
+            return 0;
+        }
+        if (loaded.status() == YamlFiles.Status.OK) {
+            NODES_READ_ONLY.remove(nodesFile.getAbsolutePath());
+        }
+        YamlConfiguration config = loaded.config();
         List<Map<String, Object>> keptNodes = new ArrayList<>();
         int removed = 0;
         for (Map<?, ?> nodeMap : config.getMapList("nodes")) {
@@ -419,7 +517,15 @@ public class NodeSystem {
         File nodesFile = new File(dataFolder, "nodes.yml");
         if (!nodesFile.exists()) return false;
 
-        YamlConfiguration config = YamlConfiguration.loadConfiguration(nodesFile);
+        YamlFiles.Loaded loaded = YamlFiles.load(nodesFile, YamlFiles.nodesValidator(), staticLogger());
+        if (!loaded.usable()) {
+            NODES_READ_ONLY.add(nodesFile.getAbsolutePath());
+            return false;
+        }
+        if (loaded.status() == YamlFiles.Status.OK) {
+            NODES_READ_ONLY.remove(nodesFile.getAbsolutePath());
+        }
+        YamlConfiguration config = loaded.config();
         List<Map<String, Object>> keptNodes = new ArrayList<>();
         int currentIndex = 0;
         boolean removed = false;
@@ -479,15 +585,22 @@ public class NodeSystem {
      * @return true 表示写入成功
      */
     private static boolean writeNodes(File nodesFile, YamlConfiguration config, List<Map<String, Object>> nodes) {
+        Logger logger = staticLogger();
+        if (!nodesWritable(nodesFile, logger)) return false;
         config.set("nodes", nodes);
         try {
-            config.save(nodesFile);
+            YamlFiles.write(nodesFile, config);
             return true;
         } catch (IOException exception) {
-            Bukkit.getLogger().log(java.util.logging.Level.SEVERE,
+            logger.log(java.util.logging.Level.SEVERE,
                     "[HilltopVillage] Failed to save nodes.yml: " + exception.getMessage(), exception);
             return false;
         }
+    }
+
+    /** 静态工具方法的日志出口（没有插件实例可用时退回 Bukkit 全局日志）。 */
+    private static Logger staticLogger() {
+        return Bukkit.getLogger();
     }
 
     // ========== 保留的原有方法 ==========

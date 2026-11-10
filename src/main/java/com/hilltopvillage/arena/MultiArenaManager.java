@@ -167,13 +167,23 @@ public class MultiArenaManager {
      * @return true 表示已恢复到竞技场（调用方不应再执行大厅落地）
      */
     public boolean tryRejoin(Player player) {
-        PendingRejoin pending = pendingRejoins.remove(player.getUniqueId());
+        // fix（cross-pattern-7）：先 get 后 remove，恢复动作全部成功后才消费记录。
+        // 原实现在这里就 remove()，其后任一步抛异常都会让重连记录永久丢失，玩家无法重试；
+        // 改为各终止路径末尾才 remove，异常时记录仍在，下次登录可重试（超时由扫描任务清理）。
+        PendingRejoin pending = pendingRejoins.get(player.getUniqueId());
         if (pending == null) return false;
 
         ArenaInstance arena = activeArenas.get(pending.arenaId());
         if (arena == null) {
+            // fix-critical D2：实例已退役（disable / stop）但延迟 reset 还没跑完。
+            // 该玩家的 UUID 可能还留在退役实例的 players 里 —— 不摘除的话，reset() 的
+            // 「在线残留」分支会把他当成幽灵成员走 removePlayer，而快照已在 onPlayerJoin
+            // 被正常归还 → restore 返回 false → （旧实现）背包被 clear。
+            // 必须先摘除、再归还物品：dropMember 本身绝不碰快照/背包。
+            dropFromRetired(pending.arenaId(), player.getUniqueId());
             playerArenaMap.remove(player.getUniqueId());
             restoreGoodsOnFailedRejoin(player);
+            pendingRejoins.remove(player.getUniqueId());
             return false;
         }
 
@@ -186,8 +196,10 @@ public class MultiArenaManager {
             // 保证物品当场归还而不是拖到下一次登录（期间对局货币可在大厅消费，经济口径漏洞）。
             // restore 幂等：无快照时返回 false 且不发送提示，不会重复归还。
             restoreGoodsOnFailedRejoin(player);
+            pendingRejoins.remove(player.getUniqueId());
             return false;
         }
+        pendingRejoins.remove(player.getUniqueId());
         return true;
     }
 
@@ -208,6 +220,31 @@ public class MultiArenaManager {
                 plugin.getLanguageManager().send(player, "goods-restored");
             }
         }
+    }
+
+    /**
+     * 从退役实例中静默摘除一名成员（fix-critical D2）。
+     *
+     * <p>退役实例是「已离开 {@link #activeArenas} 但仍持有 players 集合」的实例，
+     * 只有 {@link #retiredArenas} 能到达它。本方法不处理世界/回滚，只清玩家侧残留，
+     * 且完全依赖 {@link ArenaInstance#dropMember(UUID)} 的「不碰背包」语义
+     * ——调用它时玩家的快照可能已被 Join 路径正常归还并消耗。</p>
+     *
+     * <p>幂等：队列里没有该实例、或该 UUID 本来就不在实例里时，安全返回 false。</p>
+     *
+     * @param arenaId 退役实例的竞技场 ID
+     * @param uuid    要摘除的玩家 UUID
+     * @return true 表示确实摘除了一个残留成员
+     */
+    private boolean dropFromRetired(String arenaId, UUID uuid) {
+        RetiredArena retired = retiredArenas.get(arenaId);
+        if (retired == null) return false;
+        boolean dropped = retired.arena().dropMember(uuid);
+        if (dropped) {
+            plugin.getLogger().info("Removed stale member " + uuid + " from retired arena " + arenaId
+                    + " (their snapshot was already returned on login)");
+        }
+        return dropped;
     }
 
     /** 该竞技场当前是否仍有玩家处于重连窗口内（fix5 M-04：空置倒计时的前置守卫） */
@@ -390,8 +427,16 @@ public class MultiArenaManager {
      * @return 操作结果说明的 i18n 键；成功返回 "deploy.ok"
      */
     public String disableArena(String arenaId) {
+        // 键必须归一化（与 enableArena / resolveArenaId 同口径）：ArenaRegistry.get() 大小写不敏感，
+        // 而 activeArenas / enableQueue / statuses 一律以定义里的规范 ID 为键；原样比较用户输入
+        // 会让 /hilltop disable Arena1 直接返回 arena-not-found。
+        if (arenaId != null && !arenaId.isBlank()) {
+            ArenaDefinition definition = definitionManager.getArena(arenaId);
+            if (definition != null) arenaId = definition.getId();
+        }
+        final String canonicalId = arenaId;
         if (!definitionManager.getRegistry().list().stream()
-                .anyMatch(def -> def.getId().equals(arenaId))) {
+                .anyMatch(def -> def.getId().equals(canonicalId))) {
             return "arena-not-found";
         }
 
@@ -527,6 +572,19 @@ public class MultiArenaManager {
      * @param retiredState 退役前的 {@link GameState}（必须在 {@code stopGame()} 之前取得）
      */
     private void retireArena(String arenaId, ArenaInstance arena, GameState retiredState) {
+        // fix-critical D2 纵深防御：退役瞬间就把不在线的成员摘干净。
+        // stopGame() 的踢人循环走 ArenaInstance#getPlayers()（只返回在线玩家），
+        // 离线成员会一直留在实例的 players 集合里；等到延迟 reset 时若该玩家恰好重登，
+        // reset() 的「在线残留」分支会把他当成幽灵成员走 removePlayer，
+        // 而快照已在 onPlayerJoin 被正常归还 → restore 返回 false → 背包被 clear。
+        // dropMember 只清集合与统计，绝不碰背包/传送（见其 javadoc）。
+        // 必须在 retiredArenas.put 之前做：之后调用方已拿不到实例。
+        // 行为变更：退役后本场所有成员（含离线）立刻离场，重连窗口不再有效
+        // （竞技场正在回滚，本就不该让玩家重连回去）——CHANGELOG 需说明。
+        for (UUID stale : arena.getOfflineMembers()) {
+            arena.dropMember(stale);
+        }
+
         String worldName = arena.getWorldName();
         int graceSeconds = computeRetireGraceSeconds(retiredState);
         retiredArenas.put(arenaId, new RetiredArena(arena, worldName, graceSeconds));
@@ -612,7 +670,7 @@ public class MultiArenaManager {
     private boolean isWorldQuarantined(String worldName) {
         if (worldName == null) return false;
         for (RetiredArena retired : retiredArenas.values()) {
-            if (worldName.equals(retired.worldName())) return true;
+            if (worldName.equalsIgnoreCase(retired.worldName())) return true;
         }
         return false;
     }
@@ -630,14 +688,14 @@ public class MultiArenaManager {
         if (worldName == null || worldName.isBlank()) return null;
 
         for (ArenaInstance active : activeArenas.values()) {
-            if (!active.getArenaId().equals(arenaId) && worldName.equals(active.getWorldName())) {
+            if (!active.getArenaId().equals(arenaId) && worldName.equalsIgnoreCase(active.getWorldName())) {
                 return active.getArenaId();
             }
         }
         for (String queuedId : enableQueue) {
             if (queuedId.equals(arenaId)) continue;
             ArenaDefinition queued = definitionManager.getArena(queuedId);
-            if (queued != null && worldName.equals(queued.getWorldName())) return queuedId;
+            if (queued != null && worldName.equalsIgnoreCase(queued.getWorldName())) return queuedId;
         }
         return null;
     }
@@ -933,6 +991,36 @@ public class MultiArenaManager {
     }
 
     /**
+     * 降级路径：{@code lobby.world} 未配置或世界不存在时，在<b>任意世界</b>设置大厅出生点，
+     * 同时把 {@code lobby.world} 写为当前位置的世界（{@code /hilltop lobby setspawn} 专用）。
+     *
+     * <p>判定与写盘都委托 {@link ArenaManager#isConfiguredLobbyWorldMissing()} /
+     * {@link ArenaManager#updateLobbySpawnAndWorld(Location)}；命令层先判再调，
+     * 正常路径（大厅世界存在）仍走 {@link #setLobbySpawn(Location)} 的严格校验。</p>
+     *
+     * @param location 管理员当前位置
+     * @return true = 已写入磁盘并同步内存；false = 写盘失败
+     */
+    public boolean setLobbySpawnAndWorld(Location location) {
+        return definitionManager.updateLobbySpawnAndWorld(location);
+    }
+
+    /**
+     * {@code lobby.world} 是否未配置 / 指向的世界当前不存在（只看显式配置，不含主世界回退）。
+     *
+     * <p>供 {@code /hilltop lobby setspawn} 判断是否走「任意世界」降级路径，
+     * 以及向导完成提示判断大厅是否配置好。</p>
+     */
+    public boolean isConfiguredLobbyWorldMissing() {
+        return definitionManager.isConfiguredLobbyWorldMissing();
+    }
+
+    /** {@code lobby.spawn} 是否仍是出厂占位值（{@code 0.5 / 100.0 / 0.5}），见 {@link ArenaManager} */
+    public boolean isLobbySpawnFactoryDefault() {
+        return definitionManager.isLobbySpawnFactoryDefault();
+    }
+
+    /**
      * 大厅世界（未配置或未加载返回 null）。
      */
     public World getLobbyWorld() {
@@ -1011,7 +1099,7 @@ public class MultiArenaManager {
         if (worldName == null) return null;
 
         for (ArenaInstance arena : activeArenas.values()) {
-            if (worldName.equals(arena.getWorldName())) {
+            if (worldName.equalsIgnoreCase(arena.getWorldName())) {
                 return arena;
             }
         }
@@ -1037,8 +1125,16 @@ public class MultiArenaManager {
      * 按给定状态顺序统计活动竞技场数量。
      *
      * <p>返回数组与 {@code states} 一一对应（调用方按返回顺序拼到 i18n 文本里）。
-     * 不在此枚举到的状态（含 {@code WAVE_INTERMISSION} / {@code VICTORY} / {@code DEFEAT}）
-     * 不计入任何桶 —— 它们是瞬时的对局内状态，统计口径保持旧行为不变。</p>
+     * {@code counts[0]} 恒为 {@link #activeArenas} 的全量大小，因此<b>调用方必须把所有
+     * {@link ArenaInstance#getState()} 的可达取值都列进 {@code states}</b>，否则未列出的状态
+     * 会「计入总数却不落入任何桶」，分桶之和与 {@code counts[0]} 对不上。</p>
+     *
+     * <p>正确调用见 {@code ArenaCommand#handleArenas}：WAITING / STARTING / RUNNING / ENDING /
+     * VICTORY / DEFEAT 六个状态已全部覆盖。注意 {@code VICTORY} / {@code DEFEAT} 并不是瞬时值 ——
+     * {@code ArenaInstance.beginEndSequence()} 会把竞技场稳定停在这两态直到结算倒计时
+     * （{@code defeat-countdown-seconds}）走完才转 {@code ENDING}，是可被 {@code /hilltop arenas}
+     * 观察到的窗口。{@code WAVE_INTERMISSION} 只属于 {@code GameManager}，{@code ArenaInstance}
+     * 从不停留在该状态，故不需要列出。</p>
      */
     public int[] countByState(GameState... states) {
         int[] counts = new int[states.length + 1];

@@ -31,6 +31,13 @@ public class GameManager {
     private long waveStartMillis;
     /** 本波是否已执行过超时保险的第一阶段（传送+高亮），避免每 3 秒重复传送 */
     private boolean waveStuckRelocated;
+    /**
+     * 本波刷怪批次是否仍在补刷；由 {@link WaveManager#spawnWave(int, Runnable)} 的完成回调复位。
+     * {@link WaveManager#isWaveCleared()} 只认 {@code activeMobs}，刷怪点找不到安全落点时批次
+     * 只增计数不登记实体，activeMobs 会在仍有剩余批次时提前为空而被误判清波（剩余只数静默丢弃）。
+     * 读写均在主线程（调度任务），无需 volatile。
+     */
+    private boolean waveSpawning = false;
     /** 第一阶段（传送高亮）之后，再宽限多少秒仍未清波则强制清除残怪（第二阶段硬兜底） */
     private static final int WAVE_STUCK_PURGE_GRACE_SECONDS = 15;
     private final ConcurrentHashMap<UUID, PlayerData> playerDataMap;
@@ -307,7 +314,17 @@ public class GameManager {
         // 波次刷新时复活阵亡玩家（需要至少一个活跃节点）
         respawnDeadPlayers();
 
-        waveManager.spawnWave(currentWave);
+        // 先置位再刷：spawnWave 在「已满容量 / 剩余为 0」时会同步跑完回调，
+        // 顺序反过来会把回调写下的 false 覆盖回 true，本波永远判不清。
+        waveSpawning = true;
+        try {
+            waveManager.spawnWave(currentWave, () -> waveSpawning = false);
+        } catch (RuntimeException exception) {
+            // 刷怪入口抛异常时 onComplete 不会执行，标志会永久留在 true，使 checkWaveCompletion
+            // 的清波判定短路；此处兜底复位后原样上抛，不吞异常。
+            waveSpawning = false;
+            throw exception;
+        }
 
         // P0-C 波次超时保险：记录本波开始时间并重置保险阶段标记（见 handleWaveTimeout）
         waveStartMillis = System.currentTimeMillis();
@@ -397,9 +414,14 @@ public class GameManager {
         }
 
         // STORY-1.5 tick 复检：全灭（无存活玩家 + 无活跃节点）不只靠死亡事件判一次，
-        // 每 3 秒复检一次。覆盖休整期（tick 在休整期仍在跑，直到下一波 startNextWave 重建）
-        // 与"只剩猎手/抛投者不清波"的原软锁组合（怪不清波则 waveCleared 恒 false，
-        // 但人死光+节点全毁后本应判负而非无限卡住）。
+        // 每 3 秒复检一次。与"只剩猎手/抛投者不清波"的原软锁组合（怪不清波则 waveCleared
+        // 恒 false，但人死光+节点全毁后本应判负而非无限卡住）。
+        //
+        // slice-09-logic-004：本 tick **不覆盖休整期** —— 清波分支（下方）在转入
+        // WAVE_INTERMISSION 之前就 cancel 了自己的句柄，直到下一波 startNextWave 才重建。
+        // 原注释声称"覆盖休整期"，与代码不符。休整期由三条旁路兜住：排队回调的人数守卫
+        // （onWaveComplete 内）、removeOfflinePlayer 的 min-players 判负、以及 ArenaInstance
+        // 的空置值守；且休整期无怪可清，此处的全灭判负在休整期并无可触发面。
         if (!hasAlivePlayer() && nodeSystem.getActiveCount() == 0) {
             ArenaInstance arena = liveArena();
             if (arena != null) {
@@ -418,7 +440,9 @@ public class GameManager {
         // 放在 isWaveCleared() 之前，使「第二阶段强制清除」后同一 tick 即判为清波，无需多等 3 秒。
         handleWaveTimeout();
 
-        if (waveManager.isWaveCleared()) {
+        // 批次未跑完不得判清波：批次间隙 activeMobs 可能暂时为空（落点失败只增计数不登记实体），
+        // 此时判清会切走状态，让任务顶部的 state != RUNNING 守卫自我取消，剩余只数被丢弃。
+        if (!waveSpawning && waveManager.isWaveCleared()) {
             // Wave done — cancel task before proceeding
             if (waveCheckTask != null) {
                 waveCheckTask.cancel();
@@ -470,6 +494,15 @@ public class GameManager {
 
     private void onWaveComplete() {
         broadcastI18n("wave-complete", currentWave);
+
+        // 最后一波清空必须当场判胜，不能进休整期。isGameRunning() 在 WAVE_INTERMISSION 仍为 true，
+        // 这段 intervalSeconds 窗口内任何人 /hilltop leave 都会让 removeOfflinePlayer 的
+        // min-players 检查走 endGame(false)，把已通关的一局记成失败；随后排队回调因 state
+        // 已非 WAVE_INTERMISSION 而不再开波，胜利便永久丢失。
+        if (currentWave >= totalWaves) {
+            endGame(true);
+            return;
+        }
 
         state = GameState.WAVE_INTERMISSION;
 
@@ -598,6 +631,10 @@ public class GameManager {
         settlementPhase = false;
         broadcastI18n(victory ? "game-victory" : "game-defeat");
 
+        // 刷怪批次被中途取消时不会触发 onComplete 回调（见 WaveManager#cancelSpawnTask），
+        // 标志会残留为 true 并让下一次清波判定永久短路；所有终止路径都经过本方法，在此统一复位。
+        waveSpawning = false;
+
         if (waveCheckTask != null) {
             waveCheckTask.cancel();
             waveCheckTask = null;
@@ -649,8 +686,17 @@ public class GameManager {
     }
 
     /**
-     * 停止波次调度与清除怪物，但<b>不改变 GameManager 状态</b>。
+     * 停止波次调度、清除怪物与节点 Buff，但<b>不改变 GameManager 状态</b>。
      * 供失败/胜利结算使用（玩家需要留在场上查看统计）。
+     *
+     * <p>slice-09-conc-004：这里必须显式停 {@code buffTask}。buffTask 的唯一退出条件是
+     * 「{@code !isGameRunning()}」，而本方法刻意不改变状态（结算期仍为 RUNNING /
+     * WAVE_INTERMISSION），结算倒计时改的是 {@code ArenaInstance.state} —— 两者是不同的
+     * 状态机。漏掉这一句，节点 Buff 会在整个结算倒计时期间按 {@code buffRefreshTicks}
+     * 继续对仍在场玩家重放。</p>
+     *
+     * <p>与 {@link #stopGame()} 的取消清单保持一致：将来任何「只以 {@code isGameRunning()}
+     * 为出口」的周期任务，都必须同时登记到这两个方法里。</p>
      */
     public void haltGame() {
         // P2-13：进入结算期窗口（状态刻意不变，见字段注释）。重复调用幂等。
@@ -662,6 +708,9 @@ public class GameManager {
         // 本方法刻意不改状态（仍可能是 WAVE_INTERMISSION），排队回调因此不会被状态拦住，
         // 必须显式取消，否则结算倒计时期间会重新刷怪并播报 wave-start
         cancelWaveScheduler();
+        // slice-09-conc-004：buffTask 与上面两个句柄同属「结算期必须停下的周期任务」。
+        // 它只在自己检测到 !isGameRunning() 时自停，而本方法不改状态 ⇒ 不会自停。
+        nodeSystem.stopBuffTask();
         waveManager.clearAllMobs();
     }
 

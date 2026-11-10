@@ -82,10 +82,19 @@ public class ArenaCommand implements CommandExecutor {
         sender.sendMessage(forSender(sender, "arena-status-header"));
         // countByState 返回 int[]：必须逐个拆包再传。直接把 int[] 丢给 Object... 变参，
         // Java 会把它当成「单个参数」（int[] 不是 Object[]），{0} 会打成 [I@xxx。
+        //
+        // 必须把 ArenaInstance 的「全部可达状态」都传进来：未列出的状态不计入任何桶、
+        // 却仍计入 counts[0]，Total 就会大于分桶之和。VICTORY / DEFEAT 在结算倒计时
+        // （defeat-countdown-seconds）期间是稳定停留状态（ArenaInstance:814），此前漏传，
+        // 于是每次分出胜负后的十几秒里 Total 恒大于四桶之和。这里把它们并入 Ending 桶：
+        // 两者同属「本局已结束、场馆正在收尾」窗口，具体胜负仍由下方每个场馆的详情行
+        // 单独播报（state.victory / state.defeat），信息不丢。
+        // WAVE_INTERMISSION 只有 GameManager 使用，ArenaInstance 从不停留在该状态，故不列。
         int[] counts = arenaManager.countByState(GameState.WAITING, GameState.STARTING,
-                GameState.RUNNING, GameState.ENDING);
+                GameState.RUNNING, GameState.ENDING, GameState.VICTORY, GameState.DEFEAT);
         sender.sendMessage(forSender(sender, "arena-status-statistics",
-                counts[0], counts[1], counts[2], counts[3], counts[4]));
+                counts[0], counts[1], counts[2], counts[3],
+                counts[4] + counts[5] + counts[6]));
         sender.sendMessage("");
 
         // 遍历所有「已配置」的竞技场（含已禁用/排队中的，它们没有运行时实例）

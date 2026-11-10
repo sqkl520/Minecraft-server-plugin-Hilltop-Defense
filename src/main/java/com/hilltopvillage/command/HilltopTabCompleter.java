@@ -39,7 +39,23 @@ public class HilltopTabCompleter implements TabCompleter {
 
     @Override
     public List<String> onTabComplete(CommandSender sender, Command command, String alias, String[] args) {
-        if (!command.getName().equalsIgnoreCase("hilltop")) return null;
+        String commandName = command.getName().toLowerCase(Locale.ROOT);
+
+        // 顶层快捷命令 /hub：无参数，因此永远没有可补全项。
+        if (commandName.equals("hub")) return new ArrayList<>();
+
+        // 顶层快捷命令 /lobby：只有第 1 个参数可以补 setspawn（管理员）。
+        // 参数形态与 /hilltop lobby 不同 —— /lobby setspawn 的 setspawn 落在 args[0]，不是 args[1]。
+        if (commandName.equals("lobby")) {
+            List<String> completions = new ArrayList<>();
+            if (args.length == 1 && sender.hasPermission("hilltopvillage.admin")
+                    && "setspawn".startsWith(args[0].toLowerCase(Locale.ROOT))) {
+                completions.add("setspawn");
+            }
+            return completions;
+        }
+
+        if (!commandName.equals("hilltop")) return null;
 
         if (args.length == 1) {
             List<String> completions = new ArrayList<>();
@@ -120,7 +136,7 @@ public class HilltopTabCompleter implements TabCompleter {
         if (args.length == 2 && args[0].equalsIgnoreCase("deploy") && sender.hasPermission("hilltopvillage.admin")) {
             List<String> completions = new ArrayList<>();
             String input = args[1].toLowerCase(Locale.ROOT);
-            for (String sub : Arrays.asList("help", "setcore", "addspawn", "listspawns", "delspawn", "clearspawns",
+            for (String sub : Arrays.asList("help", "setcore", "setwaiting", "addspawn", "listspawns", "delspawn", "clearspawns",
                     "confirmclear", "reloadnodes", "showparticles",
                     "addmobspawn", "listmobspawns", "delmobspawn", "clearmobspawns", "confirmclearmob",
                     "addvillager", "listvillagers", "delvillager", "clearvillagers", "confirmclearvillagers",

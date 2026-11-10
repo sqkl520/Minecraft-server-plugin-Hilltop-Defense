@@ -124,7 +124,9 @@ public class WaveManager {
             // 兜底路径同样走分批：原来这里是单 tick 同步生成 5+2×波数 只（第 20 波 = 45 只），
             // 每只都要跑一次 getRandomSpawnLocation() + spawnEntity + addGoal，
             // 是整局里最尖的单 tick 分配峰值。改用与正常路径相同的 3 tick / 2 只节奏。
-            spawnDefaultWave(waveNumber, onComplete);
+            // slice-09-logic-006：同时把上面算好的三层裁剪结果 remaining 传进去 ——
+            // 此前兜底路径完全丢弃它（含 global-mob-cap），5+2×波数 会越过全局上限。
+            spawnDefaultWave(waveNumber, remaining, onComplete);
             return;
         }
 
@@ -299,11 +301,22 @@ public class WaveManager {
      * 改成异步后必须补上「state != RUNNING 即停」守卫（M-12），否则失败结算后仍会继续刷怪。</p>
      *
      * @param waveNumber 波次号（决定总只数）
+     * @param maxTotal   本波允许的只数上限（total-mobs → 人均 → 全局剩余三层裁剪后的
+     *                   {@code remaining}）；只数与 {@code 5+2×waveNumber} 取较小者
      * @param onComplete 全部生成完毕后回调（可为 null）
      */
-    private void spawnDefaultWave(int waveNumber, Runnable onComplete) {
-        final int count = DEFAULT_WAVE_BASE_COUNT + waveNumber * DEFAULT_WAVE_COUNT_PER_WAVE;
+    private void spawnDefaultWave(int waveNumber, int maxTotal, Runnable onComplete) {
+        // slice-09-logic-006：兜底路径此前按 5+2×波数 定量，既不认 global-mob-cap 也不认人数，
+        // 第 38 波（=81 只）起就会越过默认上限。现在与精确配比路径共用同一个 remaining，
+        // 不另造上限函数——裁剪口径仍由 spawnWave 的三层 Math.min 单独决定。
+        final int count = Math.max(0, Math.min(DEFAULT_WAVE_BASE_COUNT + waveNumber * DEFAULT_WAVE_COUNT_PER_WAVE,
+                maxTotal));
         final int[] spawned = {0};
+
+        if (count <= 0) {
+            if (onComplete != null) onComplete.run();
+            return;
+        }
 
         spawnTask = new BukkitRunnable() {
             @Override

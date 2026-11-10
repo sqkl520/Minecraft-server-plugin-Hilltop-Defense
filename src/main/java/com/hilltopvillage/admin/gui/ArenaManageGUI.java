@@ -223,8 +223,10 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         });
     }
 
-    /** 部署状态三态：未部署（缺核心）> 未部署 > 已部署。 */
+    /** 部署状态四态：读不到 > 未部署（缺核心）> 未部署 > 已部署。 */
     private String deployStateKey(ArenaView arena) {
+        // 闸门只读/文件不可用时点位数是「读不到」而非「未部署」，否则管理员会误以为要重新部署
+        if (arena.dataUnavailable()) return "manage.list.entry-data-unavailable";
         if (!arena.hasCore()) return "manage.list.entry-no-core";
         return arena.deployed() ? "manage.list.entry-deployed" : "manage.list.entry-undeployed";
     }
@@ -741,7 +743,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
      * <p>确认页可能停留很久，期间竞技场可能已开局 / 已开始另一次重置 / 已在启用队列里，
      * 直接调 {@code reset} 只会白跑一趟。</p>
      *
-     * <p>成功后<b>先切回 DETAIL 再执行</b>：{@code reset} 的回调可能在本次调用栈内同步触发
+     * <p>成功后<b>先离开确认页再执行</b>（走 {@link #goBack()} 回到 DETAIL）：{@code reset} 的回调可能在本次调用栈内同步触发
      * （世界没有待回滚方块时 {@code MapRestoreManager} 直接回报完成），若不先离开确认页，
      * 回调里的 {@code reopen()} 会再次渲染确认页，管理员可以重复点击。</p>
      */
@@ -752,7 +754,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         Gate gate = resetService().canReset(arenaId);
         if (gate != Gate.OK) {
             lang.send(admin, blockedKey(gate), arenaId);
-            applyView(View.DETAIL);
+            goBack();
             return;
         }
 
@@ -761,7 +763,10 @@ public class ArenaManageGUI extends AbstractAdminMenu {
         ArenaView before = currentView();
         String worldName = before != null ? before.worldName() : arenaId;
 
-        applyView(View.DETAIL);
+        // 用 goBack() 而非 applyView(View.DETAIL)：确认页是由 enterResetConfirm() 的
+        // openView(RESET_CONFIRM) 压入 DETAIL 进来的，只有弹栈才能让 history 与 view 同步；
+        // 直接 applyView 会留下「栈顶与当前视图同为 DETAIL」的失步态，DETAIL 的返回键首次点击失效。
+        goBack();
         lang.send(admin, "manage.reset.started", arenaId);
 
         resetService().reset(arenaId, outcome -> handleResetOutcome(outcome, nodesBefore, worldName));
@@ -798,6 +803,11 @@ public class ArenaManageGUI extends AbstractAdminMenu {
                 lang.send(admin, "manage.reset.fail-skipped-world", worldName);
             }
             lang.send(admin, "manage.reset.partial", failStepText(failStep));
+            // 中止路径会尽量把竞技场恢复成重置前的启用状态；恢复失败时补一句具体原因与恢复方式。
+            // restore 失败时该字段为 null —— fail-restore 的文案本身已写明「竞技场保持禁用，修好后重试」。
+            if (outcome.reinstateSkipped() != null) {
+                lang.send(admin, reinstateSkipKey(outcome.reinstateSkipped()), outcome.arenaId());
+            }
             return;
         }
 

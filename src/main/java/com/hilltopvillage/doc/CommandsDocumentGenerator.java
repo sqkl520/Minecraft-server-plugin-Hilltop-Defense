@@ -59,7 +59,23 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: 无（所有玩家可用）；`setspawn` 子命令需 `hilltopvillage.admin`。\n");
         md.append("- **参数**: `setspawn` — 可选（管理员），把当前位置设为大厅出生点。\n");
         md.append("- **使用示例**: `/hilltop lobby`, `/hilltop lobby setspawn`\n");
-        md.append("- **注意事项**: 若当前在竞技场中，会先退出该竞技场再传送到大厅。仅限玩家使用。`lobby setspawn` 必须在**大厅世界内**执行，位置（含朝向）即刻写入 `arenas.yml` 的 `lobby.spawn` 并即时生效（新登录、大厅复活与 `/hilltop lobby` 立即使用新出生点，无需重启）。\n\n");
+        md.append("- **注意事项**: 若当前在竞技场中，会先退出该竞技场再传送到大厅；人在任意世界都能回大厅，已站在大厅出生点附近（4 格内）时不重复传送。大厅未配置（`lobby.world` 为空或其世界不存在）时回退到主世界出生点并给出提示。仅限玩家使用。`lobby setspawn` 通常必须在**大厅世界内**执行，位置（含朝向）即刻写入 `arenas.yml` 的 `lobby.spawn` 并即时生效（新登录、大厅复活与 `/hilltop lobby` 立即使用新出生点，无需重启）；若 `lobby.world` 为空或指向的世界不存在，可在**任意世界**执行，此时会一并把 `lobby.world` 写为当前世界并明确播报。\n\n");
+
+        // 顶层快捷命令：与 /hilltop lobby 同一实现（HilltopCommandHandler 在 handle() 开头分流），
+        // 因此「注意事项」与上面那条完全重合，这里只写入口差异，避免同一条规则维护两份表述。
+        md.append("### `/hub`\n\n");
+        md.append("- **功能**: 返回大厅 —— `/hilltop lobby` 的顶层快捷命令。\n");
+        md.append("- **权限**: 无（所有玩家可用）。\n");
+        md.append("- **参数**: 无（多余参数会被拒绝并提示用法）。\n");
+        md.append("- **使用示例**: `/hub`\n");
+        md.append("- **注意事项**: 行为与 `/hilltop lobby` 完全一致（同一实现），见上一条的全部注意事项。仅限玩家使用。\n\n");
+
+        md.append("### `/lobby [setspawn]`\n\n");
+        md.append("- **功能**: 返回大厅 —— `/hilltop lobby` 的顶层快捷命令；`setspawn` 子命令同样可用。\n");
+        md.append("- **权限**: 无（所有玩家可用）；`setspawn` 子命令需 `hilltopvillage.admin`。\n");
+        md.append("- **参数**: `setspawn` — 可选（管理员），把当前位置设为大厅出生点。\n");
+        md.append("- **使用示例**: `/lobby`, `/lobby setspawn`\n");
+        md.append("- **注意事项**: 参数原样转发给 `/hilltop lobby`，行为与它完全一致（含大厅世界校验与降级路径），详见上一条。仅限玩家使用。\n\n");
 
         md.append("### `/hilltop list`\n\n");
         md.append("- **功能**: 列出所有竞技场。\n");
@@ -185,6 +201,13 @@ public class CommandsDocumentGenerator {
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop deploy setcore`\n");
         md.append("- **注意事项**: 核心是村庄守卫的核心建筑，怪物将以此为目标。请站在核心上方执行命令。设置后会播放粒子效果作为视觉反馈。\n\n");
+
+        md.append("### `/hilltop deploy setwaiting`\n\n");
+        md.append("- **功能**: 将管理员当前所在坐标设置为本竞技场的等待区（玩家 `/hilltop join` 后、开局前的落点）。\n");
+        md.append("- **权限**: `hilltopvillage.admin`\n");
+        md.append("- **参数**: 无。\n");
+        md.append("- **使用示例**: `/hilltop deploy setwaiting`\n");
+        md.append("- **注意事项**: 等待区是**可选**项，写入 `arenas.yml` 的 `arenas.<id>.waiting-location`；不设置时玩家会在核心重生点上等待开局。对局进行中会拒绝（等待区只影响之后加入的玩家）。与部署向导第 2 步的 [设为等待区] 按钮等价。\n\n");
 
         md.append("### `/hilltop deploy addspawn`\n\n");
         md.append("- **功能**: 将管理员当前所在坐标添加为玩家出生点。\n");

@@ -122,9 +122,32 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
         Material mainIcon = (mainHand != null && mainHand != Material.AIR) ? mainHand : Material.BARRIER;
         setClickableItem(30, mainIcon, lang.getFor(admin, "config.menu.monsters.main-hand"),
                 ct -> {
-                    Material next = cycleMaterial(mc.getMainHandItem(), WEAPON_CYCLE);
-                    mc.setMainHandItem(next);
-                    reopen();
+                    // slice-08-logic-004：lore 用的是 click-toggle-custom（"Shift+Click Custom"），
+                    // 但此前本槽位完全不读 ClickType，SHIFT 会静默走「循环下一个材质」，
+                    // 主手因此只能从 WEAPON_CYCLE 里选。补齐与副手（:138）、护甲（addArmorSlot）一致的 SHIFT 分支。
+                    if (ct == ClickType.SHIFT_LEFT || ct == ClickType.SHIFT_RIGHT) {
+                        admin.closeInventory();
+                        // 复用带占位符的通用材质输入文案（副手专用键写的是 "offhand"，对主手不准确）
+                        NumericInputHandler.requestString(plugin, admin,
+                                lang.getFor(admin, "config.menu.monsters.armor-prompt",
+                                        lang.getFor(admin, "config.menu.monsters.main-hand")),
+                                v -> {
+                                    if (v == null || v.isEmpty()) {
+                                        mc.setMainHandItem(null);
+                                    } else {
+                                        Material m = Material.getMaterial(v.toUpperCase(Locale.ROOT));
+                                        // fix-round1 fix-036：与 ConfigManager.loadMonstersConfig 同一 isItem() 规则
+                                        if (m != null && m.isItem()) mc.setMainHandItem(m);
+                                        else rejectMaterial(v, m);
+                                    }
+                                    reopen();
+                                },
+                                this::reopen, lang);
+                    } else {
+                        Material next = cycleMaterial(mc.getMainHandItem(), WEAPON_CYCLE);
+                        mc.setMainHandItem(next);
+                        reopen();
+                    }
                 },
                 lang.getFor(admin, "config.menu.common.current") + ChatColor.AQUA + mainHandName,
                 lang.getFor(admin, "config.menu.common.click-toggle-custom"),
@@ -144,7 +167,9 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
                                         mc.setOffHandItem(null);
                                     } else {
                                         Material m = Material.getMaterial(v.toUpperCase(Locale.ROOT));
-                                        if (m != null) mc.setOffHandItem(m);
+                                        // fix-round1 fix-036：同主手，非物品材质不得写进配置
+                                        if (m != null && m.isItem()) mc.setOffHandItem(m);
+                                        else rejectMaterial(v, m);
                                     }
                                     reopen();
                                 },
@@ -261,7 +286,9 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
                                         setter.accept(null);
                                     } else {
                                         Material m = Material.getMaterial(v.toUpperCase(Locale.ROOT));
-                                        if (m != null) setter.accept(m);
+                                        // fix-round1 fix-036：四件护甲共用此分支，同样需 isItem()
+                                        if (m != null && m.isItem()) setter.accept(m);
+                                        else rejectMaterial(v, m);
                                     }
                                     reopen();
                                 },
@@ -294,17 +321,21 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
                 clickType -> {
                     if (clickType == ClickType.SHIFT_LEFT || clickType == ClickType.SHIFT_RIGHT) {
                         admin.closeInventory();
+                        // 区间随 helper 一起传给 handler：聊天输入走同一份 clamp（slice-08-logic-001）
                         NumericInputHandler.requestNumber(plugin, admin,
                                 lang.getFor(admin, "config.menu.common.setting-prefix") + name + " (" + lang.getFor(admin, "config.menu.common.current") + String.format("%.1f", getter.getAsDouble()) + ")",
+                                min, max,
                                 v -> { setter.accept(v); reopen(); },
                                 this::reopen, lang);
                     } else if (clickType == ClickType.RIGHT) {
                         double val = getter.getAsDouble() - step;
-                        if (val >= min) setter.accept(val);
+                        // slice-08-logic-008：按步长容差比较并收敛到声明区间，避免累加误差
+                        // 让声明的 min/max 永远点不到（见 AbstractConfigMenu#stepTolerance）
+                        if (val >= min - stepTolerance(step)) setter.accept(Math.max(min, val));
                         reopen();
-                    } else {
+                    } else if (clickType == ClickType.LEFT) {
                         double val = getter.getAsDouble() + step;
-                        if (val <= max) setter.accept(val);
+                        if (val <= max + stepTolerance(step)) setter.accept(Math.min(max, val));
                         reopen();
                     }
                 });
@@ -313,6 +344,25 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
     /** Step formatting: hide decimals for integer steps. */
     private String formatStep(double step) {
         return (step == Math.floor(step)) ? String.valueOf((int) step) : String.format("%.1f", step);
+    }
+
+    /**
+     * fix-round1 fix-036：拒绝 GUI 文本输入的非物品材质。
+     *
+     * <p>与 {@code ConfigManager.loadMonstersConfig} 的 {@code isItem()} 硬化同一规则。
+     * 此前这里只判 non-null，{@code WATER} 这类「存在但不是物品」的材质会被写进
+     * {@code MonsterConfig}，随后 {@code reopen()} 的图标渲染与
+     * {@code WaveManager.applyMonsterEquipment} 的 {@code new ItemStack(mat)} 都会抛错。</p>
+     *
+     * @param input 玩家原始输入（用于回显）
+     * @param mat   {@code Material.getMaterial(input)} 的结果，可为 null
+     */
+    private void rejectMaterial(String input, Material mat) {
+        if (mat != null) {
+            admin.sendMessage(lang.getFor(admin, "config.invalid-material-not-item", input, mat.name()));
+        } else {
+            admin.sendMessage(lang.getFor(admin, "config.invalid-material", input));
+        }
     }
 
     /** Translate material name using i18n, falling back to English name. */

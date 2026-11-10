@@ -11,6 +11,8 @@ import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.GameState;
 import com.hilltopvillage.mechanics.NodeSystem;
 import com.hilltopvillage.shop.NpcManager;
+import com.hilltopvillage.util.YamlFileGate;
+import com.hilltopvillage.util.YamlFiles;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -18,7 +20,6 @@ import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
@@ -84,6 +85,17 @@ public final class ArenaAdminService {
     }
 
     /**
+     * arenas.yml 的<b>共享</b>闸门（{@code ArenaManager} 持有）。
+     *
+     * <p>禁止自建：arenas.yml 有 3 个写入方，各持一份会让只读降级失效。拿不到时返回 null，
+     * 调用方按「文件不可用」处理（返回空配置 / 拒写）。</p>
+     */
+    private YamlFileGate arenasGate() {
+        MultiArenaManager multi = plugin.getMultiArenaManager();
+        return multi == null ? null : multi.getDefinitionManager().getArenasGate();
+    }
+
+    /**
      * 列表页用的只读快照。
      *
      * @param arenaId            竞技场 ID（registry 中的规范化 ID，即 arenas.yml 的键）
@@ -107,6 +119,9 @@ public final class ArenaAdminService {
      * @param hasInstance        是否存在运行时实例（未启用 / 已禁用的竞技场为 false）
      * @param currentPlayers     当前玩家人数；仅 {@code hasInstance} 时有意义，否则恒为 0
      * @param gameState          当前对局阶段；仅 {@code hasInstance} 时非 null
+     * @param dataUnavailable    无实例时的点位计数是否「读不到」而非「未部署」
+     *                           （{@code arenas.yml} 被闸门判为不可用 / 只读降级中）。
+     *                           实例在场时恒为 false —— 那时计数来自内存，永远可信
      */
     public record ArenaView(
             String arenaId,
@@ -122,7 +137,12 @@ public final class ArenaAdminService {
             int minPlayers, int maxPlayers, int victoryWaves, int waveIntervalSeconds,
             boolean hasInstance,           // MultiArenaManager.getArena(id) != null
             int currentPlayers,            // 仅 hasInstance 时有意义，否则 0
-            GameState gameState            // 仅 hasInstance 时非 null
+            GameState gameState,           // 仅 hasInstance 时非 null
+            // slice-02-eh-005：无运行时实例时，点位计数来自 arenas.yml 的兜底读取。
+            // 该文件不可用（解析失败被隔离 / 闸门只读）时 loadArenas() 返回空配置，
+            // 计数会全部为 0 —— 与「竞技场本来就没部署」在 ArenaView 上无法区分。
+            // 消费方（GUI）据此播报「数据不可用」而不是「未部署」，避免诱导管理员重复部署。
+            boolean dataUnavailable
     ) {
     }
 
@@ -378,21 +398,34 @@ public final class ArenaAdminService {
         AdminDeployManager deploy = live == null ? null : deployManager(live);
         if (deploy != null) {
             if (deploy.getShopNpcLocation() == null) return ShopNpcDelete.NOT_SET;
-            deploy.setShopNpcLocation(null);
+            // 落盘失败必须如实上报（D1 的只读降级会让这里返回 false），不能当成「已清除」
+            if (!deploy.setShopNpcLocation(null)) return ShopNpcDelete.WRITE_FAILED;
             // 与 saveArenas 的 YAML 兜底路径对称：让其它活动竞技场重读 arenas.yml，
             // 否则它们下次 saveSpawnPoints() 会用旧副本把刚删的 shop-npc 键整份写回（「复活」）
             plugin.getMultiArenaManager().reloadAllDeploymentData();
         } else {
             File file = new File(plugin.getDataFolder(), "arenas.yml");
-            if (!file.exists()) return ShopNpcDelete.NOT_SET;
+            if (!file.exists()) {
+                // 文件不在，本应是「未设置」；但若是因为损坏被隔离成 *.corrupt，
+                // 真实语义是「不可用」，必须如实报失败而不是谎报「本来就未设置」。
+                YamlFileGate gate = arenasGate();
+                return gate != null && gate.isReadOnly() ? ShopNpcDelete.WRITE_FAILED : ShopNpcDelete.NOT_SET;
+            }
 
-            YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+            YamlFileGate gate = arenasGate();
+            if (gate == null) return ShopNpcDelete.WRITE_FAILED;
+            YamlFiles.Loaded loaded = gate.load();
+            if (!loaded.usable() || !gate.writable()) {
+                plugin.getLogger().warning("Refusing to write arenas.yml (unusable)");
+                return ShopNpcDelete.WRITE_FAILED;
+            }
+            YamlConfiguration yaml = loaded.config();
             String path = arenaPath(definition.getId(), SHOP_NPC_KEY);
             if (!yaml.isSet(path)) return ShopNpcDelete.NOT_SET;
             yaml.set(path, null);
             // 「本竞技场的商店位置已有定论」标记：不打的话下次加载会把 spawnpoints.yml 的旧数据迁移回来
             yaml.set(arenaPath(definition.getId(), ArenaManager.SHOP_NPC_MIGRATED_KEY), true);
-            if (!saveArenas(yaml, file, path)) return ShopNpcDelete.WRITE_FAILED;
+            if (!saveArenas(yaml, path)) return ShopNpcDelete.WRITE_FAILED;
         }
 
         // 单例实体只清「正站在本竞技场世界」的那一个；世界不匹配（属于别的竞技场 / 大厅）时保持不动
@@ -496,6 +529,8 @@ public final class ArenaAdminService {
         int nodeCount;
 
         AdminDeployManager deploy = live == null ? null : deployManager(live);
+        // slice-02-eh-005：只有走 YAML 兜底时才可能「读不到」。实例在场时计数来自内存，永远可信。
+        boolean dataUnavailable = false;
         if (live != null && deploy != null) {
             GameManager gameManager = live.getGameManager();
             spawnCount = deploy.getSpawnPoints().size();
@@ -505,6 +540,9 @@ public final class ArenaAdminService {
             deployed = gameManager != null && gameManager.hasSpawnPoints();
         } else {
             YamlConfiguration yaml = loadArenas();
+            // loadArenas 用空配置表示「文件不可用」，与「竞技场没部署」区分不开 —— 用闸门判定真实原因
+            YamlFileGate gate = arenasGate();
+            dataUnavailable = gate == null || gate.isReadOnly();
             spawnCount = readYamlLocations(yaml, arenaPath(arenaId, SPAWN_POINTS_KEY), world).size();
             mobSpawnCount = readYamlLocations(yaml, arenaPath(arenaId, MOB_SPAWN_POINTS_KEY), world).size();
             villagerCount = readYamlLocations(yaml, arenaPath(arenaId, VILLAGERS_KEY), world).size();
@@ -543,7 +581,8 @@ public final class ArenaAdminService {
                 definition.getWaveIntervalSeconds(),
                 live != null,
                 live != null ? live.getPlayerCount() : 0,
-                live != null ? live.getState() : null);
+                live != null ? live.getState() : null,
+                dataUnavailable);
     }
 
     /* ========== 数据来源：registry / 实例 ========== */
@@ -582,11 +621,21 @@ public final class ArenaAdminService {
         return "arenas." + arenaId + "." + key;
     }
 
-    /** 每次调用都重新读盘（不使用可能陈旧的整份内存副本）。 */
+    /**
+     * 每次调用都重新读盘（不使用可能陈旧的整份内存副本）。
+     *
+     * <p>走共享闸门：文件不可用时返回空配置（GUI 上会显示 0 个点位，只读期间的变化不会落盘），
+     * 与「竞技场本来就没部署」在不同层面：控制台已有 SEVERE 说明文件不可用。</p>
+     *
+     * <p>slice-02-eh-005：返回值本身无法区分两种「0 点位」，调用方须另行查
+     * {@link #arenasGate()} 的 {@code isReadOnly()} —— {@link #buildView} 已据此填充
+     * {@link ArenaView#dataUnavailable()}，GUI 得以播报「数据不可用」而非「未部署」。</p>
+     */
     private YamlConfiguration loadArenas() {
-        File file = new File(plugin.getDataFolder(), "arenas.yml");
-        if (!file.exists()) return new YamlConfiguration();
-        return YamlConfiguration.loadConfiguration(file);
+        YamlFileGate gate = arenasGate();
+        if (gate == null) return new YamlConfiguration();
+        YamlFiles.Loaded loaded = gate.load();
+        return loaded.usable() ? loaded.config() : new YamlConfiguration();
     }
 
     /**
@@ -633,10 +682,18 @@ public final class ArenaAdminService {
     private boolean deleteYamlEntry(String arenaId, String key, int index) {
         if (index < 0) return false;
 
+        YamlFileGate gate = arenasGate();
+        if (gate == null) return false;
         File file = new File(plugin.getDataFolder(), "arenas.yml");
+        // 文件不存在：正常是「无数据可删」，但若已因损坏被隔离成 *.corrupt，真实语义是「不可用」
         if (!file.exists()) return false;
 
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(file);
+        YamlFiles.Loaded loaded = gate.load();
+        if (!loaded.usable() || !gate.writable()) {
+            plugin.getLogger().warning("Refusing to write arenas.yml (unusable)");
+            return false;
+        }
+        YamlConfiguration yaml = loaded.config();
         String path = arenaPath(arenaId, key);
 
         // ① 列表写法
@@ -658,7 +715,7 @@ public final class ArenaAdminService {
             }
             if (!removed) return false;
             yaml.set(path, kept);
-            return saveArenas(yaml, file, path);
+            return saveArenas(yaml, path);
         }
 
         // ② 索引键写法（键按数字升序，与 readYamlLocations 的回退分支同一顺序）
@@ -667,7 +724,7 @@ public final class ArenaAdminService {
             if (readCoordinates(yaml.getConfigurationSection(path + "." + indexKey), null) == null) continue;
             if (validIndex == index) {
                 yaml.set(path + "." + indexKey, null);
-                return saveArenas(yaml, file, path);
+                return saveArenas(yaml, path);
             }
             validIndex++;
         }
@@ -691,11 +748,11 @@ public final class ArenaAdminService {
         }
     }
 
-    private boolean saveArenas(YamlConfiguration yaml, File file, String path) {
-        try {
-            yaml.save(file);
-        } catch (IOException exception) {
-            plugin.getLogger().severe("Failed to write arenas.yml (" + path + "): " + exception.getMessage());
+    private boolean saveArenas(YamlConfiguration yaml, String path) {
+        YamlFileGate gate = arenasGate();
+        if (gate == null || !gate.write(yaml)) {
+            // 闸门内部已打 SEVERE（拒写 / IO 失败）；这里补上下文（哪个键）让排障更快
+            plugin.getLogger().severe("Failed to write arenas.yml (" + path + "): writes are blocked or the write failed");
             return false;
         }
         // 本类改的是磁盘，而每个已启用竞技场的 AdminDeployManager 在构造时缓存了整份 arenas.yml 副本，

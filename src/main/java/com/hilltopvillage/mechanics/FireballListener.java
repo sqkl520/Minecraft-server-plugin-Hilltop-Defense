@@ -51,12 +51,26 @@ public class FireballListener implements Listener {
     private static final int LAVA_PARTICLE_INTERVAL_TICKS = 6;
     /** 原实现每次飞行计数代表 2 个服务器 tick，用于保持配置的历史等效寿命。 */
     private static final int LEGACY_TRAIL_PERIOD_TICKS = 2;
+    /**
+     * 冷却清理任务的周期（tick）。
+     *
+     * <p>该任务<b>只做过期条目清理</b>，冷却判定本身按到期 tick 比对，因此这里的周期不参与
+     * 冷却精度 —— 即使周期为 2，配置 3 tick 也会在 3 tick 后精确解锁。</p>
+     */
+    private static final long COOLDOWN_PERIOD_TICKS = 2L;
 
     private final HilltopVillagePlugin plugin;
     private final LanguageManager lang;
     /** 统一道具类型键（构造期建好复用，同 WaveManager.airdropKey 模式） */
     private final NamespacedKey itemKindKey;
-    private final Map<UUID, Integer> cooldowns;
+    /**
+     * 冷却到期时间戳：玩家 UUID → 冷却结束的服务器 tick（{@link Bukkit#getCurrentTick()}）。
+     *
+     * <p>存「到期 tick」而不是「剩余 tick 计数」：后者必须靠周期任务递减，而周期任务的步长
+     * （2 tick）无法表达奇数冷却 —— 配置 3 会被量化成 4。改成到期时间戳后，奇数/任意值都按
+     * 配置精确生效，且 ticker 只负责清理过期条目，不再参与冷却精度。</p>
+     */
+    private final Map<UUID, Long> cooldowns;
     private BukkitRunnable cooldownTicker;
     private volatile boolean cooldownTickerRunning;
     /** 在飞的烈焰蛋：投射物 UUID → 飞行状态。全局共用一条 ticker 遍历 */
@@ -127,16 +141,10 @@ public class FireballListener implements Listener {
         cooldownTicker = new BukkitRunnable() {
             @Override
             public void run() {
-                Iterator<Map.Entry<UUID, Integer>> it = cooldowns.entrySet().iterator();
-                while (it.hasNext()) {
-                    Map.Entry<UUID, Integer> entry = it.next();
-                    int remaining = entry.getValue() - 2;
-                    if (remaining <= 0) {
-                        it.remove();
-                    } else {
-                        entry.setValue(remaining);
-                    }
-                }
+                // 只做过期清理：冷却是否生效由发弹时的到期 tick 比对决定（见 cooldowns 字段注释），
+                // 因此本任务的周期不影响冷却精度，奇数配置也能精确生效。
+                long now = Bukkit.getCurrentTick();
+                cooldowns.entrySet().removeIf(entry -> entry.getValue() <= now);
                 if (cooldowns.isEmpty()) {
                     cooldownTickerRunning = false;
                     cooldownTicker = null;
@@ -144,7 +152,7 @@ public class FireballListener implements Listener {
                 }
             }
         };
-        cooldownTicker.runTaskTimer(plugin, 2L, 2L);
+        cooldownTicker.runTaskTimer(plugin, COOLDOWN_PERIOD_TICKS, COOLDOWN_PERIOD_TICKS);
     }
 
     /* ========== 创建烈焰蛋物品 ========== */
@@ -243,12 +251,14 @@ public class FireballListener implements Listener {
 
         event.setCancelled(true);
 
-        // 冷却检查
+        // 冷却检查（到期 tick 比对，精度为 1 tick，奇数配置不再被量化到偶数）
         GameConfig cfg = plugin.getConfigManager().getActiveConfig();
         UUID pid = player.getUniqueId();
-        int cd = cooldowns.getOrDefault(pid, 0);
-        if (cd > 0) {
-            player.sendMessage(lang.getFor(player, "fireball.cooldown-message", String.format("%.1f", cd / 20.0)));
+        long cooldownEndTick = cooldowns.getOrDefault(pid, 0L);
+        long nowTick = Bukkit.getCurrentTick();
+        long remainingTicks = cooldownEndTick - nowTick;
+        if (remainingTicks > 0) {
+            player.sendMessage(lang.getFor(player, "fireball.cooldown-message", String.format("%.1f", remainingTicks / 20.0)));
             player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_BASS, 0.5f, 0.5f);
             return;
         }
@@ -258,9 +268,12 @@ public class FireballListener implements Listener {
             item.setAmount(item.getAmount() - 1);
         }
 
-        // 冷却
-        cooldowns.put(pid, cfg.getFireballCooldownTicks());
-        ensureCooldownTickerRunning();
+        // 冷却：写入到期 tick（配置原值，不取整）
+        int cooldownTicks = cfg.getFireballCooldownTicks();
+        if (cooldownTicks > 0) {
+            cooldowns.put(pid, nowTick + cooldownTicks);
+            ensureCooldownTickerRunning();
+        }
 
         // 发射 fireball 投射物
         Location eye = player.getEyeLocation();

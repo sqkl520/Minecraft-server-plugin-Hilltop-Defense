@@ -117,7 +117,8 @@ public final class ArenaResetService {
      * @param shopNpcCleared      是否确实清掉了一个「已配置的」商店 NPC（本来就没有 → false）
      * @param mapRestored         地图方块是否已完整回滚（含「本来就无需回滚」的情形）
      * @param mapRestoreSkipped   是否跳过了地图回滚（无需回滚，或世界未加载无法回滚）
-     * @param reinstated          是否成功把竞技场重新放回启用队列
+     * @param reinstated          是否成功把竞技场重新放回启用队列。
+     *                            成功收尾与 nodes / deployment 中止都会尝试恢复，因此失败路径同样可能为 true
      * @param statusAfter         重置结束后的竞技场状态
      * @param blockedBy           非 {@link Gate#OK} 表示这次调用根本没开始（此时其余字段均为 false / 未尝试）
      * @param blocksPendingBefore 本次重置开始前该世界待回滚的方块数
@@ -125,11 +126,13 @@ public final class ArenaResetService {
      *                            {@code nodes} / {@code shop-npc} / {@code deployment} / {@code restore}，
      *                            兜底的未预期异常记为 {@code internal}
      * @param reinstateSkipped    未重新启用的原因；reinstated == true 时为 null。
-     *                            <p>仅当流程真正走到第 12 步的「重新启用」判定、且判定为不启用（或被拒）时非 null。
-     *                            中止（failStep = {@code nodes}/{@code deployment}）、地图回滚失败
-     *                            （failStep = {@code restore}）以及 blockedBy != OK 这几条路径压根没进入重启用判定，
-     *                            此时同样为 null —— 调用方应先看 blockedBy / failStep 判断整体成败，
-     *                            再用本字段为「重置成功但未启用」选择文案。</p>
+     *                            <p>仅在真正走「重新启用判定」且判定为不启用（或被拒）时非 null。
+     *                            地图回滚失败（failStep = {@code restore}）与 blockedBy != OK 这两条路径
+     *                            压根没进入重启用判定，此时同样为 null —— 调用方应先看 blockedBy / failStep
+     *                            判断整体成败，再用本字段为「重置成功但未启用」选择文案。</p>
+     *                            <p>{@code nodes}/{@code deployment} 中止<b>会</b>进入重启用判定（见 {@code abort}）：
+     *                            恢复成功时本字段为 null 且 {@code reinstated == true}；恢复不了时
+     *                            本字段给出具体原因，GUI 据此补一句「竞技场仍是禁用状态 + 恢复方式」。</p>
      */
     public record Outcome(
             String arenaId,
@@ -228,8 +231,11 @@ public final class ArenaResetService {
             // 若异常发生在 restoreWithResult 已收下回调之后，那次回调会因门已被摘掉而自动失声（见 finish）。
             plugin.getLogger().log(Level.SEVERE, LOG + "failed arena=" + key + " step=internal", exception);
             if (releaseInFlight(key)) {
+                // pendingFor 按世界名为键，不能传竞技场 ID（见 blockedOutcome 的同处说明）。
+                // 这里已处异常兜底路径，任何二次 NPE 都会让回调彻底失声，故仍做空判。
                 deliver(onDone, new Outcome(key, false, false, false, false, false, false,
-                        safeStatus(key), null, pendingFor(key), "internal", null));
+                        safeStatus(key), null, pendingFor(definition == null ? null : definition.getWorldName()),
+                        "internal", null));
             }
         }
     }
@@ -265,6 +271,7 @@ public final class ArenaResetService {
                 definition.getShopNpc() != null, pendingBefore, startedAt);
 
         // 4. 最先禁用实例：踢人 / 归还背包 / 送回大厅 / 退役隔离窗口登记都在 disableArena 内部
+        // ⚠️ 从本行起竞技场已 DISABLED，而第 5/8 步都可能失败并中止 —— 那两处中止负责把它恢复回去
         if (wasReady) multi.disableArena(arenaId);
 
         // 5. 一次落盘删除该世界在 nodes.yml 的全部条目（世界未加载也能做）
@@ -280,6 +287,8 @@ public final class ArenaResetService {
         }
 
         // 6. 内存一致：退役实例的节点表仍持有这些节点，清掉并幂等重写一次 nodes.yml
+        // ⚠️ 必须在第 5 步成功之后：本步的 clearAllNodes 会无条件把内存清空并重写 nodes.yml，
+        //    若第 5 步因写盘失败中止，这里再清一次就会让「内存已删、磁盘还在」的节点彻底消失。
         NodeSystem liveNodes = live == null ? null : live.getNodeSystem();
         if (liveNodes != null) liveNodes.clearAllNodes();
 
@@ -383,16 +392,53 @@ public final class ArenaResetService {
     }
 
     /**
-     * 中止：记录 WARN、释放 in-flight 门、回调一次，后续步骤一律不再执行。
+     * 中止：记录 WARN、尝试把竞技场恢复成重置前的启用状态、释放 in-flight 门、回调一次，
+     * 后续步骤一律不再执行。
+     *
+     * <p><b>为什么中止必须恢复启用状态</b>：{@link #proceed} 在 nodes / deployment 两步之前就已
+     * {@code disableArena}（第 4 步），而这两步失败时 {@code core} 与 {@code enabled} 都还没被改动 ——
+     * 竞技场是<b>完全可恢复</b>的。若中止就此收尾，它会永远停在 DISABLED，管理员只看得到一句
+     * 「Partially successful」，无从得知需要重新 enable。因此这里统一走
+     * {@link #reinstateRestoring(ResetCtx)}：判定前置与成功路径的 {@link #reinstate(ResetCtx)} 完全相同，
+     * 因此中止后竞技场会回到<b>重置前</b>的启用状态（本来启用过的 → 重新入队；本来就没启用的 → 保持禁用）。</p>
+     *
+     * <p>恢复失败时把跳过原因透出到 {@link Outcome#reinstateSkipped()}，GUI 才会补一句「竞技场仍是禁用
+     * 状态 + 怎么恢复」；恢复成功时它为 null，{@code reinstated} 为 true。</p>
      */
     private void abort(ResetCtx ctx, String step, String reason, boolean nodesCleared, boolean dataCleared,
                        Consumer<Outcome> onDone) {
         plugin.getLogger().warning(LOG + "aborted arena=" + ctx.arenaId() + " step=" + step + " reason=" + reason);
         if (!releaseInFlight(ctx.arenaId())) return;
 
-        Outcome outcome = outcome(ctx, nodesCleared, dataCleared, false, false, false, null, null, step);
+        ReinstateSkip skip = reinstateRestoring(ctx);
+        Outcome outcome = outcome(ctx, nodesCleared, dataCleared, false, false, skip == null, skip, null, step);
         logDone(ctx, outcome);
         deliver(onDone, outcome);
+    }
+
+    /**
+     * 中止路径专用的恢复启用：与 {@link #reinstate(ResetCtx)} 同一套判定，额外只做一件事 ——
+     * 在恢复不了时补一行 WARNING，把「竞技场停在 DISABLED」讲明白（{@code reinstate} 自己的日志
+     * 只说未启用的原因，不说后果）。
+     *
+     * <p>不改变判定语义：{@link ReinstateSkip#NOT_READY_BEFORE} 在这里同样是<b>正常</b>情形
+     * （重置前该竞技场本来就没启用，{@code canReset} 也允许对「已部署但未启用」的竞技场重置），
+     * 因此不走 WARNING、也不影响返回值。</p>
+     *
+     * @return null = 已成功放回启用队列；否则为未恢复的具体原因
+     */
+    private ReinstateSkip reinstateRestoring(ResetCtx ctx) {
+        ReinstateSkip skip = reinstate(ctx);
+        if (skip == null) {
+            plugin.getLogger().info(LOG + "abort-reinstated arena=" + ctx.arenaId()
+                    + " the arena was restored to its pre-reset enabled state");
+            return null;
+        }
+        if (skip != ReinstateSkip.NOT_READY_BEFORE) {
+            plugin.getLogger().warning(LOG + "abort-reinstate-skipped arena=" + ctx.arenaId()
+                    + " reason=" + skip + "; the arena is left DISABLED");
+        }
+        return skip;
     }
 
     /**
@@ -482,8 +528,10 @@ public final class ArenaResetService {
      */
     private Outcome blockedOutcome(String arenaId, ArenaDefinition definition, Gate gate) {
         String key = definition == null ? arenaId : definition.getId();
+        // pendingFor 按世界名为键（MapRestoreManager.journals 以世界名为键），传竞技场 ID 会恒查空。
         return new Outcome(key, false, false, false, false, false, false,
-                safeStatus(key), gate, pendingFor(key), null, null);
+                safeStatus(key), gate, pendingFor(definition == null ? null : definition.getWorldName()),
+                null, null);
     }
 
     /**

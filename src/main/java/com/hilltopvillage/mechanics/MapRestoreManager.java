@@ -129,6 +129,18 @@ public class MapRestoreManager implements Listener {
      * 会因为「已经警告过」而静默降级，管理员看不到任何提示。</p>
      */
     private final Set<String> journalOverflowWarned = ConcurrentHashMap.newKeySet();
+    /**
+     * 已经发生记账截断（达到 {@link #MAX_JOURNAL_ENTRIES_PER_WORLD}）的世界名。
+     *
+     * <p>为什么不复用 {@link #journalOverflowWarned}：那个集合只负责抑制重复告警，且会在
+     * 回滚<b>开始时</b>被清掉（日志已移出 {@code journals}）；而「本局 journal 被截断」这一事实
+     * 必须一直活到 {@link #complete(RestoreOperation)} 才能参与 success 判定。</p>
+     *
+     * <p>生命周期：在 {@link #recordSnapshot} 超限时加入，在 {@link #complete(RestoreOperation)}
+     * 判定 success 时取走。complete() 就是「该世界日志已被清掉」的时间点——
+     * 日志早在 {@code restoreWithResult} 里移出 {@code journals}，complete() 才是它唯一的终点。</p>
+     */
+    private final Set<String> journalTruncated = ConcurrentHashMap.newKeySet();
     /** 世界名 → 当前唯一的恢复操作 */
     private final Map<String, RestoreOperation> activeRestores = new ConcurrentHashMap<>();
     /**
@@ -343,6 +355,9 @@ public class MapRestoreManager implements Listener {
                                 BlockPos key, Supplier<OriginalBlock> snapshotFactory) {
         // 超限：停止记账并只警告一次，避免无界增长把 3GB 的堆吃光
         if (journal.size() >= MAX_JOURNAL_ENTRIES_PER_WORLD) {
+            // 先立「本局已截断」标记：被丢弃的方块改变不会进入 entries，回滚时无从恢复，
+            // complete() 必须据此判定为「不完整」，否则调用方会撤掉 ENDING 屏障开放半张地图。
+            journalTruncated.add(worldName);
             if (journalOverflowWarned.add(worldName)) {
                 plugin.getLogger().severe("Map rollback journal reached its limit of " + MAX_JOURNAL_ENTRIES_PER_WORLD
                         + " entries for world " + worldName + "; further block changes will not be recorded and the map rollback at the end of this match will be incomplete. Check for unusual flooding/explosion spam.");
@@ -617,13 +632,33 @@ public class MapRestoreManager implements Listener {
         return true;
     }
 
-    /** 主线程同步完成所有 journal/活动任务，供 onDisable 最终兜底。 */
+    /**
+     * 主线程同步完成所有 journal/活动任务，供 onDisable 最终兜底。
+     *
+     * <p>这是禁用流程的最后屏障，但 journal 只存在于内存：一旦这里没能把方块改回去，
+     * 条目就会随进程消失，没有任何跨重启的重试机会。因此逐个世界检查结果，
+     * 未能回滚或有残留时打 SEVERE 并写明将丢失的方块数——调用方无法区分
+     * 「已回滚」与「被跳过」，日志是服主唯一能看见这件事的地方。</p>
+     */
     public void restoreAllNow() {
         requirePrimaryThread();
         Set<String> worldNames = new HashSet<>(journals.keySet());
         worldNames.addAll(activeRestores.keySet());
         for (String worldName : worldNames) {
-            restoreNow(worldName);
+            boolean restored = restoreNow(worldName);
+            // 回滚失败的方块会被 requeueFailedBlocks 写回内存 journal，同样随进程丢失
+            int lostBlocks = getPendingCount(worldName);
+            if (!restored) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Map rollback SKIPPED at shutdown for world " + worldName
+                                + ": the rollback could not start (world unavailable or not loaded). " + lostBlocks
+                                + " pending block change(s) will be LOST, and the map stays modified.");
+            } else if (lostBlocks > 0) {
+                plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                        "Map rollback INCOMPLETE at shutdown for world " + worldName + ": " + lostBlocks
+                                + " block change(s) still pending and will be LOST"
+                                + " (retry journal is in-memory only).");
+            }
         }
     }
 
@@ -649,6 +684,18 @@ public class MapRestoreManager implements Listener {
         invalidateFluidJournalCache();
 
         int failedBlocks = operation.failedEntries.size();
+        // 本局 journal 是否被截断：超限后被丢弃的方块改变从未进入 entries，回滚时既不会恢复、
+        // 也不会落到 failedEntries，必须在记录侧留下的标记里读出来。
+        // 取走标记（remove）而不是只读：本局判定完就作废，避免把截断状态带进该世界的下一局，
+        // 否则一张被人工修好的地图会永远判负、竞技场再也无法重新启用。
+        boolean truncated = journalTruncated.remove(operation.worldName);
+        if (truncated) {
+            plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                    "Map rollback INCOMPLETE for world " + operation.worldName + ": the journal was truncated at "
+                            + MAX_JOURNAL_ENTRIES_PER_WORLD + " entries, so any block change beyond that limit was"
+                            + " never recorded and cannot be restored. The map is still modified; the arena must stay"
+                            + " closed and the map needs manual repair.");
+        }
         if (failedBlocks > 0) {
             boolean requeued = requeueFailedBlocks(operation);
             plugin.getLogger().warning("Map rollback finished with " + failedBlocks + " failed block(s) "
@@ -661,8 +708,9 @@ public class MapRestoreManager implements Listener {
 
         List<Consumer<Boolean>> callbacks = new ArrayList<>(operation.completionCallbacks);
         operation.completionCallbacks.clear();
-        // 只有「零失败」才算成功：有失败时调用方必须保持屏障，不能开放半恢复的地图。
-        boolean success = failedBlocks == 0;
+        // 只有「零失败且日志未被截断」才算成功：有失败时调用方必须保持屏障，不能开放半恢复的地图；
+        // 而被截断的日志同样意味着部分方块改变根本没有记录，恢复得再干净也不等于地图已复原。
+        boolean success = failedBlocks == 0 && !truncated;
         for (Consumer<Boolean> callback : callbacks) {
             runCompletion(callback, success, operation.worldName);
         }

@@ -184,12 +184,7 @@ public class HookClawHunterGoal implements Goal<Mob> {
                     || player.getGameMode() == GameMode.CREATIVE) continue;
 
             Location playerLoc = player.getLocation();
-            double yDiff = playerLoc.getY() - hunterLoc.getY();
-            if (yDiff < REQUIRED_Y_DIFF) continue;
-
-            double horizontalDistSq = horizontalDistanceSq(hunterLoc, playerLoc);
-            if (horizontalDistSq < MIN_SHOOT_DIST_SQ) continue;
-            if (horizontalDistSq > MAX_SHOOT_DIST_SQ) continue;
+            if (!isInShootBand(hunterLoc, playerLoc)) continue;
 
             candidates.add(player);
         }
@@ -235,6 +230,18 @@ public class HookClawHunterGoal implements Goal<Mob> {
         return dx * dx + dz * dz;
     }
 
+    /**
+     * 射程带判定：水平 8–30 格、目标高出至少 4 格。
+     *
+     * <p>选目标与开火时刻共用同一判据。扫描到开火之间隔着 {@link #AIM_DURATION} tick，
+     * 玩家可自由移动约 1 秒，因此开火前必须按当前坐标复算，否则射程带只在选目标瞬间成立。</p>
+     */
+    private boolean isInShootBand(Location hunterLoc, Location playerLoc) {
+        if (playerLoc.getY() - hunterLoc.getY() < REQUIRED_Y_DIFF) return false;
+        double horizontalDistSq = horizontalDistanceSq(hunterLoc, playerLoc);
+        return horizontalDistSq >= MIN_SHOOT_DIST_SQ && horizontalDistSq <= MAX_SHOOT_DIST_SQ;
+    }
+
     private boolean hasLineOfSight(Location from, Location to) {
         if (from.getWorld() != to.getWorld()) return false;
 
@@ -251,6 +258,9 @@ public class HookClawHunterGoal implements Goal<Mob> {
 
     private void shootHook() {
         if (!isValidArenaTarget(currentTarget, gameManager)) return;
+        // 开火前按当前坐标复算射程带：扫描到开火间隔 AIM_DURATION tick，期间玩家可自由移动，
+        // 只在选目标时校验会让射程带在开火瞬间失效（贴脸命中 / 超程命中）。
+        if (!isInShootBand(hunter.getLocation(), currentTarget.getLocation())) return;
 
         Player hookTarget = currentTarget;
         Location hunterLoc = hunter.getLocation().clone().add(0, 1.4, 0);

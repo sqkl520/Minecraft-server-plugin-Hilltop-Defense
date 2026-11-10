@@ -47,6 +47,10 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
         Collections.sort(waveNums);
 
         int totalPages = Math.max(1, (waveNums.size() + SLOTS_PER_PAGE - 1) / SLOTS_PER_PAGE);
+        // slice-08-logic-006：page 原本没有任何上界钳制 —— 在末页删除波次后 page 仍是旧值，
+        // startIdx 越过 waveNums.size()，for 循环体不执行，菜单渲染成「无任何波次、也没有
+        // next 按钮」的空页。在渲染入口把 page 收敛到 [0, totalPages-1]，totalPages 不再是死值。
+        page = Math.max(0, Math.min(page, totalPages - 1));
         int startIdx = page * SLOTS_PER_PAGE;
         int endIdx = Math.min(startIdx + SLOTS_PER_PAGE, waveNums.size());
 
@@ -84,7 +88,13 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
                                 admin.sendMessage(lang.getFor(admin, "config.menu.waves.deleted", wnum));
                                 reopen();
                             }
-                        } else {
+                        } else if (clickType == ClickType.LEFT) {
+                            // slice-08-logic-009 同型漏网点（round3 R-9 之后由作者裁决补修）：
+                            // 本分支原本是裸 else 兜底，凡是非 SHIFT 的点击（MIDDLE / DROP /
+                            // NUMBER_KEY / SWAP_OFFHAND / DOUBLE_CLICK / WINDOW_BORDER_* …）都会
+                            // 关掉当前菜单并跳进波次详情页。它不写配置，不是数据损坏，但「丢出键、
+                            // 中键」意外跳页是 UX 缺陷。这里只收窄最后一段兜底，SHIFT_LEFT /
+                            // SHIFT_RIGHT 的删除波次分支（P2-33 的 removeWave 记账）原样保留。
                             admin.closeInventory();
                             Bukkit.getScheduler().runTaskLater(plugin, () -> {
                                 WaveDetailMenu detail = new WaveDetailMenu(admin, configManager, wnum, this, lang);
@@ -213,7 +223,7 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
             // ---- Total mobs (exact total cap per player, STORY-1.4) ----
             addAdjustableItem(19, Material.SPAWNER, lang.getFor(admin, "config.menu.waves.detail-total"),
                     wc.getTotalMobs(), 1, 100, 2,
-                    () -> wc.getTotalMobs(), v -> wc.setTotalMobs(Math.max(1, v)),
+                    () -> wc.getTotalMobs(), v -> wc.setTotalMobs(Math.min(100, Math.max(1, v))),
                     lang.getFor(admin, "config.menu.waves.total-cap-hint"));
 
             // ---- Added monster list (Row 4-6: 27-44) ----
@@ -257,7 +267,10 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
                             } else if (clickType == ClickType.RIGHT) {
                                 comp.setCount(Math.max(0, comp.getCount() - 1));
                                 reopen();
-                            } else {
+                            } else if (clickType == ClickType.LEFT) {
+                                // slice-08-logic-009 同型漏网点（round3 R-9）：本分支原来是 else 兜底，
+                                // 会接管 MIDDLE / DROP / NUMBER_KEY / SWAP_OFFHAND / DOUBLE_CLICK 等所有其它
+                                // ClickType —— 丢出键或热键会静默改怪物数量。收窄为显式 LEFT 白名单。
                                 comp.setCount(comp.getCount() + 1);
                                 reopen();
                             }
@@ -314,15 +327,18 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
                     clickType -> {
                         if (clickType == ClickType.SHIFT_LEFT || clickType == ClickType.SHIFT_RIGHT) {
                             admin.closeInventory();
+                            // 区间随 helper 一起传给 handler：聊天输入走同一份 clamp（slice-08-logic-001）
                             NumericInputHandler.requestInteger(plugin, admin,
                                     lang.getFor(admin, "config.menu.common.setting-prefix") + name + " (" + lang.getFor(admin, "config.menu.common.current") + getter.getAsInt() + ")",
+                                    min, max,
                                     v -> { setter.accept(v); reopen(); },
                                     this::reopen, lang);
                         } else if (clickType == ClickType.RIGHT) {
                             int val = getter.getAsInt() - step;
                             if (val >= min) setter.accept(val);
                             reopen();
-                        } else {
+                        } else if (clickType == ClickType.LEFT) {
+                            // slice-08-logic-009：收窄 else 兜底为显式 LEFT 白名单
                             int val = getter.getAsInt() + step;
                             if (val <= max) setter.accept(val);
                             reopen();
@@ -547,17 +563,20 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
                     clickType -> {
                         if (clickType == ClickType.SHIFT_LEFT || clickType == ClickType.SHIFT_RIGHT) {
                             admin.closeInventory();
+                            // 区间随 helper 一起传给 handler：聊天输入走同一份 clamp（slice-08-logic-001）
                             NumericInputHandler.requestNumber(plugin, admin,
                                     lang.getFor(admin, "config.menu.common.setting-prefix") + name + " (" + lang.getFor(admin, "config.menu.common.current") + String.format("%.1f", getter.getAsDouble()) + ")",
+                                    min, max,
                                     v -> { setter.accept(v); reopen(); },
                                     this::reopen, lang);
                         } else if (clickType == ClickType.RIGHT) {
                             double val = getter.getAsDouble() - step;
-                            if (val >= min) setter.accept(val);
+                            // slice-08-logic-008：按步长容差比较并收敛到声明区间
+                            if (val >= min - stepTolerance(step)) setter.accept(Math.max(min, val));
                             reopen();
-                        } else {
+                        } else if (clickType == ClickType.LEFT) {
                             double val = getter.getAsDouble() + step;
-                            if (val <= max) setter.accept(val);
+                            if (val <= max + stepTolerance(step)) setter.accept(Math.min(max, val));
                             reopen();
                         }
                     });

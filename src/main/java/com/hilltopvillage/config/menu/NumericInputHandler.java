@@ -6,6 +6,7 @@ import org.bukkit.entity.Player;
 import org.bukkit.event.EventHandler;
 import org.bukkit.event.EventPriority;
 import org.bukkit.event.Listener;
+import org.bukkit.event.inventory.InventoryOpenEvent;
 import org.bukkit.event.player.AsyncPlayerChatEvent;
 import org.bukkit.event.player.PlayerQuitEvent;
 import org.bukkit.plugin.Plugin;
@@ -30,11 +31,20 @@ public class NumericInputHandler implements Listener {
     private static final ConcurrentHashMap<UUID, PendingInput> pendingInputs = new ConcurrentHashMap<>();
     private static final ConcurrentHashMap<UUID, PendingStringInput> pendingStringInputs = new ConcurrentHashMap<>();
 
-    public static void requestNumber(Plugin plugin, Player player, String prompt, Consumer<Double> callback, LanguageManager lang) {
-        requestNumber(plugin, player, prompt, callback, null, lang);
-    }
-
-    public static void requestNumber(Plugin plugin, Player player, String prompt, Consumer<Double> callback, Runnable onCancel, LanguageManager lang) {
+    /**
+     * 请求玩家在聊天栏输入一个数值，并把结果<b>钳制到调用方声明的取值区间</b>。
+     *
+     * <p>钳制在 {@link #onChat} 中统一执行——那是所有数值输入的<b>唯一入口</b>，因此鼠标
+     * +/- 档位与 SHIFT 聊天输入共用同一份上下界，不会再出现「lore 上写着 10..1000，聊天却
+     * 能写进 0」的分裂（slice-08-logic-001）。凡是界面上声明了取值范围的槽位，都必须调用
+     * 本重载并传入该槽位的 {@code min}/{@code max}。</p>
+     *
+     * @param min 该槽位声明的下界（含）
+     * @param max 该槽位声明的上界（含）；{@code min > max} 时按 {@code max} 取值
+     */
+    public static void requestNumber(Plugin plugin, Player player, String prompt,
+                                     double min, double max,
+                                     Consumer<Double> callback, Runnable onCancel, LanguageManager lang) {
         player.closeInventory();
         player.sendMessage("");
         player.sendMessage(lang.getFor(player, "config.menu.input.number-prompt"));
@@ -42,19 +52,39 @@ public class NumericInputHandler implements Listener {
         player.sendMessage(lang.getFor(player, "config.menu.input.cancel-hint"));
         player.sendMessage("");
 
-        PendingInput input = new PendingInput(plugin, callback, onCancel, player.getUniqueId(), lang);
+        PendingInput input = new PendingInput(plugin, callback, min, max, onCancel, player.getUniqueId(), lang);
         pendingInputs.put(player.getUniqueId(), input);
         scheduleNumberTimeout(player, input);
     }
 
-    public static void requestInteger(Plugin plugin, Player player, String prompt, Consumer<Integer> callback, Runnable onCancel, LanguageManager lang) {
-        requestNumber(plugin, player, prompt, d -> {
+    /**
+     * 自由区间版本：<b>仅限界面上没有声明取值范围的输入</b>（例如「新建波次的编号」）。
+     *
+     * <p>只保留 ±1e9 的量程防护（P2-32）。凡是在 lore 里展示了 min/max 的槽位，必须改用带
+     * {@code min}/{@code max} 的重载，否则区间对该路径形同虚设。</p>
+     */
+    public static void requestNumber(Plugin plugin, Player player, String prompt,
+                                     Consumer<Double> callback, Runnable onCancel, LanguageManager lang) {
+        requestNumber(plugin, player, prompt, -INTEGER_INPUT_CLAMP, INTEGER_INPUT_CLAMP, callback, onCancel, lang);
+    }
+
+    /** 整数版 {@link #requestNumber}：区间语义相同，最终按 int 消费。 */
+    public static void requestInteger(Plugin plugin, Player player, String prompt,
+                                      int min, int max,
+                                      Consumer<Integer> callback, Runnable onCancel, LanguageManager lang) {
+        requestNumber(plugin, player, prompt, min, max, d -> {
             // P2-32 整数域防护：超界值 clamp 到 ±1e9（在 int 量程内），避免 (int) 截断语义
             // 把 1e300 变 Integer.MAX_VALUE、把 1e-9 变 0。NaN/Infinity 已由 onChat 的
             // isFinite 检查拦在更早一层，到不了这里。
             double clamped = Math.max(-INTEGER_INPUT_CLAMP, Math.min(INTEGER_INPUT_CLAMP, d));
             callback.accept((int) clamped);
         }, onCancel, lang);
+    }
+
+    /** 自由区间整数版 {@link #requestInteger}：仅供没有声明取值范围的新建类输入。 */
+    public static void requestInteger(Plugin plugin, Player player, String prompt,
+                                      Consumer<Integer> callback, Runnable onCancel, LanguageManager lang) {
+        requestInteger(plugin, player, prompt, Integer.MIN_VALUE, Integer.MAX_VALUE, callback, onCancel, lang);
     }
 
     /**
@@ -164,18 +194,22 @@ public class NumericInputHandler implements Listener {
             if (!Double.isFinite(value) || Math.abs(value) > INTEGER_INPUT_CLAMP) {
                 throw new NumberFormatException("Not a valid finite number: " + msg);
             }
+            // slice-08-logic-001：所有数值输入的收敛点。调用方（各菜单的 addAdjustableItem 等）
+            // 把该槽位在 lore 里声明的 min/max 带到这里，因此聊天输入与鼠标 +/- 走同一份区间，
+            // 不再有「界面上写着 10..1000、聊天却能写进 0」的分裂。
+            final double clamped = pending.clamp(value);
             if (pending.callback != null) {
                 Bukkit.getScheduler().runTask(
                         Bukkit.getPluginManager().getPlugin("HilltopVillage"),
-                        () -> pending.callback.accept(value));
+                        () -> pending.callback.accept(clamped));
             }
         } catch (NumberFormatException e) {
             event.getPlayer().sendMessage(pending.lang.getFor(event.getPlayer(), "config.menu.input.invalid-number", msg));
             // M-11 重挂：换成【新条目】并【登记新的超时任务】。旧的一次性超时任务只认旧条目的
             // 身份（两参 remove），不会误消费新条目；新条目有自己的 30 秒超时，
             // 30 秒临界点交错不会再造出「每条聊天都被吞掉」的永久劫持条目。
-            PendingInput renewed = new PendingInput(pending.plugin, pending.callback, pending.onCancel,
-                    pending.playerId, pending.lang);
+            PendingInput renewed = new PendingInput(pending.plugin, pending.callback, pending.min, pending.max,
+                    pending.onCancel, pending.playerId, pending.lang);
             pendingInputs.put(id, renewed);
             scheduleNumberTimeout(event.getPlayer(), renewed);
         }
@@ -198,19 +232,49 @@ public class NumericInputHandler implements Listener {
         pendingStringInputs.remove(id);
     }
 
+    /**
+     * 玩家打开任意容器时丢弃其待处理输入（slice-08-logic-007）。
+     *
+     * <p>原实现的 {@code pendingInputs} 只有三个出口：聊天消息、30 秒超时、退服；
+     * 缺少「玩家放弃输入去干别的」这条转移。玩家 SHIFT+点击后跑去开箱子、开自己的配置 GUI
+     * 或做其它 GUI 操作，条目仍会在 30 秒内生效，期间他在公屏打的任何能解析为数字的话都会被
+     * {@code event.setCancelled(true)} 吞掉并直接写入配置（无二次确认）。</p>
+     *
+     * <p>打开容器是「我已离开聊天输入」的最强信号：此时丢弃条目、不回调 onCancel
+     * （与 {@link #onQuit} 同口径 —— 玩家已经在做别的事，不应把 GUI 抢回来）。</p>
+     */
+    @EventHandler(priority = EventPriority.MONITOR)
+    public void onInventoryOpen(InventoryOpenEvent event) {
+        if (!(event.getPlayer() instanceof Player)) return;
+        pendingInputs.remove(event.getPlayer().getUniqueId());
+        pendingStringInputs.remove(event.getPlayer().getUniqueId());
+    }
+
     private static class PendingInput {
         final Plugin plugin;
         final Consumer<Double> callback;
+        /** 调用方为该槽位声明的下界（含）。 */
+        final double min;
+        /** 调用方为该槽位声明的上界（含）。 */
+        final double max;
         final Runnable onCancel;
         final UUID playerId;
         final LanguageManager lang;
 
-        PendingInput(Plugin plugin, Consumer<Double> callback, Runnable onCancel, UUID playerId, LanguageManager lang) {
+        PendingInput(Plugin plugin, Consumer<Double> callback, double min, double max,
+                     Runnable onCancel, UUID playerId, LanguageManager lang) {
             this.plugin = plugin;
             this.callback = callback;
+            this.min = min;
+            this.max = max;
             this.onCancel = onCancel;
             this.playerId = playerId;
             this.lang = lang;
+        }
+
+        /** 把聊天输入的原始值钳制到本槽位声明的区间。 */
+        double clamp(double value) {
+            return Math.min(max, Math.max(min, value));
         }
     }
 

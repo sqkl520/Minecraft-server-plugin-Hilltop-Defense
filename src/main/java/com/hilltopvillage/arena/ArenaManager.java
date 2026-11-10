@@ -1,6 +1,8 @@
 package com.hilltopvillage.arena;
 
 import com.hilltopvillage.HilltopVillagePlugin;
+import com.hilltopvillage.util.YamlFileGate;
+import com.hilltopvillage.util.YamlFiles;
 import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.World;
@@ -37,16 +39,47 @@ public final class ArenaManager {
     /** 竞技场未配置 game.min-players 且读不到 GameConfig 时的兜底值（与 GameConfig 字段默认值一致） */
     private static final int DEFAULT_MIN_PLAYERS = 2;
 
+    /** 出厂模板 {@code lobby.spawn} 的占位坐标（与 {@code src/main/resources/arenas.yml} 一致）。 */
+    private static final double FACTORY_LOBBY_SPAWN_X = 0.5;
+    private static final double FACTORY_LOBBY_SPAWN_Y = 100.0;
+    private static final double FACTORY_LOBBY_SPAWN_Z = 0.5;
+    /** 坐标比较容差：YAML 里 100 与 100.0 读出来是同一个 double，这里只为吃掉浮点误差。 */
+    private static final double LOBBY_COORD_EPSILON = 1.0e-6;
+
     /**
      * 竞技场的「部署期」字段（相对 {@code arenas.<id>}），由 {@link #clearDeploymentData(String)} 清空。
      *
      * <p>刻意不包含 world / waiting-location / enabled / display-name —— 清空部署数据后
      * 竞技场仍要留在 registry 里（世界、启用状态、名称都不是「部署」的一部分）。</p>
+     *
+     * <p><b>同样刻意不包含这四个刷怪调参：</b>{@code spawn-radius-min} / {@code spawn-radius-max}
+     * （arenas-yml-dc-002）、{@code node-search-radius} / {@code spawn-y-offset}（arenas-yml-dc-001）。
+     * 它们<b>没有任何运行期写入方</b>——部署向导（{@code AdminDeployManager#saveSpawnPoints} 与
+     * {@code saveShopNpcLocation}）只写 spawn-points / mob-spawn-points / villagers / core /
+     * waiting-location / shop-npc，参数编辑页（{@link #updateGameParams}）只写 {@code game.*}，
+     * {@code ArenaAdminService} 只增删点列表与 shop-npc，{@code ConfigManager} 写的是全局
+     * {@code game-settings.yml} 的 {@code spawning.*} / {@code nodes.*}。<b>唯一</b>的设置途径是
+     * 手工编辑 arenas.yml。</p>
+     *
+     * <p>本列表的正当性来自 {@link #clearDeploymentData(String)} 的承诺「重置后可重新走一次部署流程」：
+     * 被删的键必须<b>能被向导重建</b>。上面那条清单一律满足（core / spawn-points / villagers / shop-npc
+     * 由向导逐个写入，{@code game.*} 由参数编辑页重建）。这四个键恰恰相反，它们是与地图几何绑定的
+     * 刷怪调参：出厂模板给每座竞技场预设 {@code spawn-radius-min/max = 1/3}、
+     * {@code node-search-radius = 50/50/60}、{@code spawn-y-offset = 0}，而全局兜底分别是
+     * {@code spawning.spawn-radius-min/max = 20/40}、{@code nodes.search-radius = 128}、
+     * {@code spawning.spawn-y-offset = 0}。模板注释写明「大半径需要配合开阔地形——越界点会落进
+     * 虚空/水面，被安全落点检测丢弃后重试」，即小半径是作者在天空岛地图上实测调出来的结论，
+     * 不是可推导的默认值。</p>
+     *
+     * <p>重置删掉它们后重新部署<b>不会</b>写回，该竞技场会永久静默回落到全局值（刷怪半径 20/40、
+     * 节点搜索 128），全程无日志：按小半径调优的地图上有效刷怪点会大幅塌缩，节点搜索半径则由
+     * 50/60 膨胀到 128。{@code spawn-y-offset} 是其中唯一「出厂值恰好等于全局值」（都是 0）的键，
+     * 重置它在出厂配置下暂时看不出差异——但一旦管理员把它调成非 0，重置同样会让该项调参不可恢复，
+     * 因此按同一条规则一并移出。</p>
      */
     private static final List<String> DEPLOYMENT_KEYS = List.of(
             "core", "spawn-points", "mob-spawn-points", "villagers", "shop-npc",
-            "game.min-players", "game.max-players", "game.victory-waves", "game.wave-interval-seconds",
-            "node-search-radius", "spawn-radius-min", "spawn-radius-max", "spawn-y-offset");
+            "game.min-players", "game.max-players", "game.victory-waves", "game.wave-interval-seconds");
 
     /**
      * 「本竞技场的商店 NPC 位置已有定论」标记键（相对 {@code arenas.<id>}），由
@@ -66,6 +99,13 @@ public final class ArenaManager {
     private final File arenasFile;
     private final ArenaRegistry registry = new ArenaRegistry();
     private YamlConfiguration configuration;
+    /**
+     * arenas.yml 的共享读写闸门。
+     *
+     * <p>{@code AdminDeployManager} 与 {@code ArenaAdminService} 也写这份文件，必须复用同一个实例
+     * （经 {@link #getArenasGate()}），否则「A 判只读、B 照写」会让只读降级形同虚设。</p>
+     */
+    private final YamlFileGate arenasGate;
 
     public ArenaManager(JavaPlugin plugin) {
         this.plugin = Objects.requireNonNull(plugin, "plugin");
@@ -74,18 +114,31 @@ public final class ArenaManager {
         }
         this.arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
         this.configuration = new YamlConfiguration();
+        this.arenasGate = new YamlFileGate(arenasFile, YamlFiles.arenasValidator(), plugin.getLogger());
         ensureFile();
+    }
+
+    /**
+     * arenas.yml 的共享闸门——{@code AdminDeployManager} / {@code ArenaAdminService} 必须复用，
+     * 禁止各建一份（各持一份会让只读降级失效）。
+     */
+    public YamlFileGate getArenasGate() {
+        return arenasGate;
     }
 
     /** Loads arenas, replacing the current in-memory registry. */
     public void load() {
         ensureFile();
-        try {
-            configuration = YamlConfiguration.loadConfiguration(arenasFile);
-        } catch (Exception exception) {
-            plugin.getLogger().log(Level.WARNING, "Could not load arenas.yml; keeping an empty registry.", exception);
-            configuration = new YamlConfiguration();
+        YamlFiles.Loaded loaded = arenasGate.load();
+        // 闸门已锁只读时，即使文件此刻不存在（隔离后被改名 *.corrupt）也按不可用处理：
+        // YamlFiles.load 对「不存在」返回 ABSENT + 空配置（usable），照走会用空配置重建 registry。
+        if (!loaded.usable() || arenasGate.isReadOnly()) {
+            plugin.getLogger().severe("arenas.yml is unusable; 0 arenas loaded this run and arenas.yml "
+                    + "will NOT be written (see the log line above for the reason)");
+            registry.clear();
+            return;
         }
+        configuration = loaded.config();
 
         // P2-35：schema-version 统一为与出厂模板一致的常量；读到更高版本时打 warning，
         // 提醒管理员该文件可能由更新版插件写过，当前版本可能不认识其中部分内容。
@@ -112,8 +165,15 @@ public final class ArenaManager {
             for (String id : arenas.getKeys(false)) {
                 try {
                     ArenaDefinition definition = readDefinition(id, arenas.getConfigurationSection(id));
-                    if (!validate(definition)) {
-                        plugin.getLogger().warning("Skipping invalid arena definition: " + id);
+                    String rejection = validationFailure(definition);
+                    if (rejection != null) {
+                        // fix-round1 pattern-2：拒绝原因必须可见——这是唯一的加载闸门，静默 continue
+                        // 会让竞技场从 /hilltop list 与 GUI 里凭空消失，而 ArenaResetService 只会报
+                        // ARENA_NOT_FOUND，管理员没有任何线索可循。
+                        plugin.getLogger().warning("Skipping invalid arena definition '" + id + "': " + rejection
+                                + " (fix arenas.yml -> arenas." + id + " and run /hilltop reloadarena,"
+                                + " otherwise this arena is unavailable)"
+                                + (definition == null ? "" : " [world '" + definition.getWorldName() + "']"));
                         continue;
                     }
                     String owner = worldOwners.get(normalizeWorldName(definition.getWorldName()));
@@ -132,6 +192,11 @@ public final class ArenaManager {
             }
         }
         String defaultId = configuration.getString("default-arena");
+        // slice-05-logic-004：空白值按「未配置」处理。registry.get("   ") 会走到 normalizeId 抛
+        // IllegalArgumentException，而该语句不在上面的 per-arena try/catch 内，异常会冒出 load()，
+        // 把一个「只是多打了几个空格」的配置变成整次加载失败。读路径在这里与写路径对齐：
+        // ArenaRegistry.setDefaultArenaId 同样把空白视为「清空默认值」。
+        if (defaultId != null && defaultId.isBlank()) defaultId = null;
         if (defaultId != null && registry.get(defaultId) != null) {
             registry.setDefaultArenaId(defaultId);
         } else if (defaultId != null) {
@@ -246,7 +311,57 @@ public final class ArenaManager {
         return (name == null || name.isBlank()) ? null : name;
     }
 
-    /** 大厅出生点（未配置或世界未加载返回 null） */
+    /**
+     * {@code lobby.spawn} 是否仍是出厂模板里的占位值（{@code 0.5 / 100.0 / 0.5}）。
+     *
+     * <p>出厂模板给的是<b>主世界坐标</b>的占位值：服主如果没改过，玩家就会落在一个
+     * 大概率悬空、且与服主大厅世界无关的位置。因此「等于占位值」视为「未自定义」，
+     * 仅供部署向导的提醒使用（只读判定，不写盘、不阻断部署）。</p>
+     *
+     * <p>缺 {@code lobby.spawn} 段时<b>不算</b>占位值：那种情况下 {@link #getLobbySpawn()} 会回退到
+     * 大厅世界自己的出生点，是安全且有意义的落点，不需要提醒服主。</p>
+     *
+     * @return true = 大厅出生点仍是出厂占位值，需要提醒服主设置
+     */
+    public boolean isLobbySpawnFactoryDefault() {
+        ConfigurationSection spawn = configuration.getConfigurationSection("lobby.spawn");
+        if (spawn == null) return false;
+        return isFactoryDefaultSpawn(
+                spawn.getDouble("x", FACTORY_LOBBY_SPAWN_X),
+                spawn.getDouble("y", FACTORY_LOBBY_SPAWN_Y),
+                spawn.getDouble("z", FACTORY_LOBBY_SPAWN_Z));
+    }
+
+    /**
+     * 「大厅出生点是否仍是出厂占位值」的纯函数部分（无 Bukkit 依赖，可直接单测）。
+     *
+     * @param x 出生点 X
+     * @param y 出生点 Y
+     * @param z 出生点 Z
+     * @return true = 与出厂模板的 {@code 0.5 / 100.0 / 0.5} 完全重合
+     */
+    static boolean isFactoryDefaultSpawn(double x, double y, double z) {
+        return Math.abs(x - FACTORY_LOBBY_SPAWN_X) < LOBBY_COORD_EPSILON
+                && Math.abs(y - FACTORY_LOBBY_SPAWN_Y) < LOBBY_COORD_EPSILON
+                && Math.abs(z - FACTORY_LOBBY_SPAWN_Z) < LOBBY_COORD_EPSILON;
+    }
+
+    /**
+     * {@code lobby.world} 是否<b>显式配置且可用</b>（即「大厅世界已定」）。
+     *
+     * <p>与 {@link #getLobbyWorldName()} 的三级回退口径刻意不同：后者会在配置缺失/世界不存在时
+     * 静默回退到主世界（设计如此，保证开箱可用），但正是这个回退让「服主忘了配大厅」变成
+     * 不可见的失败。本方法只看显式配置，供部署向导提醒与 {@code setspawn} 降级路径判定使用。</p>
+     *
+     * @return true = {@code lobby.world} 为空，或它指向的世界当前不存在
+     */
+    public boolean isConfiguredLobbyWorldMissing() {
+        String name = getConfiguredLobbyWorldName();
+        return name == null || Bukkit.getWorld(name) == null;
+    }
+
+    /**
+     * 大厅出生点（未配置或世界未加载返回 null） */
     public Location getLobbySpawn() {
         String worldName = getLobbyWorldName();
         if (worldName == null) return null;
@@ -282,16 +397,19 @@ public final class ArenaManager {
     public boolean updateLobbySpawn(Location location) {
         if (location == null || location.getWorld() == null) return false;
 
-        YamlConfiguration disk = YamlConfiguration.loadConfiguration(arenasFile);
+        YamlFiles.Loaded loaded = arenasGate.load();
+        if (!loaded.usable() || !arenasGate.writable()) {
+            plugin.getLogger().warning("Refusing to write arenas.yml (unusable)");
+            return false;
+        }
+        YamlConfiguration disk = loaded.config();
         disk.set("lobby.spawn.x", location.getX());
         disk.set("lobby.spawn.y", location.getY());
         disk.set("lobby.spawn.z", location.getZ());
         disk.set("lobby.spawn.yaw", (double) location.getYaw());
         disk.set("lobby.spawn.pitch", (double) location.getPitch());
-        try {
-            disk.save(arenasFile);
-        } catch (IOException exception) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to save the lobby spawn", exception);
+        if (!arenasGate.write(disk)) {
+            // 闸门内部已打 SEVERE（拒写 / IO 失败），此处只如实返回失败让调用方播报
             return false;
         }
 
@@ -306,6 +424,57 @@ public final class ArenaManager {
 
         plugin.getLogger().info("Lobby spawn updated: " + location.getWorld().getName()
                 + " (" + String.format("%.1f", location.getX()) + ", "
+                + String.format("%.1f", location.getY()) + ", "
+                + String.format("%.1f", location.getZ()) + ")");
+        return true;
+    }
+
+    /**
+     * 降级路径：{@code lobby.world} 未配置 / 指向的世界不存在时，允许管理员在<b>任意世界</b>
+     * 执行 {@code /hilltop lobby setspawn} —— 同时把 {@code lobby.world} 写为当前位置所在世界。
+     *
+     * <p><b>为什么需要：</b>{@link #updateLobbySpawn(Location)} 的正常路径要求「人已经在
+     * {@code lobby.world} 指的那个世界里」，但 {@code lobby.world} 指向不存在的世界时，
+     * 那个世界永远进不去 → 管理员永远无法设置大厅出生点，只能手改 YAML。
+     * 本方法把「定世界」与「定坐标」一次写完，打破这个死局。</p>
+     *
+     * <p><b>纪律与 {@link #updateLobbySpawn(Location)} 完全一致：</b>重读盘 → 只写 lobby 段的目标键
+     * （{@code lobby.world} + {@code lobby.spawn.*}）→ 闸门写盘 → 同步内存副本。
+     * 写盘失败时内存副本同样不更新，避免「磁盘没写进去、本进程却按新值跑」的分叉状态。</p>
+     *
+     * @param location 管理员当前位置（调用方已确认 {@code lobby.world} 不可用）
+     * @return true = 已写入磁盘与内存；false = 写盘失败
+     */
+    public boolean updateLobbySpawnAndWorld(Location location) {
+        if (location == null || location.getWorld() == null) return false;
+        String worldName = location.getWorld().getName();
+
+        YamlFiles.Loaded loaded = arenasGate.load();
+        if (!loaded.usable() || !arenasGate.writable()) {
+            plugin.getLogger().warning("Refusing to write arenas.yml (unusable)");
+            return false;
+        }
+        YamlConfiguration disk = loaded.config();
+        disk.set("lobby.world", worldName);
+        disk.set("lobby.spawn.x", location.getX());
+        disk.set("lobby.spawn.y", location.getY());
+        disk.set("lobby.spawn.z", location.getZ());
+        disk.set("lobby.spawn.yaw", (double) location.getYaw());
+        disk.set("lobby.spawn.pitch", (double) location.getPitch());
+        if (!arenasGate.write(disk)) {
+            return false;
+        }
+
+        // 写盘成功后才同步内存副本（getLobbySpawn() / getConfiguredLobbyWorldName() 都读它）
+        configuration.set("lobby.world", worldName);
+        configuration.set("lobby.spawn.x", location.getX());
+        configuration.set("lobby.spawn.y", location.getY());
+        configuration.set("lobby.spawn.z", location.getZ());
+        configuration.set("lobby.spawn.yaw", (double) location.getYaw());
+        configuration.set("lobby.spawn.pitch", (double) location.getPitch());
+
+        plugin.getLogger().info("Lobby spawn updated and lobby world set to " + worldName + " ("
+                + String.format("%.1f", location.getX()) + ", "
                 + String.format("%.1f", location.getY()) + ", "
                 + String.format("%.1f", location.getZ()) + ")");
         return true;
@@ -335,19 +504,50 @@ public final class ArenaManager {
      * 「未部署」并重新部署。硬性要求 core 非空会让整座竞技场从 registry 消失。</p>
      */
     public boolean validate(ArenaDefinition definition) {
-        if (definition == null || !ARENA_ID.matcher(definition.getId()).matches()
-                || definition.getWorldName().isBlank()) return false;
+        return validationFailure(definition) == null;
+    }
+
+    /**
+     * 返回该定义通不过 {@link #validate(ArenaDefinition)} 的**具体原因**；通过时返回 {@code null}。
+     *
+     * <p>fix-round1 pattern-2：{@link #load()} 是唯一的加载闸门，任一字段不合法就 {@code continue}
+     * ——定义既不注册、也不抛异常，旧实现只打一行 "Skipping invalid arena definition: &lt;id&gt;"，
+     * 管理员看不出是「坐标 NaN」「世界名大小写不符」还是「max-players &lt; min-players」，
+     * 而 {@code ArenaResetService.canReset} 只会报 {@code ARENA_NOT_FOUND}，连重置自救都做不到。
+     * 把判定逻辑收敛到本方法并返回原因，{@link #validate(ArenaDefinition)} 继续保留布尔语义，
+     * 判定标准一字未改，只补上可观测性。</p>
+     */
+    public String validationFailure(ArenaDefinition definition) {
+        if (definition == null) return "definition is null";
+        if (!ARENA_ID.matcher(definition.getId()).matches()) {
+            return "id '" + definition.getId() + "' does not match " + ARENA_ID.pattern()
+                    + " (lowercase letters, digits, '-' and '_' only)";
+        }
+        if (definition.getWorldName().isBlank()) return "world name is blank";
+        // core 缺失是合法的（core == null 表示尚未部署），因此只在存在时校验
         Location core = definition.getCore();
-        if (core != null && !validLocation(core, definition.getWorldName())) return false;
+        if (core != null) {
+            String reason = invalidLocation(core, definition.getWorldName(), "core");
+            if (reason != null) return reason;
+        }
         for (Location spawn : definition.getSpawnPoints()) {
-            if (!validLocation(spawn, definition.getWorldName())) return false;
+            String reason = invalidLocation(spawn, definition.getWorldName(), "spawn-points");
+            if (reason != null) return reason;
         }
         // 怪物刷怪点：缺键/空列表 = 未部署（合法的旧存档状态）；有值时逐个校验坐标合法性
         for (Location mobSpawn : definition.getMobSpawnPoints()) {
-            if (!validLocation(mobSpawn, definition.getWorldName())) return false;
+            String reason = invalidLocation(mobSpawn, definition.getWorldName(), "mob-spawn-points");
+            if (reason != null) return reason;
         }
-        return validGameParams(definition.getMinPlayers(), definition.getMaxPlayers(),
-                definition.getVictoryWaves(), definition.getWaveIntervalSeconds());
+        if (!validGameParams(definition.getMinPlayers(), definition.getMaxPlayers(),
+                definition.getVictoryWaves(), definition.getWaveIntervalSeconds())) {
+            return "game params invalid (min-players " + definition.getMinPlayers()
+                    + ", max-players " + definition.getMaxPlayers()
+                    + ", victory-waves " + definition.getVictoryWaves()
+                    + ", wave-interval-seconds " + definition.getWaveIntervalSeconds()
+                    + "; require min > 0, max >= min, victory-waves > 0, interval > 0)";
+        }
+        return null;
     }
 
     private ArenaDefinition readDefinition(String id, ConfigurationSection section) {
@@ -497,9 +697,14 @@ public final class ArenaManager {
     /**
      * 清空某个竞技场的全部部署数据（管理员在竞技场管理 GUI 上执行「重置竞技场」）。
      *
-     * <p>删除 {@link #DEPLOYMENT_KEYS} 列出的字段（spawn-points / villagers / core / shop-npc /
-     * game.* / 半径与偏移），<b>保留</b> world / waiting-location / enabled / display-name，
-     * 使竞技场仍留在 registry 中并显示为「未部署」，可以重新走一次部署流程。</p>
+     * <p>删除 {@link #DEPLOYMENT_KEYS} 列出的字段（core / spawn-points / mob-spawn-points / villagers /
+     * shop-npc / game.*），<b>保留</b> world / waiting-location / enabled / display-name 以及四个刷怪调参
+     * {@code spawn-radius-min} / {@code spawn-radius-max} / {@code node-search-radius} /
+     * {@code spawn-y-offset}，使竞技场仍留在 registry 中并显示为「未部署」，可以重新走一次部署流程。</p>
+     *
+     * <p>保留那四个键是因为它们属刷怪调参而非部署产物（无任何运行期写入方，只能手改），
+     * 删掉后重新部署不会写回，竞技场会永久静默回落到全局值，理由与证据见
+     * {@link #DEPLOYMENT_KEYS} 的 javadoc。</p>
      *
      * <p><b>必须基于磁盘最新内容操作</b>：旧 save()（fix5 X6-④ 已删除，曾是「用 registry
      * 里的旧值整份覆写」）会把刚删掉的 spawn-points / core 原样写回去（撤销本次清理）。
@@ -511,7 +716,12 @@ public final class ArenaManager {
     public boolean clearDeploymentData(String arenaId) {
         if (arenaId == null || arenaId.isBlank()) return false;
 
-        YamlConfiguration disk = YamlConfiguration.loadConfiguration(arenasFile);
+        YamlFiles.Loaded loaded = arenasGate.load();
+        if (!loaded.usable() || !arenasGate.writable()) {
+            plugin.getLogger().warning("Refusing to clear arena deployment data (arenas.yml is unusable): " + arenaId);
+            return false;
+        }
+        YamlConfiguration disk = loaded.config();
         // 竞技场 ID 在 registry 里是不区分大小写的（ArenaRegistry 会归一化），
         // 这里也按同样口径匹配 YAML 键，避免大小写不一致导致「重置」静默失败
         String key = findArenaKey(disk, arenaId);
@@ -537,10 +747,8 @@ public final class ArenaManager {
         // shop-npc 只是还没迁移，从旧版 spawnpoints.yml 把刚被清掉的位置再迁移回来
         disk.set(path + "." + SHOP_NPC_MIGRATED_KEY, true);
 
-        try {
-            disk.save(arenasFile);
-        } catch (IOException exception) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to clear arena deployment data: " + arenaId, exception);
+        if (!arenasGate.write(disk)) {
+            plugin.getLogger().severe("Failed to clear arena deployment data: " + arenaId);
             return false;
         }
 
@@ -575,7 +783,12 @@ public final class ArenaManager {
             return false;
         }
 
-        YamlConfiguration disk = YamlConfiguration.loadConfiguration(arenasFile);
+        YamlFiles.Loaded loaded = arenasGate.load();
+        if (!loaded.usable() || !arenasGate.writable()) {
+            plugin.getLogger().warning("Refusing to write game settings (arenas.yml is unusable): " + arenaId);
+            return false;
+        }
+        YamlConfiguration disk = loaded.config();
         String key = findArenaKey(disk, arenaId);
         if (key == null) {
             plugin.getLogger().warning("Failed to write game settings: arenas.yml has no arena named " + arenaId);
@@ -588,10 +801,8 @@ public final class ArenaManager {
         disk.set(path + ".victory-waves", victoryWaves);
         disk.set(path + ".wave-interval-seconds", waveIntervalSeconds);
 
-        try {
-            disk.save(arenasFile);
-        } catch (IOException exception) {
-            plugin.getLogger().log(Level.SEVERE, "Failed to write arena game settings: " + arenaId, exception);
+        if (!arenasGate.write(disk)) {
+            plugin.getLogger().severe("Failed to write arena game settings: " + arenaId);
             return false;
         }
 
@@ -628,6 +839,10 @@ public final class ArenaManager {
     }
 
     private void ensureFile() {
+        // 只读降级中**不得**从 JAR 模板重建：读盘不可用时文件已被隔离成 *.corrupt，
+        // 若这里再 saveResource 一份出厂模板，下一次 gate.load() 就会读到「合法的新文件」
+        // 并自动解封——降级被自己的重建动作绕过（正是 spec D1.5-③ 第 4 步要拦的路径）。
+        if (arenasGate != null && arenasGate.isReadOnly()) return;
         if (!arenasFile.exists()) {
             plugin.saveResource("arenas.yml", false);
             if (!arenasFile.exists()) {
@@ -652,7 +867,31 @@ public final class ArenaManager {
     private static boolean validLocation(Location location, String worldName) {
         return location != null && Double.isFinite(location.getX()) && Double.isFinite(location.getY())
                 && Double.isFinite(location.getZ()) && Float.isFinite(location.getYaw()) && Float.isFinite(location.getPitch())
-                && (location.getWorld() == null || worldName.equals(location.getWorld().getName()));
+                && (location.getWorld() == null
+                        || worldName.equalsIgnoreCase(location.getWorld().getName()));
+    }
+
+    /**
+     * {@link #validLocation(Location, String)} 的可解释版本：通过时返回 {@code null}，
+     * 否则返回一句「是哪个位置、哪一条不满足」，供 {@link #validationFailure(ArenaDefinition)} 汇总。
+     * 判定条件与 {@code validLocation} 逐条一致（保持两个入口同口径）。
+     */
+    private static String invalidLocation(Location location, String worldName, String what) {
+        if (location == null) return what + " is null";
+        if (!Double.isFinite(location.getX()) || !Double.isFinite(location.getY())
+                || !Double.isFinite(location.getZ())) {
+            return what + " has a non-finite coordinate (" + location.getX() + ", "
+                    + location.getY() + ", " + location.getZ() + ")";
+        }
+        if (!Float.isFinite(location.getYaw()) || !Float.isFinite(location.getPitch())) {
+            return what + " has a non-finite rotation (yaw " + location.getYaw()
+                    + ", pitch " + location.getPitch() + ")";
+        }
+        if (location.getWorld() != null && !worldName.equalsIgnoreCase(location.getWorld().getName())) {
+            return what + " is in world '" + location.getWorld().getName()
+                    + "' but the arena declares world '" + worldName + "'";
+        }
+        return null;
     }
 
     /** 世界名归一化键：Bukkit 的世界查找不区分大小写，唯一性校验也必须忽略大小写。 */

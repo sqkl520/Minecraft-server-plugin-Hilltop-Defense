@@ -1,12 +1,14 @@
 package com.hilltopvillage.command;
 
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.IntSupplier;
+import java.util.logging.Level;
 
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
@@ -45,11 +47,53 @@ public class HilltopCommandHandler {
     private final SetupWizard setupWizard;
     private final DeployMenuSender deployMenuSender;
     private final TpsDiagnostic tpsDiagnostic;
-    private final Set<UUID> pendingClearConfirm = new HashSet<>();
-    /** clearmobspawns 的二次确认集合（与玩家出生点的 pendingClearConfirm 独立，避免互相串确认） */
-    private final Set<UUID> pendingClearMobConfirm = new HashSet<>();
-    /** clearvillagers 的二次确认集合（与其它两个清除确认各自独立，避免互相串确认） */
-    private final Set<UUID> pendingClearVillagersConfirm = new HashSet<>();
+
+    /**
+     * 清除类子命令（clearspawns / clearmobspawns / clearvillagers）的二次确认类型。
+     *
+     * <p>历史实现是三套 {@code Set<UUID>}（只记人、不记场、不记时刻），导致管理员在 arena1
+     * 发起后被传送到 arena2 再确认时，清掉的是 arena2 的数据（D3 Critical）。</p>
+     */
+    private enum ClearKind {
+        SPAWN, MOB_SPAWN, VILLAGER
+    }
+
+    /**
+     * 一次待确认的清除请求（D3）。
+     *
+     * @param arenaId        发起时确定的竞技场规范 ID（<b>确认时必须与此一致</b>，大小写不敏感比较）
+     * @param sourceWorldName 发起时该竞技场所在世界名。跨场确认被拒时，提示行里的
+     *                        「(world {1})」必须指向<b>发起场</b>的世界，否则会出现
+     *                        「请求目标是 arena1（世界 hilltop_arena2）」这种自相矛盾的误导信息
+     * @param kind           清除类型
+     * @param expiresAt      过期时刻（wall clock millis）。与延迟任务双保险：任务可能因主线程卡顿
+     *                       或插件重载而延迟，confirm 时再校验一次
+     * @param requestedAt    发起时刻，仅用于日志与「同一请求」的值比较
+     *
+     * <p>record 的 {@code equals} 按值比较：两个不同时刻的请求 {@code requestedAt} 必不同，
+     * 因此 「过期任务 {@code remove(key, fresh)}」 不会误删后续的新请求（D3 既有 bug 的修法）。</p>
+     */
+    private record PendingClear(String arenaId, String sourceWorldName, ClearKind kind,
+                                long expiresAt, long requestedAt) {
+        /** 与文案里写死的「15 秒」严格对应：改 TTL 必须同步改 6 个 *-confirm / *-expired 文案。 */
+        static final long TTL_MILLIS = 15_000L;
+
+        boolean expired(long now) {
+            return now > expiresAt;
+        }
+
+        /** 提示行用：世界名缺失时给占位符一个可见值，避免 `{1}` 以字面量露出。 */
+        String displaySourceWorld() {
+            return sourceWorldName == null || sourceWorldName.isBlank() ? "?" : sourceWorldName;
+        }
+    }
+
+    /** 复合键：同一管理员的不同 kind 仍互不干扰（保留原「三套集合独立」的语义）。 */
+    private record PendingKey(UUID admin, ClearKind kind) {
+    }
+
+    /** 单一容器取代三套 {@code Set<UUID>}；值带场 ID 与过期时刻。 */
+    private final Map<PendingKey, PendingClear> pendingClears = new ConcurrentHashMap<>();
 
     /** /hilltop shop give 单次发放上限（防手滑输入天文数字刷爆背包 / 卡服） */
     private static final int MAX_SHOP_GIVE = 6400;
@@ -78,6 +122,33 @@ public class HilltopCommandHandler {
     }
 
     public boolean handle(CommandSender sender, Command command, String label, String[] args) {
+        // 顶层快捷命令 /hub 与 /lobby：等价于 /hilltop lobby（[setspawn] 原样透传）。
+        // 必须在下面那条「只认 hilltop」的硬校验之前分流，否则这两条独立命令会被直接 return false，
+        // Bukkit 随后打 usage 并对玩家毫无反馈。
+        //
+        // 参数形态对齐：handleLobbyCommand 用 args[1] 判定 setspawn（见其实现），
+        // 也就是它吃的是「/hilltop lobby setspawn」这种<b>带子命令占位</b>的数组。
+        // 因此 /hub 传 {"lobby"}、/lobby setspawn 传 {"lobby","setspawn"} —— 前置占位不可省，
+        // 否则 args[1] 会越界，setspawn 静默失效。
+        String cmdName = command.getName().toLowerCase(Locale.ROOT);
+        if (cmdName.equals("hub") || cmdName.equals("lobby")) {
+            if (!(sender instanceof Player shortcutPlayer)) {
+                sender.sendMessage(lang.get("players-only"));
+                return true;
+            }
+            if (cmdName.equals("hub") && args.length > 0) {
+                // /hub 只接受零参数：明确拒绝多余参数，而不是把它们当成 lobby 的子命令
+                // （/hub setspawn 这种误输入会让人以为 hub 也能设置出生点）。
+                shortcutPlayer.sendMessage(lang.getFor(shortcutPlayer, "usage-hub"));
+                return true;
+            }
+            String[] forwarded = new String[args.length + 1];
+            forwarded[0] = "lobby";
+            System.arraycopy(args, 0, forwarded, 1, args.length);
+            handleLobbyCommand(shortcutPlayer, forwarded);
+            return true;
+        }
+
         if (!command.getName().equalsIgnoreCase("hilltop")) return false;
 
         boolean isPlayer = sender instanceof Player;
@@ -187,16 +258,17 @@ public class HilltopCommandHandler {
             case "join":
                 // 入口 CONSOLE_BLOCKED_COMMANDS 已拦截控制台，到这里的一定是玩家
                 // 已在竞技场中时的处理：
-                //  · 对局进行中且人在场内 → 明确拒绝（不能半路换场）
+                //  · 对局进行中 → 一律拒绝（不能半路换场，不论人是否还在场世界内）
                 //  · 其余情况（等待中的成员、死亡后重生到别处、被外部插件传送等）
                 //    → 视为可切换的等待状态，自动离开原竞技场后继续加入
                 if (arenaManager.isInArena(player)) {
                     ArenaInstance current = arenaManager.getPlayerArena(player);
-                    boolean inCurrentWorld = current != null
-                            && player.getWorld().getName().equals(current.getWorldName());
                     boolean gameRunning = current != null && current.getGameManager().isGameRunning();
 
-                    if (gameRunning && inCurrentWorld) {
+                    // fix-021（slice-06-logic-002）：单条件 gameRunning，去掉原「&& inCurrentWorld」合取。
+                    // 合取把「对局中、但人被 /tp 或第三方插件送出世界」漏进下方 leave→join 分支，
+                    // leaveArena 触发 GameManager 的 min-players 判负，一名成员即可让队友被判负。
+                    if (gameRunning) {
                         lang.send(player, "already-in-arena");
                         break;
                     }
@@ -326,12 +398,50 @@ public class HilltopCommandHandler {
                     sender.sendMessage(lang.getFor(player, "no-permission"));
                     return true;
                 }
-                plugin.getConfigManager().loadFromFile();
-                sender.sendMessage(lang.getFor(player, "config-reloaded"));
-                plugin.getLanguageManager().reload();
-                sender.sendMessage(lang.getFor(player, "messages-reloaded"));
-                // 竞技场参数来自 arenas.yml，无法热重载，明确告知管理员需重启
-                sender.sendMessage(lang.getFor(player, "config.reload-arena-notice"));
+                // D1 运维闭环：先解封各 YAML 闸门，再重载（管理员可能已把被隔离的坏文件修好）。
+                // reset() 只清缓存态，不保证文件已修好——下一次 load 仍会重新判定，
+                // 仍坏则再次锁定只读并重新打日志。不得改成「reset 时主动校验」。
+                arenaManager.getDefinitionManager().getArenasGate().reset();
+                plugin.getConfigManager().getSettingsGate().reset();
+                plugin.getConfigManager().getMonstersGate().reset();
+                plugin.getConfigManager().getDisplayGate().reset();
+                plugin.getLanguageManager().getMessagesGate().reset();
+                // 节点只读标记是静态集合（NODES_READ_ONLY），对任一实例调用即全局清空。
+                // 无活动实例时不必特殊处理：NodeSystem 的所有读入口（loadNodesFromConfig /
+                // readNodesForWorld / clearNodesForWorld / removeNodeEntryForWorld）在读到 OK 时
+                // 本就会把路径移出该集合，第一个成功读盘的动作即完成解封。
+                arenaManager.getActiveArenas().stream()
+                        .map(ArenaInstance::getGameManager)
+                        .filter(java.util.Objects::nonNull)
+                        .findFirst()
+                        .ifPresent(gm -> gm.getNodeSystem().resetReadOnlyGates());
+                // 成功提示必须放在所有重载步骤之后：早发会让后续步骤抛出时管理员看到假成功。
+                try {
+                    plugin.getConfigManager().loadFromFile();
+                    // display.yml 是纯手写文件（插件只读不写），管理员手滑改坏一次就会让闸门把整个进程
+                    // 锁成「本进程只读」，此时 loadFromFile() 只会拿上次读到的旧 YamlConfiguration 重解析，
+                    // 坏文件的修正永远进不来、布局永久停在默认值。所以这里必须再走一次 reloadDisplay()：
+                    // reset() 解闩 + 真读盘 + 解析失败回退 defaults()，让「改坏 → 修好 → reloadconfig」
+                    // 这条闭环始终成立，而不是把功能永久锁死到重启。
+                    plugin.getConfigManager().reloadDisplay();
+                    // 布局换成新的之后立刻推给所有人：刷新任务虽有周期，但管理员刚敲完命令就应看到结果。
+                    // start() 是幂等的，同时负责「之前 tab.enabled=false 停过任务、现在改回 true」的重启。
+                    if (plugin.getTabListManager() != null) {
+                        plugin.getTabListManager().start();
+                        for (Player online : Bukkit.getOnlinePlayers()) {
+                            plugin.getTabListManager().refreshNow(online);
+                        }
+                    }
+                    plugin.getLanguageManager().reload();
+                    sender.sendMessage(lang.getFor(player, "config-reloaded"));
+                    sender.sendMessage(lang.getFor(player, "messages-reloaded"));
+                    // 竞技场参数来自 arenas.yml，无法热重载，明确告知管理员需重启
+                    sender.sendMessage(lang.getFor(player, "config.reload-arena-notice"));
+                } catch (RuntimeException ex) {
+                    plugin.getLogger().log(Level.SEVERE, "Config reload failed (/hilltop reloadconfig)", ex);
+                    sender.sendMessage(ChatColor.RED + "Config reload failed part-way; see the console log. "
+                            + "Some settings may not have been applied — fix the cause and run /hilltop reloadconfig again.");
+                }
                 break;
 
             case "lang":
@@ -497,8 +607,14 @@ public class HilltopCommandHandler {
                     Material mat = Material.getMaterial(args[3].toUpperCase(Locale.ROOT));
                     if (mat != null && mat.isItem()) {
                         cm.getActiveConfig().setRepairCostItem(mat);
-                        cm.saveToFile();
+                        // 与 deploy 系列同纪律（见 reportDeploySaveFailure 的注释）：内存已改，但写盘
+                        // 结果必须消费。saveToFile() 的 false 涵盖只读闸门锁定与 IO 失败两种静默路径，
+                        // 丢弃它会让管理员以为已持久化，重启后设置消失。
+                        boolean saved = cm.saveToFile();
                         admin.sendMessage(lang.getFor(admin, "config.repairitem-set", mat.name()));
+                        if (!saved) {
+                            admin.sendMessage(lang.getFor(admin, "setup.save-failed"));
+                        }
                     } else if (mat != null) {
                         // fix6 Y2-01：存在但非可携带物品（WATER/LAVA 等方块态材质）→ ItemStack 构造必抛，
                         // 若放行则商店 REPAIR_ITEM 发货链吃币（扣款后 new ItemStack 抛异常、无退款）
@@ -553,6 +669,160 @@ public class HilltopCommandHandler {
         if (deploy.consumeSaveFailure()) {
             admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
         }
+    }
+
+    /* ========== 清除类二次确认的统一收口（D3：绑定竞技场） ========== */
+
+    private static String warningKey(ClearKind kind) {
+        return switch (kind) {
+            case SPAWN -> "deploy.clearspawns-warning";
+            case MOB_SPAWN -> "deploy.clearmobspawns-warning";
+            case VILLAGER -> "deploy.clearvillagers-warning";
+        };
+    }
+
+    private static String confirmKey(ClearKind kind) {
+        return switch (kind) {
+            case SPAWN -> "deploy.clearspawns-confirm";
+            case MOB_SPAWN -> "deploy.clearmobspawns-confirm";
+            case VILLAGER -> "deploy.clearvillagers-confirm";
+        };
+    }
+
+    private static String alreadyKey(ClearKind kind) {
+        return switch (kind) {
+            case SPAWN -> "deploy.clearspawns-already";
+            case MOB_SPAWN -> "deploy.clearmobspawns-already";
+            case VILLAGER -> "deploy.clearvillagers-already";
+        };
+    }
+
+    private static String doneKey(ClearKind kind) {
+        return switch (kind) {
+            case SPAWN -> "deploy.confirmclear-done";
+            case MOB_SPAWN -> "deploy.confirmclearmob-done";
+            case VILLAGER -> "deploy.clearvillagers-done";
+        };
+    }
+
+    private static String noPendingKey(ClearKind kind) {
+        return switch (kind) {
+            case SPAWN -> "deploy.confirmclear-no-pending";
+            case MOB_SPAWN -> "deploy.confirmclearmob-no-pending";
+            case VILLAGER -> "deploy.confirmclearvillagers-no-pending";
+        };
+    }
+
+    /**
+     * 登记一次清除确认请求（三族共用）。
+     *
+     * <p>三种结局：</p>
+     * <ol>
+     *   <li>同 kind 同场已有 pending → 播「already」，不覆盖（15 秒窗口不因重复输入而延长）；</li>
+     *   <li>同 kind 但换了场（管理员 tp 到别的竞技场后又发了同一条命令）→ 用新请求替换旧请求
+     *       并明确播报换场。否则他会对着 arena2 的警告去确认 arena1 —— 正是 D3 缺陷的触发姿势；</li>
+     *   <li>无 pending（或旧的已过期）→ 登记并播「15 秒内确认」。</li>
+     * </ol>
+     *
+     * @param arenaId         本次发起场（当前解析场）的规范 ID
+     * @param sourceWorldName 该竞技场所在世界名，随 pending 存下；跨场确认被拒时提示行要指向它
+     * @return 本次登记的 {@link PendingClear}；被拒绝（同场已有 pending）时返回 {@code null}
+     */
+    private PendingClear requestClear(Player admin, String arenaId, String sourceWorldName,
+                                      ClearKind kind, int count) {
+        long now = System.currentTimeMillis();
+        PendingKey key = new PendingKey(admin.getUniqueId(), kind);
+        PendingClear fresh = new PendingClear(arenaId, sourceWorldName, kind,
+                now + PendingClear.TTL_MILLIS, now);
+
+        final PendingClear existing = pendingClears.get(key);
+        if (existing != null && !existing.expired(now)) {
+            if (existing.arenaId().equalsIgnoreCase(arenaId)) {
+                admin.sendMessage(lang.getFor(admin, alreadyKey(kind), arenaId));
+                return null;
+            }
+            pendingClears.put(key, fresh);
+            admin.sendMessage(lang.getFor(admin, "deploy.clear-pending-rebound",
+                    existing.arenaId(), arenaId));
+        } else {
+            pendingClears.put(key, fresh);
+        }
+
+        admin.sendMessage(lang.getFor(admin, warningKey(kind), count, arenaId));
+        admin.sendMessage(lang.getFor(admin, confirmKey(kind), arenaId));
+
+        // 过期任务：必须用双参 remove(key, expected)。无参 remove 会在
+        // 「t=0 发起 → t=5 确认 → t=6 再发起」时，于 t=15 把 t=6 的新请求删掉并误播「已超时」（既有 bug）。
+        Bukkit.getScheduler().runTaskLater(plugin, () -> {
+            if (pendingClears.remove(key, fresh)) {
+                admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-expired", arenaId));
+            }
+        }, PendingClear.TTL_MILLIS / 50L);       // 15_000 / 50 = 300 ticks
+        return fresh;
+    }
+
+    /**
+     * 执行一次清除确认（D3 核心修复点）。
+     *
+     * <p><b>三条硬校验</b>：① pending 存在且未过期；② pending 的 arenaId 与「当前解析场」一致；
+     * ③ deploy 对象仍在。任一不通过都不执行清除，并如实播报原因。</p>
+     *
+     * <p>校验失败时<b>刻意不消费 pending</b>：管理员可能只是 tp 错了场，15 秒窗口内回到发起场
+     * 再 confirm 仍然有效 —— 比「一失足就只能从头再来」安全。</p>
+     *
+     * @param currentArenaId 本次由「管理员所在世界」重新解析出的场 ID（不是用户输入）
+     * @param deploy         本次解析出的部署管理器（校验失败分支下可能为 null）
+     * @param clearAction    真正执行清除的动作
+     * @param countBefore    清除前取数量（必须先取再清，否则恒报 0）
+     *
+     * <p>提示行的世界名取自 <b>pending 自己记下的发起场世界</b>，而不是当前场 —— 否则会出现
+     * 「请求目标是 arena1（世界 hilltop_arena2）」这种自相矛盾的误导信息。</p>
+     */
+    private void confirmClear(Player admin, String currentArenaId, AdminDeployManager deploy,
+                              ClearKind kind, Runnable clearAction,
+                              IntSupplier countBefore) {
+        PendingKey key = new PendingKey(admin.getUniqueId(), kind);
+        PendingClear pending = pendingClears.get(key);
+
+        if (pending == null) {
+            admin.sendMessage(lang.getFor(admin, noPendingKey(kind)));
+            return;
+        }
+        // ① 过期（延迟任务可能因主线程卡顿而未及时执行）
+        if (pending.expired(System.currentTimeMillis())) {
+            pendingClears.remove(key, pending);
+            admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-expired", pending.arenaId()));
+            return;
+        }
+        // ② 场不匹配 —— D3 的正解：拒绝且不消费 pending
+        if (!pending.arenaId().equalsIgnoreCase(currentArenaId)) {
+            admin.sendMessage(lang.getFor(admin, "deploy.clear-arena-mismatch",
+                    pending.arenaId(), currentArenaId));
+            admin.sendMessage(lang.getFor(admin, "deploy.clear-arena-mismatch-hint",
+                    pending.arenaId(), pending.displaySourceWorld()));
+            return;
+        }
+        // ③ deploy 对象缺失（场被 disable 后重解析拿不到实例）
+        if (deploy == null) {
+            pendingClears.remove(key, pending);
+            admin.sendMessage(lang.getFor(admin, "deploy.clear-arena-gone", pending.arenaId()));
+            return;
+        }
+
+        pendingClears.remove(key, pending);            // 消费
+        int count = countBefore.getAsInt();            // 先取数量再清
+        clearAction.run();
+        admin.sendMessage(lang.getFor(admin, doneKey(kind), count, pending.arenaId()));
+        reportDeploySaveFailure(admin, deploy);
+    }
+
+    /** 清除类破坏性操作的对局中守卫（与 setshop / clearshop 同一口径）。 */
+    private boolean rejectClearInGame(Player admin, ArenaInstance arena) {
+        if (arena != null && NpcManager.isGameInProgress(arena.getState())) {
+            admin.sendMessage(lang.getFor(admin, "deploy.clear-in-game", arena.getArenaId()));
+            return true;
+        }
+        return false;
     }
 
     private void handleDeployCommand(CommandSender sender, String[] args) {
@@ -638,6 +908,33 @@ public class HilltopCommandHandler {
                 admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
                 break;
 
+            case "setwaiting":
+                // 等待区：玩家 /hilltop join 后、开局前的落点（向导第 2 步的 [设为等待区] 同源）。
+                // 对局进行中拒绝：等待区是给「下一批进场玩家」用的，对局里改不会有任何即时效果，
+                // 却会让管理员误以为改的是当前场内玩家的位置 —— 与 setshop 同一保护口径（读 live 状态）。
+                if (NpcManager.isGameInProgress(deployArena.getState())) {
+                    admin.sendMessage(lang.getFor(admin, "deploy.setwaiting-in-game"));
+                    return;
+                }
+                // 异世界坐标由 AdminDeployManager.setWaitingLocation 兜底拒收（M-02），
+                // 但这里先给一句面向管理员的可读提示，避免「命令没反应」的错觉
+                if (!admin.getWorld().getName().equalsIgnoreCase(deployArena.getWorldName())) {
+                    admin.sendMessage(lang.getFor(admin, "deploy.must-be-in-arena-world",
+                            deployArena.getDisplayName(), deployArena.getWorldName()));
+                    return;
+                }
+                deploy.setWaitingLocation(admin.getLocation());
+                admin.sendMessage(lang.getFor(admin, "deploy.setwaiting-set"));
+                admin.sendMessage(lang.getFor(admin, "deploy.setwaiting-coords",
+                        String.format("%.1f", admin.getLocation().getX()),
+                        String.format("%.1f", admin.getLocation().getY()),
+                        String.format("%.1f", admin.getLocation().getZ())));
+                reportDeploySaveFailure(admin, deploy);
+                admin.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
+                        admin.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
+                admin.playSound(admin.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.5f);
+                break;
+
             case "addspawn":
                 deploy.addSpawnPoint(admin.getLocation());
                 admin.sendMessage(lang.getFor(admin, "deploy.addspawn-added"));
@@ -693,29 +990,21 @@ public class HilltopCommandHandler {
                 break;
 
             case "clearspawns":
-                if (!pendingClearConfirm.contains(admin.getUniqueId())) {
-                    pendingClearConfirm.add(admin.getUniqueId());
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-warning", deploy.getSpawnPoints().size()));
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-confirm"));
-                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                        if (pendingClearConfirm.remove(admin.getUniqueId())) {
-                            admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-expired"));
-                        }
-                    }, 20L * 15);
-                } else {
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-already"));
+                if (rejectClearInGame(admin, deployArena)) {
+                    return;
                 }
+                requestClear(admin, deployArena.getArenaId(), deployArena.getWorldName(),
+                        ClearKind.SPAWN, deploy.getSpawnPoints().size());
                 break;
 
             case "confirmclear":
-                if (pendingClearConfirm.remove(admin.getUniqueId())) {
-                    int count = deploy.getSpawnPoints().size();
-                    deploy.clearSpawnPoints();
-                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclear-done", count));
-                    reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
-                } else {
-                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclear-no-pending"));
+                if (rejectClearInGame(admin, deployArena)) {
+                    return;
                 }
+                confirmClear(admin, deployArena.getArenaId(), deploy,
+                        ClearKind.SPAWN,
+                        deploy::clearSpawnPoints,
+                        () -> deploy.getSpawnPoints().size());
                 break;
 
             case "addmobspawn":
@@ -772,30 +1061,21 @@ public class HilltopCommandHandler {
                 break;
 
             case "clearmobspawns":
-                if (!pendingClearMobConfirm.contains(admin.getUniqueId())) {
-                    pendingClearMobConfirm.add(admin.getUniqueId());
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearmobspawns-warning", deploy.getMobSpawnPoints().size()));
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearmobspawns-confirm"));
-                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                        if (pendingClearMobConfirm.remove(admin.getUniqueId())) {
-                            admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-expired"));
-                        }
-                    }, 20L * 15);
-                } else {
-                    // C2-02：用本族专用键（旧版复用 clearspawns-already，指引的 confirmclear 不在本 pending 集）
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearmobspawns-already"));
+                if (rejectClearInGame(admin, deployArena)) {
+                    return;
                 }
+                requestClear(admin, deployArena.getArenaId(), deployArena.getWorldName(),
+                        ClearKind.MOB_SPAWN, deploy.getMobSpawnPoints().size());
                 break;
 
             case "confirmclearmob":
-                if (pendingClearMobConfirm.remove(admin.getUniqueId())) {
-                    int count = deploy.getMobSpawnPoints().size();
-                    deploy.clearMobSpawnPoints();
-                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclearmob-done", count));
-                    reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
-                } else {
-                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclearmob-no-pending"));
+                if (rejectClearInGame(admin, deployArena)) {
+                    return;
                 }
+                confirmClear(admin, deployArena.getArenaId(), deploy,
+                        ClearKind.MOB_SPAWN,
+                        deploy::clearMobSpawnPoints,
+                        () -> deploy.getMobSpawnPoints().size());
                 break;
 
             case "reloadnodes":
@@ -863,31 +1143,23 @@ public class HilltopCommandHandler {
                 break;
 
             case "clearvillagers":
-                // 与 clearspawns / clearmobspawns 同一套 15 秒二次确认（各自的 pending 集合独立）
-                if (!pendingClearVillagersConfirm.contains(admin.getUniqueId())) {
-                    pendingClearVillagersConfirm.add(admin.getUniqueId());
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-warning", deploy.getVillagers().size()));
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-confirm"));
-                    Bukkit.getScheduler().runTaskLater(plugin, () -> {
-                        if (pendingClearVillagersConfirm.remove(admin.getUniqueId())) {
-                            admin.sendMessage(lang.getFor(admin, "deploy.clearspawns-expired"));
-                        }
-                    }, 20L * 15);
-                } else {
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-already"));
+                // 与 clearspawns / clearmobspawns 共用一套二次确认（复合键按 kind 隔离，互不串确认）
+                if (rejectClearInGame(admin, deployArena)) {
+                    return;
                 }
+                requestClear(admin, deployArena.getArenaId(), deployArena.getWorldName(),
+                        ClearKind.VILLAGER, deploy.getVillagers().size());
                 break;
 
             case "confirmclearvillagers":
-                if (pendingClearVillagersConfirm.remove(admin.getUniqueId())) {
-                    // 先取数量再清除：旧实现清完再报 0，恒报「已清除 0 个」
-                    int clearedVillagers = deploy.getVillagers().size();
-                    deploy.clearVillagers();
-                    admin.sendMessage(lang.getFor(admin, "deploy.clearvillagers-done", clearedVillagers));
-                    reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
-                } else {
-                    admin.sendMessage(lang.getFor(admin, "deploy.confirmclearvillagers-no-pending"));
+                if (rejectClearInGame(admin, deployArena)) {
+                    return;
                 }
+                // countBefore 先取数量再清除：旧实现清完再报 0，恒报「已清除 0 个」
+                confirmClear(admin, deployArena.getArenaId(), deploy,
+                        ClearKind.VILLAGER,
+                        deploy::clearVillagers,
+                        () -> deploy.getVillagers().size());
                 break;
 
             case "setshop":
@@ -958,19 +1230,44 @@ public class HilltopCommandHandler {
             // 大小写不敏感比较（仿 C2-01）：Bukkit 世界查找不区分大小写，arenas.yml 里
             // lobby.world 写成 Lobby 而实际文件夹小写时，精确 equals 会把站在正确世界里的
             // 管理员误拒。大厅世界解析沿用 getLobbyWorld()（含未配置时回退主世界的同一口径）。
+            //
+            // 降级路径（fix7）：若 lobby.world 为空/指向的世界不存在，「必须站在大厅世界」就成了一条
+            // 永远走不通的死路（那个世界根本进不去）。此时允许在任意世界设置，并把 lobby.world
+            // 一并写成当前世界 —— 仍是管理员显式执行 + 明确播报，不破坏「防误设」的原意：
+            // 只要 lobby.world 指向的世界存在，就仍严格要求在那个世界里执行。
+            boolean lobbyWorldMissing = arenaManager.isConfiguredLobbyWorldMissing();
             org.bukkit.World lobbyWorld = arenaManager.getLobbyWorld();
             String lobbyWorldName = lobbyWorld != null ? lobbyWorld.getName() : null;
-            if (lobbyWorldName == null
-                    || !player.getWorld().getName().equalsIgnoreCase(lobbyWorldName)) {
+            if (lobbyWorldMissing
+                    && arenaManager.getDefinitionManager()
+                            .getArenaByWorld(player.getWorld().getName()) != null) {
+                // 降级路径的防误设：大厅与竞技场必须是不同世界（插件据此区分保护规则与游戏逻辑）。
+                // 站在竞技场世界里 setspawn 会把 lobby.world 写成竞技场世界 —— 这不是「没得选」，
+                // 而是选错了世界，直接拒绝并说明该去哪设。
+                player.sendMessage(lang.getFor(player, "lobby.setspawn-arena-world",
+                        player.getWorld().getName()));
+                return;
+            }
+            if (!lobbyWorldMissing
+                    && (lobbyWorldName == null
+                    || !player.getWorld().getName().equalsIgnoreCase(lobbyWorldName))) {
                 player.sendMessage(lang.getFor(player, "lobby.setspawn-not-lobby-world",
                         lobbyWorldName != null ? lobbyWorldName : "?"));
                 return;
             }
-            if (arenaManager.setLobbySpawn(player.getLocation())) {
+            boolean saved = lobbyWorldMissing
+                    ? arenaManager.setLobbySpawnAndWorld(player.getLocation())
+                    : arenaManager.setLobbySpawn(player.getLocation());
+            if (saved) {
                 player.sendMessage(lang.getFor(player, "lobby.setspawn-done",
                         String.format("%.1f", player.getLocation().getX()),
                         String.format("%.1f", player.getLocation().getY()),
                         String.format("%.1f", player.getLocation().getZ())));
+                if (lobbyWorldMissing) {
+                    // 降级路径必须明确播报「顺手把大厅世界也设了」，否则服主不知道配置被改
+                    player.sendMessage(lang.getFor(player, "lobby.setspawn-world-set",
+                            player.getWorld().getName()));
+                }
                 player.sendMessage(lang.getFor(player, "lobby.setspawn-effect"));
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER,
                         player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
@@ -993,8 +1290,26 @@ public class HilltopCommandHandler {
             lang.send(player, "arena-left");
             return;
         }
+        // 已站在大厅出生点 2 格内时不再重复传送（无害但会打断视角，每次执行都拉一次镜头）。
+        // 人虽在大厅世界但离得远（迷路/掉虚空）仍然照传，避免把「回大厅」变成一条到不了出生点的死命令。
+        // 大厅未配置时不做这个跳过判断：那会儿的出生点是主世界占位坐标，误判会让命令什么都不做。
+        Location lobbySpawn = arenaManager.getLobbySpawn();
+        if (!arenaManager.isConfiguredLobbyWorldMissing()
+                && lobbySpawn != null && lobbySpawn.getWorld() != null
+                && player.getWorld().equals(lobbySpawn.getWorld())
+                && player.getLocation().distanceSquared(lobbySpawn) <= 4.0) {
+            lang.send(player, "lobby.already-in-lobby");
+            return;
+        }
+        // 任意世界（竞技场以外的生存世界等）都能回大厅：sendToLobby 内部走跨世界 teleport，
+        // 大厅未配置时回退到主世界出生点（设计如此，不在此处拦截）。
         arenaManager.sendToLobby(player);
         lang.send(player, "lobby-teleported");
+        // 大厅未配置好时补一句「你落在了主世界」——否则玩家/管理员只会觉得传送地点不对，
+        // 却不知道要跑 /hilltop lobby setspawn（8 步向导不涉及大厅，见 SetupWizard 完成提示）。
+        if (arenaManager.isConfiguredLobbyWorldMissing()) {
+            lang.send(player, "lobby.not-configured-hint");
+        }
     }
 
     /**
@@ -1128,11 +1443,22 @@ public class HilltopCommandHandler {
             return;
         }
 
+        // slice-03-logic-004：disableArena 在「实例不存在」时返回 arena-already-disabled，但该分支
+        // 其实做了事 —— 从启用队列撤下并置 DISABLED。队列中（QUEUED/LOADING）的场点「禁用」会得到
+        // 「本来就是禁用」的错误文案。先取状态，把撤队与真·已禁用区分开播报。
+        ArenaStatus statusBefore = arenaManager.getStatus(arenaId);
         String result = arenaManager.disableArena(arenaId);
 
         switch (result) {
             case "deploy.ok" -> sender.sendMessage(lang.getFor(player, "arena-disabled-ok", arenaId));
-            case "arena-already-disabled" -> sender.sendMessage(lang.getFor(player, "arena-already-disabled", arenaId));
+            case "arena-already-disabled" -> {
+                // 队列态被撤下 → 竞技场确实被禁用，播报禁用成功而非「本来就是禁用」
+                if (statusBefore.isPending()) {
+                    sender.sendMessage(lang.getFor(player, "arena-disabled-ok", arenaId));
+                } else {
+                    sender.sendMessage(lang.getFor(player, "arena-already-disabled", arenaId));
+                }
+            }
             case "arena-disable-in-progress" -> sender.sendMessage(lang.getFor(player, "arena-disable-in-progress", arenaId));
             default -> sender.sendMessage(lang.getFor(player, "arena-not-found", arenaId));
         }

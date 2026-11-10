@@ -45,33 +45,39 @@ public class GameRulesMenu extends AbstractConfigMenu {
 
         addAdjustableItem(14, Material.TURTLE_EGG, lang.getFor(admin, "config.menu.rules.victory-waves"),
                 cfg.getVictoryWaves(), 1, 100, 1,
-                () -> cfg.getVictoryWaves(), v -> cfg.setVictoryWaves(Math.max(1, v)),
+                () -> cfg.getVictoryWaves(), v -> cfg.setVictoryWaves(Math.min(100, Math.max(1, v))),
                 lang.getFor(admin, "config.menu.rules.victory-waves-desc"));
 
         addAdjustableItem(16, Material.REDSTONE, lang.getFor(admin, "config.menu.rules.wave-interval"),
                 cfg.getWaveIntervalSeconds(), 5, 300, 5,
-                () -> cfg.getWaveIntervalSeconds(), v -> cfg.setWaveIntervalSeconds(Math.max(5, v)),
+                () -> cfg.getWaveIntervalSeconds(), v -> cfg.setWaveIntervalSeconds(Math.min(300, Math.max(5, v))),
                 lang.getFor(admin, "config.menu.rules.wave-interval-desc"));
 
         addAdjustableItem(20, Material.COMPASS, lang.getFor(admin, "config.menu.rules.spawn-min-radius"),
                 cfg.getSpawnRadiusMin(), 5, 100, 2,
-                () -> cfg.getSpawnRadiusMin(), v -> cfg.setSpawnRadiusMin(Math.max(5, v)),
+                () -> cfg.getSpawnRadiusMin(), v -> cfg.setSpawnRadiusMin(Math.min(100, Math.max(5, v))),
                 lang.getFor(admin, "config.menu.rules.spawn-min-radius-desc"));
 
+        // slice-08-logic-002：本槽位的下界不是固定 10，而是「声明下界」与「跨字段约束
+        // spawnRadiusMax >= spawnRadiusMin + 5」中的较大者。此前右键判据只认 10，而 setter 里
+        // 的 Math.max(min+5, v) 会把 35 抬成 105 —— 减号按钮反而把值往上跳。
+        // 现在把有效下界显式交给 helper：右键/聊天都先撞到它，setter 收到的一定是区间内的值，
+        // 里面的 Math.max 退化为兜底而不再是「抬值」路径。
         addAdjustableItem(22, Material.COMPASS, lang.getFor(admin, "config.menu.rules.spawn-max-radius"),
                 cfg.getSpawnRadiusMax(), 10, 200, 5,
                 () -> cfg.getSpawnRadiusMax(),
-                v -> cfg.setSpawnRadiusMax(Math.max(cfg.getSpawnRadiusMin() + 5, v)),
+                v -> cfg.setSpawnRadiusMax(Math.min(200, Math.max(cfg.getSpawnRadiusMin() + 5, v))),
+                () -> cfg.getSpawnRadiusMin() + 5,
                 lang.getFor(admin, "config.menu.rules.spawn-max-radius-desc"));
 
         addAdjustableItem(24, Material.SPAWNER, lang.getFor(admin, "config.menu.rules.global-mob-cap"),
                 cfg.getGlobalMobCap(), 10, 500, 5,
-                () -> cfg.getGlobalMobCap(), v -> cfg.setGlobalMobCap(Math.max(10, v)),
+                () -> cfg.getGlobalMobCap(), v -> cfg.setGlobalMobCap(Math.min(500, Math.max(10, v))),
                 lang.getFor(admin, "config.menu.rules.global-mob-cap-desc"));
 
         addAdjustableItem(26, Material.SPAWNER, lang.getFor(admin, "config.menu.rules.mob-cap-per-player"),
                 cfg.getMobCapPerPlayer(), 3, 100, 1,
-                () -> cfg.getMobCapPerPlayer(), v -> cfg.setMobCapPerPlayer(Math.max(3, v)),
+                () -> cfg.getMobCapPerPlayer(), v -> cfg.setMobCapPerPlayer(Math.min(100, Math.max(3, v))),
                 lang.getFor(admin, "config.menu.rules.mob-cap-per-player-desc"));
 
         setBackButton(ct -> navigateBack());
@@ -82,6 +88,24 @@ public class GameRulesMenu extends AbstractConfigMenu {
                                     int min, int max, int step,
                                     java.util.function.IntSupplier getter,
                                     java.util.function.IntConsumer setter,
+                                    String... extraLore) {
+        addAdjustableItem(slot, icon, name, current, min, max, step, getter, setter,
+                () -> min, extraLore);
+    }
+
+    /**
+     * 带「动态下界」的版本：下界取自 {@code effectiveMin}，用于跨字段约束的槽位
+     * （如 {@code spawn-radius-max} 必须恒 ≥ {@code spawn-radius-min + 5}）。
+     *
+     * <p>把有效下界收在这里，右键、左键、SHIFT 聊天三条路径就都撞同一道闸；此前右键只比
+     * 字面 {@code min}，setter 里的 {@code Math.max(...)} 会把减号变成加号
+     * （slice-08-logic-002）。</p>
+     */
+    private void addAdjustableItem(int slot, Material icon, String name, int current,
+                                    int min, int max, int step,
+                                    java.util.function.IntSupplier getter,
+                                    java.util.function.IntConsumer setter,
+                                    java.util.function.IntSupplier effectiveMin,
                                     String... extraLore) {
         java.util.List<String> loreLines = new java.util.ArrayList<>();
         loreLines.add(formatValue(lang.getFor(admin, "config.menu.common.current-value"), current));
@@ -96,10 +120,13 @@ public class GameRulesMenu extends AbstractConfigMenu {
                 ChatColor.GREEN + name,
                 loreLines,
                 clickType -> {
+                    int floor = Math.max(min, effectiveMin.getAsInt());
                     if (clickType == ClickType.SHIFT_LEFT || clickType == ClickType.SHIFT_RIGHT) {
                         admin.closeInventory();
+                        // 区间随 helper 一起传给 handler：聊天输入走同一份 clamp（slice-08-logic-001）
                         NumericInputHandler.requestInteger(plugin, admin,
                                 lang.getFor(admin, "config.menu.common.setting-prefix") + name + " (" + lang.getFor(admin, "config.menu.common.current") + getter.getAsInt() + ")",
+                                floor, max,
                                 v -> {
                                     setter.accept(v);
                                     reopen();
@@ -107,9 +134,12 @@ public class GameRulesMenu extends AbstractConfigMenu {
                                 this::reopen, lang);
                     } else if (clickType == ClickType.RIGHT) {
                         int val = getter.getAsInt() - step;
-                        if (val >= min) setter.accept(val);
+                        if (val >= floor) setter.accept(val);
                         reopen();
-                    } else {
+                    } else if (clickType == ClickType.LEFT) {
+                        // slice-08-logic-009：本分支原来是 else 兜底，会接管 MIDDLE / DROP /
+                        // NUMBER_KEY / SWAP_OFFHAND / DOUBLE_CLICK 等所有其它 ClickType ——
+                        // 丢出键或热键会静默改配置。收窄为显式 LEFT 白名单。
                         int val = getter.getAsInt() + step;
                         if (val <= max) setter.accept(val);
                         reopen();

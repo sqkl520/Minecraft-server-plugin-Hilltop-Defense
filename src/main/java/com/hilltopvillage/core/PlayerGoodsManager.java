@@ -77,10 +77,13 @@ public final class PlayerGoodsManager {
      */
     private BukkitTask pendingSaveTask;
     /**
-     * 所有文件写的互斥锁：防止防抖异步写与关服同步写同时操作磁盘。
+     * 写路径的互斥锁，只覆盖「序列化」与「序号校验 + 原子发布」两段极短区间。
      *
-     * <p>注意这把锁只保护「序列化 + 写文件」，不保护 {@link #buildYaml()} —— 构建
-     * {@link YamlConfiguration} 读的是 Bukkit 对象，必须留在主线程。</p>
+     * <p>注意这把锁只保护上述两段，不保护 {@link #buildYaml()} —— 构建
+     * {@link YamlConfiguration} 读的是 Bukkit 对象，必须留在主线程。
+     * 也<b>不</b>保护 {@link Files#write}：每次写的 tmp 文件名唯一，两线程各写各的
+     * 临时文件不会互相污染，把最耗时的磁盘写留在锁外，主线程的 {@link #saveNow()}
+     * 才不必等异步写完成（slice-09-conc-002）。</p>
      */
     private final Object writeLock = new Object();
     /**
@@ -174,7 +177,11 @@ public final class PlayerGoodsManager {
      * @return true 表示成功归还；false 表示该玩家没有快照
      */
     public boolean restore(Player player) {
-        Snapshot snapshot = goods.remove(player.getUniqueId());
+        // fix1（slice-01-error-handling-001）：先只读取快照，全部写回成功后才从内存移除。
+        // 原实现在这里就 remove()，其后的 Bukkit 调用一旦抛出，唯一的快照副本与玩家背包
+        // 会同时消失且没有补偿路径；改为 get() + 末尾 remove()，异常时快照仍在，可重试归还。
+        UUID uuid = player.getUniqueId();
+        Snapshot snapshot = goods.get(uuid);
         if (snapshot == null) return false;
 
         clearInventory(player);
@@ -206,6 +213,8 @@ public final class PlayerGoodsManager {
             player.addPotionEffect(effect);
         }
 
+        // 全部状态写回成功后才移除快照（fix1）：中途抛异常时快照仍留在 goods 中，下次可重试
+        goods.remove(uuid);
         scheduleSaveToDisk();
         return true;
     }
@@ -374,17 +383,22 @@ public final class PlayerGoodsManager {
      * {@link Files#write} 到同一个文件 —— 内容交错，可能写出<b>损坏的半截 YAML</b>；
      * 而损坏的 {@code player-goods.yml} 会让下次启动 {@link #loadFromDisk()} 解析失败，
      * 直接丢掉全部玩家的物品快照。用 {@link System#nanoTime()} 做后缀让每次写的临时文件
-     * 互不相干，再由 {@link #writeLock} 把「写临时文件 + 原子替换」整段串行化。</p>
+     * 互不相干 —— 正因为 tmp 文件互不相干，{@link Files#write} <b>不需要</b>互斥，
+     * 可以整段放在锁外（见 slice-09-conc-002 的锁范围调整）。</p>
      *
-     * <p><b>为什么 {@code saveToString()} 也放进锁里：</b>它读的是 Bukkit 的
-     * {@link YamlConfiguration}，序列化本身没有官方并发保证，串行化更稳。
-     * 但 {@link #buildYaml()} 构建配置对象那一步仍然留在主线程，不挪进锁内。</p>
+     * <p><b>{@code writeLock} 只保护两段：</b>① {@code saveToString()} 序列化（读的是
+     * Bukkit 的 {@link YamlConfiguration}，没有官方并发保证，串行化更稳）；② 序号校验 +
+     * {@link Files#move} 原子发布。中间的 {@link Files#write} 刻意在锁外：它是唯一耗时的
+     * 磁盘 I/O，留在锁内会让主线程的 {@link #saveNow()}（玩家退出事件现场）被迫等异步写
+     * 完成。{@link #buildYaml()} 构建配置对象那一步仍然留在主线程，不挪进锁内。</p>
      *
      * <p><b>为什么要校验 {@code seq}（不是「与防抖同级」的折中）：</b>异步写手里拿的可能是
-     * 「上一 tick 的快照」，而 {@link #saveNow()} 拿的是「当前快照」。若异步写<b>后</b>拿到锁，
+     * 「上一 tick 的快照」，而 {@link #saveNow()} 拿的是「当前快照」。若异步写<b>后</b>发布，
      * 它会把已经写对的关服内容覆盖成陈旧内容 —— 那不是「丢一个 tick 的增量」，而是
      * <b>关服屏障被破坏</b>：玩家已归还物品的删除记录被回退，下次登录会再归还一次（物品翻倍）。
-     * 因此每次写都带一个单调递增序号，锁内发现已有更新的写请求时直接放弃本次写入。</p>
+     * 因此每次写都带一个单调递增序号，<b>写 tmp 前后各校验一次</b>：进锁时发现已有更新的写
+     * 请求就放弃本次；出锁写完 tmp 到发布之间若冒出了更新的请求，则放弃 move，让新请求赢。
+     * 两次校验合起来保证「磁盘上最终落地的永远是序号最大的那份内容」。</p>
      *
      * @param seq 本次写请求的序号（由 {@link #nextWriteSeq()} 分配）
      */
@@ -395,10 +409,23 @@ public final class PlayerGoodsManager {
         File tmp = new File(goodsFile.getParentFile(),
                 FILE_NAME + "." + System.nanoTime() + ".tmp");
         try {
+            // slice-09-conc-002：真正的磁盘写被移到 writeLock 之外。临时文件名每次唯一
+            // （见上），两个线程各写各的 tmp 文件、互不相干，本就不需要互斥；而原实现把
+            // Files.write 也包在锁内，导致主线程的 saveNow()（PlayerQuitEvent 现场）必须
+            // 等异步写把整份文件写完才能进锁 —— 相当于在主线程上做同步磁盘 I/O。
+            // 现在锁只覆盖「序列化」与「原子替换」，主线程的等待上限从「一次完整写盘」
+            // 降到「一次字符串化 + 一次 rename」。
+            final byte[] payload;
             synchronized (writeLock) {
                 // 已有更新的写请求（例如关服的 saveNow）→ 放弃本次，让新请求写正确内容
                 if (seq != writeSeq.get()) return;
-                Files.write(tmp.toPath(), yaml.saveToString().getBytes(StandardCharsets.UTF_8));
+                payload = yaml.saveToString().getBytes(StandardCharsets.UTF_8);
+            }
+            Files.write(tmp.toPath(), payload);
+            synchronized (writeLock) {
+                // 出锁写 tmp 期间可能已有更新的写请求（如 saveNow）→ 发布前再校验一次，
+                // 保证更旧的快照绝不覆盖更新的内容（关服屏障不变）
+                if (seq != writeSeq.get()) return;
                 Files.move(tmp.toPath(), goodsFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
             }
         } catch (IOException exception) {
@@ -522,7 +549,12 @@ public final class PlayerGoodsManager {
 
         int duration = raw.get("duration") instanceof Number n ? n.intValue() : 200;
         int amplifier = raw.get("amplifier") instanceof Number n ? n.intValue() : 0;
-        boolean ambient = !(raw.get("ambient") instanceof Boolean b) || b;
+        // slice-09-logic-005：缺键默认值语义反转 —— ambient 的 Bukkit 默认是 false
+        // （PotionEffect(type, duration, amplifier) 即 ambient=false / particles=true），
+        // 原写法 `!(x instanceof Boolean b) || b` 在缺键时求值为 true，把旧快照恢复成
+        // 「信标式效果」。此处按各字段自己的默认值取：ambient 缺省 false、particles 缺省 true。
+        // 仅影响视觉（粒子/光柱），不改变效果强度与时长。
+        boolean ambient = raw.get("ambient") instanceof Boolean b && b;
         boolean particles = !(raw.get("particles") instanceof Boolean b) || b;
         return new PotionEffect(type, duration, amplifier, ambient, particles);
     }

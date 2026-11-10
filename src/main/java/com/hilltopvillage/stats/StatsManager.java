@@ -106,6 +106,26 @@ public class StatsManager {
 
         public String getKey() { return key; }
 
+        /**
+         * 本榜统计的原始数值。
+         *
+         * <p>必须与 {@link #comparator} 指向同一字段：排行榜的「零记录」过滤按本方法判定，
+         * 否则会出现「排序用 A 字段、过滤用 B 字段」的错位（曾用硬编码的
+         * {@code gamesPlayed==0 && kills==0}，使得只在节点/阵亡/最佳波次上有记录的玩家
+         * 被永久排除在对应榜单之外）。</p>
+         */
+        public int value(PlayerStats stats) {
+            return switch (this) {
+                case KILLS -> stats.getKills();
+                case WINS -> stats.getWins();
+                case GAMES -> stats.getGamesPlayed();
+                case BEST_WAVE -> stats.getBestWave();
+                case NODES -> stats.getNodesRepaired();
+                case DEATHS -> stats.getDeaths();
+                case CRYSTALS -> stats.getCrystalsCollected();
+            };
+        }
+
         /** 降序比较器（数值大的排前面） */
         public Comparator<PlayerStats> descending() {
             return comparator.reversed();
@@ -144,11 +164,18 @@ public class StatsManager {
         return null;
     }
 
-    /** 排行榜前 N 名（过滤掉零记录） */
+    /**
+     * 排行榜前 N 名（过滤掉该榜本身为零的记录）。
+     *
+     * <p>过滤判据必须跟着 {@code type} 走：原先硬编码为「场次与击杀同时为零」，
+     * 与 {@link #buildSnapshot()} 的落盘判据（六字段全零才跳过）不同源 ——
+     * 中途离开的玩家（{@code victory == null} 不计场次）只留下了
+     * 阵亡 / 修复节点 / 水晶 / 波次其中之一时，数据照常落盘却永远进不了对应榜单。
+     * 现改为按所请求榜单的字段判零，落盘过正值的玩家必然出现在自己的榜上。</p>
+     */
     public List<Map.Entry<UUID, PlayerStats>> top(StatType type, int limit) {
         List<Map.Entry<UUID, PlayerStats>> list = new ArrayList<>(cache.entrySet());
-        list.removeIf(entry -> entry.getValue().getGamesPlayed() == 0
-                && entry.getValue().getKills() == 0);
+        list.removeIf(entry -> type.value(entry.getValue()) <= 0);
         list.sort((a, b) -> type.descending().compare(a.getValue(), b.getValue()));
         return list.subList(0, Math.min(limit, list.size()));
     }

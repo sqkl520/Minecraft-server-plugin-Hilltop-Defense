@@ -2,6 +2,7 @@ package com.hilltopvillage.shop;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.util.LanguageManager;
+import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
@@ -53,6 +54,13 @@ public class ShopManager {
     /** 重载 shop.yml 并刷新内存快照 */
     public void reload() {
         this.config = loader.load();
+        // 已打开的 ShopGUI 在构造期固化了旧 ShopConfig 与 bySlot，reload 不换掉它们，
+        // 玩家会继续按旧价成交。这里关闭所有残留 GUI，强制重开以拾取新配置。
+        for (Player p : Bukkit.getOnlinePlayers()) {
+            if (p.getOpenInventory().getTopInventory().getHolder() instanceof ShopGUI) {
+                p.closeInventory();
+            }
+        }
         plugin.getLogger().info("Shop loaded " + config.getItems().size() + " items");
     }
 
@@ -82,6 +90,15 @@ public class ShopManager {
      */
     public ItemStack createCurrencyItem(int amount) {
         amount = Math.max(1, amount);
+        // dc-005：超过单叠上限的数量不得在此裁剪。ItemStack.of(material, n) 只校验 n > 0，
+        // 不校验上限；CraftInventory#addItem 会按 getMaxStackSize() 自行拆到多个槽位（余量进
+        // 返回的 overflow map，调用方已落地处理）。若这里 Math.min(n, maxStack)，退款与
+        // /hilltop shop give（上限 6400）会真的少发币。因此只把配置异常暴露成日志。
+        int maxStack = config.getCurrencyMaterial().getMaxStackSize();
+        if (amount > maxStack) {
+            plugin.getLogger().warning("Shop currency request " + amount + " exceeds max stack "
+                    + maxStack + " of " + config.getCurrencyMaterial() + "; addItem() will split it");
+        }
         ItemStack item = new ItemStack(config.getCurrencyMaterial(), amount);
         ItemMeta meta = item.getItemMeta();
 

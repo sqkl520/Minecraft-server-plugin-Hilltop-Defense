@@ -4,6 +4,7 @@ import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.admin.AdminDeployManager;
 import com.hilltopvillage.arena.ArenaDefinition;
 import com.hilltopvillage.arena.ArenaInstance;
+import com.hilltopvillage.arena.ArenaManager;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.shop.NpcManager;
 import com.hilltopvillage.util.LanguageManager;
@@ -338,18 +339,32 @@ public class SetupWizard implements Listener {
                 .clickEvent(ClickEvent.runCommand("/hilltop setup confirm-world")));
     }
 
-    // === Step 2: Set Core ===
+    // === Step 2: Set Core (+ optional waiting area) ===
     private void showStepCore(Player player, SetupSession s) {
         String msg = lang.getFor(player, "setup.step2", "2", "8");
-        sendClickableMsg(player, msg + " " + lang.getFor(player, "setup.btn-confirm-core"), "/hilltop setup confirm-core");
+        player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
+        sendCoreButtons(player);
     }
 
     /** goto命令辅助：仅发送Step 2消息（不修改session） */
     private void sendStepCoreMessage(Player player, SetupSession s) {
         String msg = lang.getFor(player, "setup.step2", "2", "8");
-        player.sendMessage(LegacyComponentSerializer.legacySection()
-                .deserialize(msg + " " + lang.getFor(player, "setup.btn-confirm-core"))
-                .clickEvent(ClickEvent.runCommand("/hilltop setup confirm-core")));
+        player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
+        sendCoreButtons(player);
+    }
+
+    /**
+     * 第 2 步的两个按钮：`[设为核心]` 与 `[设为等待区]`（等待区可选，塞进本步而不新增步骤）。
+     *
+     * <p>两个按钮互不依赖、顺序任意、各自独立写盘：点 [设为等待区] 后停留在第 2 步（还会再发一次
+     * 本行按钮），点 [设为核心] 才推进到第 3 步。分开渲染的原因即在于此 —— 若把两个按钮拼进
+     * 同一行文本，点完等待区后无法只重发按钮而不重复整段说明。</p>
+     */
+    private void sendCoreButtons(Player player) {
+        List<Button> buttons = new ArrayList<>();
+        buttons.add(new Button(lang.getFor(player, "setup.btn-confirm-core"), "/hilltop setup confirm-core"));
+        buttons.add(new Button(lang.getFor(player, "setup.btn-confirm-waiting"), "/hilltop setup confirm-waiting"));
+        sendButtonLine(player, buttons);
     }
 
     // === Step 3: Spawn Points（聊天栏优先，GUI 按需打开） ===
@@ -1024,6 +1039,20 @@ public class SetupWizard implements Listener {
         }
         String msg = lang.getFor(player, "setup.done");
         player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(msg));
+        // 引导断点修复：完成横幅后必须先说清「部署完成 ≠ 已加入本场」——
+        // addPlayer 的准入不关心玩家所在世界，但必须先 /hilltop join 才会登记为场内玩家，
+        // 否则管理员直接 start 只会撞上「当前场内 0/N 名玩家」。arenaId 为 null 的兜底路径
+        // （会话丢失）无法拼出具体 ID，改用不含占位符的降级键。
+        player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(
+                arenaId != null
+                        ? lang.getFor(player, "setup.done-next", arenaId)
+                        : lang.getFor(player, "setup.done-next-fallback")));
+        // 大厅出生点提醒：8 步向导只部署「竞技场」，大厅是独立的一步（向导全程不碰 lobby 段）。
+        // 未配置时玩家进服会落到主世界出生点 —— 这里只提示、不阻断，部署本身照常算完成。
+        sendLobbyReminderIfNeeded(player);
+        // 等待区提醒：第 2 步的 [设为等待区] 是可选项，没点就走完时玩家 join 后会站在核心上等开局。
+        // 同样只提示、不阻断。
+        sendWaitingReminderIfNeeded(player, arenaId);
         player.sendMessage(
                 LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.done-start"))
@@ -1050,6 +1079,86 @@ public class SetupWizard implements Listener {
                         "/hilltop enable " + arenaId);
             }
         }
+    }
+
+    /**
+     * 大厅出生点提醒（部署完成提示的一部分，<b>只提示不阻断</b>）。
+     *
+     * <p>8 步向导只覆盖竞技场侧的数据（核心 / 生成点 / 刷怪点 / 节点 / 村民 / 商店），
+     * {@code arenas.yml} 的 {@code lobby} 段<b>全程不被写入</b>。服主走完 8 步后如果不另外设置大厅，
+     * 就会撞上出厂模板的占位坐标（{@code 0.5 / 100.0 / 0.5}，主世界口径），玩家进服直接悬空或落到
+     * 别的世界。而 {@code /hilltop lobby setspawn} 这个入口在向导里完全没有被提到过。</p>
+     *
+     * <p>判定口径（两条独立条件，命中任一即提醒）：</p>
+     * <ol>
+     *   <li>{@code lobby.world} 为空，或指向的世界当前不存在 → 大厅世界未定；</li>
+     *   <li>{@code lobby.spawn} 仍是出厂占位值（{@code 0.5 / 100.0 / 0.5}）→ 出生点未自定义。</li>
+     * </ol>
+     *
+     * <p>大厅世界与坐标都配置好时<b>完全不发消息</b>，正常流程的聊天栏输出保持原样。</p>
+     */
+    private void sendLobbyReminderIfNeeded(Player player) {
+        ArenaManager definitions = plugin.getMultiArenaManager().getDefinitionManager();
+        // 读的是 arenas.yml 的显式配置：world 为空 / 世界不存在都算「未配置」。
+        // 刻意不用 getLobbyWorldName()（它会静默回退到主世界，正好掩盖了这个问题）。
+        String configuredWorld = definitions.getConfiguredLobbyWorldName();
+        boolean worldMissing = definitions.isConfiguredLobbyWorldMissing();
+        boolean spawnDefault = definitions.isLobbySpawnFactoryDefault();
+        if (!worldMissing && !spawnDefault) return;
+
+        String reason = worldMissing
+                ? (configuredWorld == null
+                        ? lang.getFor(player, "setup.done-lobby-world-unset")
+                        : lang.getFor(player, "setup.done-lobby-world-missing", configuredWorld))
+                : lang.getFor(player, "setup.done-lobby-spawn-default");
+        player.sendMessage(LegacyComponentSerializer.legacySection()
+                .deserialize(lang.getFor(player, "setup.done-lobby", reason))
+                .clickEvent(ClickEvent.suggestCommand("/hilltop lobby setspawn")));
+    }
+
+    /**
+     * 等待区提醒（部署完成提示的一部分，<b>只提示不阻断</b>）。
+     *
+     * <p>第 2 步的 [设为等待区] 是<b>可选</b>按钮：不点也能走完 8 步，此时 {@code arenas.<id>.waiting-location}
+     * 不写盘，运行时 {@code ArenaDefinition} 会回退到核心 —— 玩家 {@code /hilltop join} 后会直接站在核心
+     * 重生点上等开局。核心通常在村庄正中，等待期显得像「已经进场了」，所以这里给一句提醒。</p>
+     *
+     * <p>判定口径（命中任一即提醒）：</p>
+     * <ol>
+     *   <li>等待区未单独设置（内存里为 null，且定义里回退后仍为 null）；</li>
+     *   <li>等待区与核心<b>是同一个点</b>（管理员把两者设在同处，等价于没单独设置）。</li>
+     * </ol>
+     *
+     * <p><b>读内存而不是只读 registry 定义</b>：{@code ArenaInstance} 持有的定义是构造期快照，
+     * 本次向导刚写入的等待区要等 {@link #finishDeployment(String)} 的 reload 才进 registry。
+     * 只看定义会在「刚设完等待区」时误报。</p>
+     */
+    private void sendWaitingReminderIfNeeded(Player player, String arenaId) {
+        AdminDeployManager d = deploy(player);
+        ArenaDefinition def = arenaId != null
+                ? plugin.getMultiArenaManager().getDefinitionManager().getArena(arenaId)
+                : null;
+        if (d == null && def == null) return;   // 目标竞技场解析不出（会话丢失等）：不额外打扰
+
+        Location waiting = d != null ? d.getWaitingLocation() : null;
+        if (waiting == null && def != null) waiting = def.getWaitingLocation();
+        Location core = d != null ? d.getCoreLocation() : (def != null ? def.getCore() : null);
+
+        // 两者都是核心（或 waiting 为 null 说明定义里也没得回退）→ 视为未单独设置
+        if (waiting != null && core != null && !isSameSpot(waiting, core)) return;
+
+        player.sendMessage(LegacyComponentSerializer.legacySection()
+                .deserialize(lang.getFor(player, "setup.done-no-waiting"))
+                .clickEvent(ClickEvent.runCommand("/hilltop setup goto 2")));
+    }
+
+    /** 两个坐标是否同一个点（同世界 + 三轴坐标在浮点容差内相同；忽略朝向） */
+    private static boolean isSameSpot(Location a, Location b) {
+        if (a == null || b == null) return false;
+        if (a.getWorld() != null && b.getWorld() != null && !a.getWorld().equals(b.getWorld())) return false;
+        return Math.abs(a.getX() - b.getX()) < 1.0e-6
+                && Math.abs(a.getY() - b.getY()) < 1.0e-6
+                && Math.abs(a.getZ() - b.getZ()) < 1.0e-6;
     }
 
     /**
@@ -1108,6 +1217,8 @@ public class SetupWizard implements Listener {
     // === Command Handler (called from onCommand) ===
     public boolean handle(Player player, String sub) {
         SetupSession s = sessions.get(player.getUniqueId());
+        // slice-06-logic-005：这条早退是「必须有进行中 session」的唯一保证 —— switch 内所有
+        // `if (s == null)` 分支因此恒不成立（保留作防御，不要当成可达路径）。
         if (s == null) return false;
 
         // M-01：sub 现为完整余下参数串（分发层已拼接），按第一段分发、其余作为参数 ——
@@ -1154,6 +1265,27 @@ public class SetupWizard implements Listener {
                 s.advance();
                 autoSave(player);
                 showStep(player, s);
+                break;
+            case "confirm-waiting":
+                // 第 2 步内的可选按钮：把当前位置设为等待区（玩家 /hilltop join 后、开局前的落点）。
+                // 步骤守卫 / 世界守卫 / 反馈与 confirm-core 同口径，唯一的差别是**不推进步骤**：
+                // 管理员点完 [设为等待区] 仍停在第 2 步，可以继续点 [设为核心] 进第 3 步。
+                if (s.step != 2) {
+                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                    break;
+                }
+                // M-02：世界守卫（等待区坐标同样取自 player.getLocation()，异世界坐标会被落盘成错误位置）
+                if (blockedByWorldGuard(player, s)) break;
+                // P2-10：写盘失败由随后的 autoSave 经 consumeSaveFailure 统一播报 setup.save-failed
+                deploy(player).setWaitingLocation(player.getLocation());
+                player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
+                player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
+                // 刻意不 advance：等待区是可选设置，本步的「前进」仍由 [设为核心] 负责
+                autoSave(player);
+                player.sendMessage(LegacyComponentSerializer.legacySection()
+                        .deserialize(lang.getFor(player, "setup.waiting-set")));
+                // 重发两个按钮，方便接着点 [设为核心]
+                sendCoreButtons(player);
                 break;
             case "confirm-shop":
                 // 聊天按钮入口：记录商店村民位置并立即生成（限步骤 6 使用）
@@ -1296,6 +1428,8 @@ public class SetupWizard implements Listener {
                 break;
             case "nodesgui":
                 // 聊天按钮入口：打开节点管理 GUI
+                // slice-06-logic-005：本段 if 恒不成立 —— handle() 入口的 `if (s == null) return false`
+                // 已保证此处 s 非 null；保留为防御分支，但不要据此认为「无 session 时能临时建会话」。
                 if (s == null) {
                     s = new SetupSession();
                     s.step = 4;
@@ -1334,7 +1468,9 @@ public class SetupWizard implements Listener {
                 break;
             case "spawngui":
                 // 聊天按钮入口：打开生成点管理 GUI（可随时重开，入口不再丢失）
-                // listspawns 等部署场景也会路由到此处——无进行中 session 时临时创建一个仅用于 GUI 的会话
+                // listspawns 等部署场景也会路由到此处。
+                // slice-06-logic-005：下面这段 if 恒不成立（handle() 入口已 `if (s == null) return false`），
+                // 原注释「无进行中 session 时临时创建一个仅用于 GUI 的会话」与实现不符，已更正。
                 if (s == null) {
                     s = new SetupSession();
                     s.step = 3;
@@ -1348,7 +1484,8 @@ public class SetupWizard implements Listener {
                 break;
             case "overview":
                 // F-9：聊天按钮入口：打开生成点总览 GUI（第 3 步枢纽，内含唯一 [完成]）
-                // 与 spawngui 同样容错：无 session 时临时创建仅用于 GUI 的会话
+                // slice-06-logic-005：与 spawngui 同型 —— 下面这段 if 恒不成立（handle() 入口已
+                // `if (s == null) return false`），原注释的「无 session 时临时创建」不成立，已更正。
                 if (s == null) {
                     s = new SetupSession();
                     s.step = 3;
@@ -1537,7 +1674,10 @@ public class SetupWizard implements Listener {
     }
 
     private void autoSave(Player player) {
-        gameManager(player).getConfigManager().saveToFile();
+        // 与 HilltopCommandHandler repairitem 同纪律：saveToFile() 的 false 涵盖只读闸门锁定
+        // 与 IO 失败两条静默路径（见 ConfigManager#saveToFile 的 @return），丢弃它会让向导
+        // 照报「已保存」，管理员重启后才发现设置没落盘。
+        boolean saved = gameManager(player).getConfigManager().saveToFile();
         // Fix 4: persist current step so it survives disconnect
         SetupSession s = sessions.get(player.getUniqueId());
         if (s != null) {
@@ -1547,14 +1687,21 @@ public class SetupWizard implements Listener {
             plugin.saveConfig();
         }
         // P2-10：arenas.yml 写盘失败如实播报（此前全程静默、向导照报「已保存」）
-        if (reportSaveFailureIfAny(player)) return;
+        boolean arenaFailed = reportSaveFailureIfAny(player);
+        // game-settings.yml / monsters-config.yml 的写盘结果同样必须消费；上面已播报过
+        // arenas.yml 失败时不重复发同一条消息。
+        if (!saved && !arenaFailed) {
+            player.sendMessage(LegacyComponentSerializer.legacySection()
+                    .deserialize(lang.getFor(player, "setup.save-failed")));
+        }
+        if (!saved || arenaFailed) return;
         player.sendMessage(LegacyComponentSerializer.legacySection()
                 .deserialize(lang.getFor(player, "setup.saved")));
     }
 
     /** 静默保存：与 autoSave 相同的持久化逻辑，但不发送 setup.saved 提示（高频操作防刷屏） */
     private void autoSaveSilent(Player player) {
-        gameManager(player).getConfigManager().saveToFile();
+        boolean saved = gameManager(player).getConfigManager().saveToFile();
         SetupSession s = sessions.get(player.getUniqueId());
         if (s != null) {
             plugin.getConfig().set("wizard.step." + player.getUniqueId(), s.step);
@@ -1562,7 +1709,11 @@ public class SetupWizard implements Listener {
             plugin.saveConfig();
         }
         // P2-10：写盘失败必须播报（静默仅针对成功场景防刷屏）
-        reportSaveFailureIfAny(player);
+        boolean arenaFailed = reportSaveFailureIfAny(player);
+        if (!saved && !arenaFailed) {
+            player.sendMessage(LegacyComponentSerializer.legacySection()
+                    .deserialize(lang.getFor(player, "setup.save-failed")));
+        }
     }
 
     /**
@@ -1723,7 +1874,12 @@ public class SetupWizard implements Listener {
                             autoSaveSilent(player);
                         }
                     } catch (NumberFormatException ignored) {
-                        // 非法索引，忽略
+                        // slice-06-eh-005：标签由本插件生成（refreshVillagersGui 的 "villager-"+i），
+                        // 正常路径不可达；真发生时说明 tag 格式已漂移，与 :1659 goto 同族一样要出声，
+                        // 否则这第一信号被静默吞掉。
+                        plugin.getLogger().warning("SetupWizard: non-numeric villager tag index \""
+                                + tag + "\" from " + player.getName() + "; ignoring this click");
+                        player.sendMessage(lang.getFor(player, "setup.goto-invalid-number"));
                     }
                 }
                 break;
@@ -1958,7 +2114,11 @@ public class SetupWizard implements Listener {
                                 sendNodeButtons(player);
                             }
                         } catch (NumberFormatException ignored) {
-                            // 不是数字索引，忽略
+                            // slice-06-eh-005：同村民分支，标签由 refreshNodesGui 的 "node-"+i 生成，
+                            // 正常路径不可达；真发生时是 tag 格式漂移的第一信号，必须留痕并告知玩家。
+                            plugin.getLogger().warning("SetupWizard: non-numeric node tag index \""
+                                    + tag + "\" from " + player.getName() + "; ignoring this click");
+                            player.sendMessage(lang.getFor(player, "setup.goto-invalid-number"));
                         }
                     }
                 }

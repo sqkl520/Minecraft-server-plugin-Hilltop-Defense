@@ -1,9 +1,12 @@
 package com.hilltopvillage.admin;
 
 import com.hilltopvillage.HilltopVillagePlugin;
+import com.hilltopvillage.arena.ArenaInstance;
 import com.hilltopvillage.arena.ArenaManager;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.util.LanguageManager;
+import com.hilltopvillage.util.YamlFileGate;
+import com.hilltopvillage.util.YamlFiles;
 import org.bukkit.*;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.FileConfiguration;
@@ -12,18 +15,29 @@ import org.bukkit.entity.Player;
 import org.bukkit.scheduler.BukkitRunnable;
 
 import java.io.File;
-import java.io.IOException;
 import java.util.*;
 
 public class AdminDeployManager {
 
     private final HilltopVillagePlugin plugin;
     private final GameManager gameManager;
+    /**
+     * 旧版全局数据文件（只读、只在一次性迁移时用；本插件不再写它）。
+     *
+     * <p>读取走 {@link YamlFiles#load}（不做语义哨兵——该文件不可写，坏了也只需降级为「无旧数据」）。</p>
+     */
     private File spawnPointsFile;
     private FileConfiguration spawnPointsConfig;
     /** 多竞技场模式：竞技场配置（arenas.yml） */
     private File arenasFile;
     private YamlConfiguration arenasConfig;
+    /**
+     * arenas.yml 的共享读写闸门。
+     *
+     * <p><b>必须复用</b> {@code ArenaManager#getArenasGate()}，<b>禁止自建</b>：arenas.yml 有 3 个写入方，
+     * 各持一份 gate 会出现「A 判只读、B 照写」，只读降级形同虚设。</p>
+     */
+    private YamlFileGate arenasGate;
     private final List<Location> savedSpawnPoints;
     /**
      * 已部署的怪物刷怪点（STORY-1.2：与玩家出生点 {@link #savedSpawnPoints} 分离的第二套坐标，
@@ -33,6 +47,17 @@ public class AdminDeployManager {
     /** 待保护的村民位置（全部阵亡 = 游戏失败） */
     private final List<Location> savedVillagerPositions;
     private Location savedCoreLocation;
+    /**
+     * 等待区位置（{@code arenas.<id>.waiting-location}；null = 未单独设置）。
+     *
+     * <p>等待区是玩家 {@code /hilltop join} 后、开局前的落点。未单独设置时由
+     * {@link ArenaManager#readDefinition} 回退到核心位置（{@link com.hilltopvillage.arena.ArenaDefinition}
+     * 构造函数同样按此兜底），因此本字段允许为 null。</p>
+     *
+     * <p><b>刻意不写进 {@link ArenaManager#DEPLOYMENT_KEYS}</b>：与 {@code world} / {@code enabled} 同级，
+     * 「恢复初始状态」只清部署期位置，不清等待区（重置后等待区继续跟随新的核心）。</p>
+     */
+    private Location savedWaitingLocation;
     /** 商店村民位置（null = 本图无商店） */
     private Location savedShopNpcLocation;
     private int showParticlesTaskId = -1;
@@ -170,16 +195,53 @@ public class AdminDeployManager {
     /* ========== 数据持久化 ========== */
 
     /**
+     * 取 arenas.yml 的<b>共享</b>闸门（{@code ArenaManager} 持有）。
+     *
+     * <p>刻意不在这里 new 一个：arenas.yml 有 3 个写入方，各持一份会让只读降级失效。
+     * 正常初始化顺序（{@code MultiArenaManager} 先构造 {@code ArenaManager}，之后才可能构造
+     * {@code GameManager}）保证这里必然拿得到；拿不到时返回 null，调用方按「不可用」处理
+     * （拒读拒写），而不是退化成一份私有的闸门。</p>
+     */
+    private YamlFileGate arenasGate() {
+        if (arenasGate == null && plugin.getMultiArenaManager() != null) {
+            arenasGate = plugin.getMultiArenaManager().getDefinitionManager().getArenasGate();
+        }
+        return arenasGate;
+    }
+
+    /**
      * 从 arenas.yml 加载目标竞技场的生成点 / 核心 / 村民 / 商店 NPC 配置。
      * 多竞技场模式下这些数据全部按竞技场隔离存储在 {@code arenas.<id>} 下。
      */
     public void loadSpawnPoints() {
         String arenaId = gameManager.getArenaId();
         arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
-        if (!arenasFile.exists()) {
+        YamlFileGate gate = arenasGate();
+        if (gate == null) {
+            lastSaveFailed = true;
+            plugin.getLogger().severe("arenas.yml gate is unavailable (ArenaManager not initialised); "
+                    + "keeping the in-memory deployment data and blocking writes");
+            return;
+        }
+        // 只读降级中**不得**从 JAR 模板重建：文件被隔离成 *.corrupt 后若这里再 saveResource 一份出厂模板，
+        // 下一次 gate.load() 会读到「合法的新文件」并自动解封，降级被重建动作绕过。
+        if (!gate.isReadOnly() && !arenasFile.exists()) {
             plugin.saveResource("arenas.yml", false);
         }
-        arenasConfig = YamlConfiguration.loadConfiguration(arenasFile);
+
+        // 闸门读盘失败时**必须早退、绝不清空内存**：下面的 clear() 会把 savedSpawnPoints /
+        // savedCoreLocation 洗成空，随后任意一次部署命令都会触发 saveSpawnPoints() 整份写回，
+        // 把空的生成点列表落盘，竞技场就变成「未部署」了。
+        YamlFiles.Loaded loaded = gate.load();
+        // 闸门已锁只读时，即使文件此刻不存在（隔离后被改名 *.corrupt）也必须早退：
+        // YamlFiles.load 对「不存在」返回 ABSENT + 空配置（usable），照走会 clear() 掉内存数据。
+        if (!loaded.usable() || gate.isReadOnly()) {
+            lastSaveFailed = true;              // 让向导 autoSave 如实播报
+            plugin.getLogger().warning("arenas.yml is unusable; keeping the in-memory deployment data "
+                    + "(writes are blocked until the file is repaired)");
+            return;
+        }
+        arenasConfig = loaded.config();
 
         // 世界未加载时必须「先判空再清空」：一旦清了内存，之后任意一次部署命令都会触发
         // saveSpawnPoints() 整份写回，把空的生成点列表落盘，竞技场就变成「未部署」了。
@@ -191,10 +253,13 @@ public class AdminDeployManager {
 
         savedSpawnPoints.clear();
         savedMobSpawnPoints.clear();
-        // 本方法的语义是「从磁盘重新读取」，内存里的 core / 商店位置必须一起清空：
+        // 本方法的语义是「从磁盘重新读取」，内存里的 core / 等待区 / 商店位置必须一起清空：
         // 重置竞技场会删掉 arenas.yml 的 core 与 shop-npc，若内存还留着旧值，
-        // 下一次 saveSpawnPoints() 就会用旧值把它们写回去（重置等于没做）
+        // 下一次 saveSpawnPoints() 就会用旧值把它们写回去（重置等于没做）。
+        // 等待区不在 DEPLOYMENT_KEYS 里（重置不会删它），这里清空只是「重新以磁盘为准」，
+        // 下面的读取分支会把磁盘上仍存在的 waiting-location 读回来。
         savedCoreLocation = null;
+        savedWaitingLocation = null;
         savedShopNpcLocation = null;
 
         // 读取该竞技场的生成点列表
@@ -215,6 +280,14 @@ public class AdminDeployManager {
             double cy = arenasConfig.getDouble(corePath + ".y");
             double cz = arenasConfig.getDouble(corePath + ".z");
             savedCoreLocation = new Location(world, cx, cy, cz);
+        }
+
+        // 读取该竞技场的等待区位置（可选；缺键 = 未单独设置，运行时由 ArenaDefinition 回退到 core）
+        savedWaitingLocation = null;
+        String waitingPath = "arenas." + arenaId + ".waiting-location";
+        if (arenasConfig.isConfigurationSection(waitingPath)) {
+            savedWaitingLocation = readLocation(
+                    arenasConfig.getConfigurationSection(waitingPath), world, waitingPath, "Waiting area");
         }
 
         // 读取该竞技场的怪物刷怪点（STORY-1.2 新 schema；旧存档缺键 → 空列表，刷怪双用回退）
@@ -256,7 +329,14 @@ public class AdminDeployManager {
         if (!spawnPointsFile.exists()) {
             plugin.saveResource("spawnpoints.yml", false);
         }
-        spawnPointsConfig = YamlConfiguration.loadConfiguration(spawnPointsFile);
+        // 只读、只在一次性迁移时用；无哨兵——这份文件本插件不写，坏了只需降级为「无旧数据」。
+        YamlFiles.Loaded loaded = YamlFiles.load(spawnPointsFile, null, plugin.getLogger());
+        if (!loaded.usable()) {
+            plugin.getLogger().warning("spawnpoints.yml is unusable; the legacy shop NPC location will not be migrated");
+            spawnPointsConfig = new YamlConfiguration();
+            return;
+        }
+        spawnPointsConfig = loaded.config();
     }
 
     /* ========== 商店村民位置（按竞技场存储在 arenas.yml） ========== */
@@ -315,10 +395,11 @@ public class AdminDeployManager {
         writeLocation(arenasConfig, path, legacy);
         // 打上「已迁移」标记：迁移只应发生一次，之后即使 shop-npc 被删（重置或主动清除）也不再回填
         arenasConfig.set(migratedFlagPath(arenaId), true);
-        try {
-            arenasConfig.save(arenasFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Failed to migrate the shop NPC location to arenas.yml: " + e.getMessage());
+        YamlFileGate gate = arenasGate();
+        if (gate == null || !gate.write(arenasConfig)) {
+            // 失败**不阻断**（返回值语义不变）：下次加载会从同一份旧数据重试，幂等
+            plugin.getLogger().severe("Failed to migrate the shop NPC location to arenas.yml "
+                    + "(writes are blocked or the write failed); it will be retried on the next load");
             return legacy;
         }
         plugin.getLogger().warning("Migrated the legacy global shop NPC location to arena " + arenaId
@@ -328,15 +409,24 @@ public class AdminDeployManager {
 
     /** 读取 {@code x/y/z/yaw/pitch} 位置节点；节点缺失、坐标缺失或非法时返回 null */
     private Location readLocation(ConfigurationSection section, World world, String path) {
+        return readLocation(section, world, path, "Shop NPC");
+    }
+
+    /**
+     * 读取 {@code x/y/z/yaw/pitch} 位置节点；节点缺失、坐标缺失或非法时返回 null。
+     *
+     * @param kind 日志措辞用的点位名称（「Shop NPC」/「Waiting area」…），仅影响排障日志
+     */
+    private Location readLocation(ConfigurationSection section, World world, String path, String kind) {
         if (section == null) return null;
         // 必须用 isSet 判断：getDouble 对缺失的键返回 0.0，会把损坏的节点当成 (0, 0, 0) 生成 NPC
         if (!section.isSet("x") || !section.isSet("y") || !section.isSet("z")) {
-            plugin.getLogger().warning("Shop NPC location is missing coordinates, ignored: " + path);
+            plugin.getLogger().warning(kind + " location is missing coordinates, ignored: " + path);
             return null;
         }
         double x = section.getDouble("x"), y = section.getDouble("y"), z = section.getDouble("z");
         if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z)) {
-            plugin.getLogger().warning("Shop NPC location has invalid coordinates, ignored: " + path);
+            plugin.getLogger().warning(kind + " location has invalid coordinates, ignored: " + path);
             return null;
         }
         float yaw = (float) section.getDouble("yaw"), pitch = (float) section.getDouble("pitch");
@@ -364,6 +454,13 @@ public class AdminDeployManager {
     public boolean saveSpawnPoints() {
         String arenaId = gameManager.getArenaId();
 
+        YamlFileGate gate = arenasGate();
+        if (gate == null || !gate.writable()) {
+            // 只读降级：内存值保持不动（不清空），如实记失败让调用方播报
+            lastSaveFailed = true;
+            return false;
+        }
+
         // 生成点与核心位置写入 arenas.yml（按竞技场隔离）。
         // 本方法随后会用 arenasConfig 整份覆写文件，所以必须基于磁盘最新内容重新读取：
         // 复用字段里的旧副本回写，会把其它写入方在此期间落盘的内容整份回滚成旧值
@@ -371,7 +468,15 @@ public class AdminDeployManager {
         if (arenasFile == null) {
             arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
         }
-        arenasConfig = YamlConfiguration.loadConfiguration(arenasFile);
+        YamlFiles.Loaded loaded = gate.load();
+        // isReadOnly 一并判断：隔离后文件已不存在 → load() 返回 ABSENT（usable=true），
+        // 若只看 usable 会拿空配置当底稿（后续 gate.write 仍会拒写，但没必要把空配置推给内存）
+        if (!loaded.usable() || gate.isReadOnly()) {
+            lastSaveFailed = true;
+            plugin.getLogger().warning("Refusing to write arenas.yml (unusable)");
+            return false;
+        }
+        arenasConfig = loaded.config();
 
         List<Map<String, Object>> list = new ArrayList<>();
         for (Location loc : savedSpawnPoints) {
@@ -411,13 +516,15 @@ public class AdminDeployManager {
             arenasConfig.set("arenas." + arenaId + ".core.z", savedCoreLocation.getZ());
         }
 
-        boolean saved = true;
-        try {
-            arenasConfig.save(arenasFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Failed to save arenas.yml: " + e.getMessage());
-            saved = false;
+        // 等待区（可选位置）：只在内存里有值时才回写。
+        // 刻意不写「null 即删除」分支 —— 本方法与「恢复初始状态」共用同一条写盘路径，
+        // 且 null 同时代表「未设置」与「节点损坏被忽略」两种成因，删除会误伤服主手写的配置。
+        if (savedWaitingLocation != null) {
+            writeLocation(arenasConfig, "arenas." + arenaId + ".waiting-location", savedWaitingLocation);
         }
+
+        // 闸门内部已打 SEVERE（拒写 / IO 失败），这里只如实返回失败让调用方播报
+        boolean saved = gate.write(arenasConfig);
 
         // 刷新内存中的 GameManager（生成点与核心位置）
         gameManager.setSpawnPoints(savedSpawnPoints);
@@ -448,10 +555,21 @@ public class AdminDeployManager {
      * @return true = 已落盘或无需写盘；false = 写盘失败（已 log severe）
      */
     private boolean saveShopNpcLocation() {
+        YamlFileGate gate = arenasGate();
+        if (gate == null || !gate.writable()) {
+            return false;
+        }
         if (arenasFile == null) {
             arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
         }
-        YamlConfiguration yaml = YamlConfiguration.loadConfiguration(arenasFile);
+        // 每次写前重读盘（保留原有纪律）：arenasConfig 字段可能是较旧的副本，
+        // 直接用它整份覆写会丢掉在此期间由其他管理器（如 ArenaManager）写入的内容。
+        YamlFiles.Loaded loaded = gate.load();
+        if (!loaded.usable() || gate.isReadOnly()) {
+            plugin.getLogger().warning("Refusing to write arenas.yml (unusable)");
+            return false;
+        }
+        YamlConfiguration yaml = loaded.config();
         String path = "arenas." + gameManager.getArenaId() + ".shop-npc";
 
         if (savedShopNpcLocation != null) {
@@ -466,10 +584,8 @@ public class AdminDeployManager {
         // 否则刚清除的位置会在下次加载时被 migrateLegacyShopNpc 从 spawnpoints.yml 复活
         yaml.set(migratedFlagPath(gameManager.getArenaId()), true);
 
-        try {
-            yaml.save(arenasFile);
-        } catch (IOException e) {
-            plugin.getLogger().severe("Failed to save shop NPC location to arenas.yml: " + e.getMessage());
+        if (!gate.write(yaml)) {
+            plugin.getLogger().severe("Failed to save shop NPC location to arenas.yml (writes are blocked or the write failed)");
             return false;
         }
         // 与磁盘保持一致：否则后续 saveSpawnPoints() 会用缺少 shop-npc 的旧副本整份覆写、把位置抹掉
@@ -629,6 +745,64 @@ public class AdminDeployManager {
     public boolean setCoreLocation(Location location) {
         savedCoreLocation = (location != null) ? location.clone() : null;
         return saveSpawnPoints();
+    }
+
+    /* ========== 等待区位置（可选；未设置时运行时回退到核心） ========== */
+
+    /**
+     * 本竞技场单独设置的等待区位置（{@code arenas.<id>.waiting-location}）。
+     *
+     * <p>未单独设置（或节点损坏被忽略）时返回 null —— 调用方不要把它当成「玩家落点为空」，
+     * 运行时的真实落点由 {@link com.hilltopvillage.arena.ArenaDefinition#getWaitingLocation()}
+     * 回退到核心给出。</p>
+     *
+     * @return 等待区位置的防御性拷贝；未设置返回 null
+     */
+    public Location getWaitingLocation() {
+        return savedWaitingLocation != null ? savedWaitingLocation.clone() : null;
+    }
+
+    /**
+     * 设置等待区位置并落盘到 {@code arenas.<id>.waiting-location}（写入 x/y/z/yaw/pitch）。
+     *
+     * <p>等待区是<b>可选</b>项：不设置时运行时回退到核心位置，因此本方法刻意不提供「清除」语义
+     * （传 null 视为「不改动」，返回 false 且不写盘）。</p>
+     *
+     * @return true = 已落盘；false = 写盘失败或坐标为 null（已拒收，未改动磁盘）
+     */
+    public boolean setWaitingLocation(Location location) {
+        if (location == null) return false;
+        // M-02 兜底：异世界坐标拒收 + 日志（世界字段不会入盘，落盘后会被按竞技场世界重建）
+        if (!isInArenaWorld(location)) {
+            logRejectedLocation("waiting area", location);
+            return false;
+        }
+        savedWaitingLocation = location.clone();
+        // 先写盘再推送：写盘失败时内存里的实例已经改了反而更误导（重启后回旧值），
+        // 因此推送只在 saveSpawnPoints() 成功后才做
+        boolean saved = saveSpawnPoints();
+        if (saved) {
+            pushWaitingLocationToLiveInstance();
+        }
+        return saved;
+    }
+
+    /**
+     * 把内存里的等待区推送给已存在的运行实例（内存生效，不碰磁盘）。
+     *
+     * <p>{@link com.hilltopvillage.arena.ArenaInstance#getLobbySpawn()} 直接读它自己的
+     * {@code definition} 快照（不像 core / spawn-points 那样实时读 {@link GameManager}），
+     * 因此写完盘后必须再推一次，否则「不重启服务器就改了等待区」不会对下一次
+     * {@code /hilltop join} 生效。</p>
+     *
+     * <p>无实例（未启用 / 正在加载）时静默跳过：下次创建实例会直接从 arenas.yml 读到新值。</p>
+     */
+    private void pushWaitingLocationToLiveInstance() {
+        if (plugin.getMultiArenaManager() == null) return;
+        ArenaInstance live = plugin.getMultiArenaManager().getArena(gameManager.getArenaId());
+        if (live != null) {
+            live.applyWaitingLocation(savedWaitingLocation);
+        }
     }
 
     /* ========== 商店村民位置 ========== */

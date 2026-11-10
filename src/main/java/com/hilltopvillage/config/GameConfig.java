@@ -14,7 +14,18 @@ import org.bukkit.potion.PotionEffectType;
 public class GameConfig {
 
     private String worldName = "world";
-    private double coreX, coreY, coreZ;
+    /**
+     * 村庄核心坐标（遗留字段，当前无玩法消费者）。
+     *
+     * <p>{@code coreY} 显式初始化为 {@code 100.0}，与出厂模板 {@code game-settings.yml} 的
+     * {@code core.y: 100.0} 对齐（F-006）：{@code loadFromFile()} 用 {@code contains} 守卫，
+     * 键缺失时保留这里的代码默认值，随后 {@code saveToFile()} 会把它写回磁盘。若两侧不一致，
+     * 删键后的保存就会把模板从未声明过的 {@code 0.0}（基岩层高度）固化进服务器配置。
+     * 真正的竞技场核心坐标来自 {@code ArenaDefinition.getCore()}，与本字段无耦合。</p>
+     */
+    private double coreX;
+    private double coreY = 100.0;
+    private double coreZ;
     private int minPlayers = 2;
     private int maxPlayers = 6;
     private int victoryWaves = 20;
@@ -53,7 +64,15 @@ public class GameConfig {
     /** 是否启用记分板侧边栏 */
     private boolean scoreboardEnabled = true;
 
-    private Material hammerMaterial = Material.NETHERITE_AXE;
+    /**
+     * 重锤物品材质。
+     *
+     * <p>默认 {@link Material#IRON_AXE}，与出厂模板 {@code game-settings.yml} 的
+     * {@code hammer.material: IRON_AXE} 对齐（F-005）：{@code loadFromFile()} 只在键存在
+     * 且为合法 item 材质时覆盖，缺键即保留字段初值，而 {@code saveToFile()} 会无条件把
+     * 它写回磁盘——两侧不一致时，删键后的保存会把模板从未声明过的材质固化进服务器配置。</p>
+     */
+    private Material hammerMaterial = Material.IRON_AXE;
     private String hammerItemsAdderId = "";
     private int hammerCustomModelData = 0;
     private boolean hammerUseItemsAdder = false;
@@ -85,9 +104,10 @@ public class GameConfig {
     // 物品显示名（留空则回退 messages.yml 的 item.hammer-name）
     private String hammerItemName = "";
 
-    private List<Material> nodeBlockTypes = new ArrayList<>(Arrays.asList(
-            Material.BEACON, Material.ENCHANTING_TABLE, Material.ENDER_CHEST, Material.RESPAWN_ANCHOR
-    ));
+    // 注意：此处的 `nodeBlockTypes` 已于 round5 F7 删除 —— 节点方块自 1.0.9 起固定为
+    // Material.RESPAWN_ANCHOR（见 NodeSystem#loadConfig 的 clear()/add()），YAML 与 GUI 都没有
+    // 编辑入口；保留一个永远不被读取的 4 元素预置列表只会是「假配置」，误导下一位维护者以为
+    // 改这里能换节点方块。要支持多材质必须先实现 NodeSystem 的消费者，届时再重新引入字段。
     private double nodeBaseHealth = 100.0;
     private double nodeBuffRadius = 20.0;
     private double nodeSelfDestructMultiplier = 3.0;
@@ -601,7 +621,6 @@ public class GameConfig {
         snap.hammerCooldownSeconds = this.hammerCooldownSeconds;
         snap.hammerMaxUses = this.hammerMaxUses;
         snap.hammerItemName = this.hammerItemName;
-        snap.nodeBlockTypes = new ArrayList<>(this.nodeBlockTypes);
         snap.nodeBaseHealth = this.nodeBaseHealth; snap.nodeBuffRadius = this.nodeBuffRadius;
         snap.nodeSelfDestructMultiplier = this.nodeSelfDestructMultiplier;
         snap.nodeSearchRadius = this.nodeSearchRadius;
@@ -727,8 +746,6 @@ public class GameConfig {
     public void setHammerCooldownSeconds(double v) { this.hammerCooldownSeconds = v; }
     public int getHammerMaxUses() { return hammerMaxUses; }
     public void setHammerMaxUses(int v) { this.hammerMaxUses = v; }
-    public List<Material> getNodeBlockTypes() { return nodeBlockTypes; }
-    public void setNodeBlockTypes(List<Material> v) { this.nodeBlockTypes = v; }
     public double getNodeBaseHealth() { return nodeBaseHealth; }
     public void setNodeBaseHealth(double v) { this.nodeBaseHealth = v; }
     public double getNodeBuffRadius() { return nodeBuffRadius; }
@@ -865,7 +882,6 @@ public class GameConfig {
                 && Double.compare(hammerCooldownSeconds, other.hammerCooldownSeconds) == 0
                 && hammerMaxUses == other.hammerMaxUses
                 && Objects.equals(hammerItemName, other.hammerItemName)
-                && Objects.equals(nodeBlockTypes, other.nodeBlockTypes)
                 && Double.compare(nodeBaseHealth, other.nodeBaseHealth) == 0
                 && Double.compare(nodeBuffRadius, other.nodeBuffRadius) == 0
                 && Double.compare(nodeSelfDestructMultiplier, other.nodeSelfDestructMultiplier) == 0
@@ -916,7 +932,7 @@ public class GameConfig {
                 hammerLowDamage, hammerMediumDamage, hammerHighDamage,
                 hammerLowRadius, hammerMediumRadius, hammerHighRadius,
                 hammerMediumCharge, hammerHighCharge, hammerCooldownSeconds, hammerMaxUses,
-                hammerItemName, nodeBlockTypes, nodeBaseHealth, nodeBuffRadius,
+                hammerItemName, nodeBaseHealth, nodeBuffRadius,
                 nodeSelfDestructMultiplier, nodeSearchRadius, repairCostName, repairCostItem,
                 repairCostAmount, repairAmountPerCost, nodeBuffEffects, nodeBuffRefreshTicks,
                 nodeBuffStackCap, nodeBuffDurationTicks, monsters, waves, defaultWave,

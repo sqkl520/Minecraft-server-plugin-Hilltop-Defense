@@ -192,6 +192,27 @@ public final class ArenaDefinition {
         return new Builder(id, worldName, core);
     }
 
+    /**
+     * 派生一个只替换「等待区位置」的新定义，其余字段原样保留。
+     *
+     * <p>用途：{@code AdminDeployManager.setWaitingLocation()} 落盘后由
+     * {@code ArenaInstance.applyWaitingLocation()} 把新值推送给本实例 —— {@code ArenaInstance}
+     * 持有的 {@code definition} 是构造期快照，而 {@link #getWaitingLocation()} 直接读它
+     * （不像 core / spawn-points 那样实时读 {@code GameManager}），不推送的话
+     * 「部署后不重启服务器」的玩家 join 时仍会被传到旧等待区。</p>
+     *
+     * <p>与 {@link #withGameParams} 同一克制口径：只换本字段，绝不整体替换坐标集合
+     * （生成点 / 村民 / 商店仍以 {@code AdminDeployManager} 持有的副本为准）。</p>
+     *
+     * @param waitingLocation 新的等待区位置；null 表示「未单独设置」（构造函数会回退到 core）
+     */
+    public ArenaDefinition withWaitingLocation(Location waitingLocation) {
+        return new ArenaDefinition(id, displayName, enabled, worldName, waitingLocation, core, spawnPoints,
+                mobSpawnPoints,
+                nodeSearchRadius, spawnRadiusMin, spawnRadiusMax, spawnYOffset,
+                minPlayers, maxPlayers, victoryWaves, waveIntervalSeconds, shopNpc);
+    }
+
     public static Builder builder(String id, String worldName, Location waitingLocation, Location core) {
         return new Builder(id, worldName, waitingLocation, core);
     }
