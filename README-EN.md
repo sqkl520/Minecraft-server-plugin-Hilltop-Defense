@@ -468,7 +468,35 @@ A sidebar appears automatically inside an arena:
   Crystals gained: 12
 ```
 
-Disable it with `scoreboard.enabled` in `game-settings.yml`.
+Disable it with `scoreboard.enabled` in `game-settings.yml` (it also requires the same switch in `display.yml` — both must be `true`).
+
+**The layout is configurable.** Every line of both the sidebar and the player list (tab) is controlled by `display.yml` — add or remove lines, reorder them, change visibility conditions, add separators and animations, all without touching code.
+
+```yaml
+scoreboard:
+  enabled: true
+  refresh-ticks: 10
+  lines:
+    - separator: 20
+    - key: scoreboard.wave
+      args: [wave, totalWaves]
+      when: in-game
+    - key: scoreboard.kills
+      args: [playerKills]
+      when: alive
+```
+
+Four line kinds: `separator: N` (divider), `blank: true` (spacer), `key: <i18n key>` (static text), `anim: [key1, key2]` (animation, with `frame-ticks`). Each line can take a `when` condition (`waiting` / `starting` / `running` / `intermission` / `in-game` / `finished` / `start-countdown` / `waiting-for-players` / `alive` / `spectator` / `always`) and `args` to pull runtime values (`wave` / `alivePlayers` / `playerKills` / `startCountdown` and 14 more).
+
+Run `/hilltop reloadconfig` to apply changes immediately. A mistake never leaves you with a blank sidebar — a bad line is skipped with one English warning, and a fully broken file falls back to the built-in default layout.
+
+See the [configuration reference](docs/guides/en/config-reference.md#displayyml--sidebar-and-tab-list-layout).
+
+### Player list (tab)
+
+The tab list also shows match information: header/footer rendered per context (lobby / in-arena / spectating), player names coloured by state (alive / awaiting respawn / spectating / admin), and automatic banded sorting — alive first, then dead, then spectators.
+
+Its layout lives in the `tab:` section of `display.yml`. If you already use another plugin for the tab list, set `tab.enabled` to `false`, or hand over one context at a time with `tab.contexts.lobby/arena/spectator` — when a context is disabled this plugin actively resets names and sort order back to the client default instead of fighting the other plugin.
 
 ### Stats & leaderboards
 

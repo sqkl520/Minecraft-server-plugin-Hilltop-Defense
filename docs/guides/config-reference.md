@@ -30,7 +30,7 @@ arenas:
       wave-interval-seconds: 30
 ```
 
-> 注：手动编辑 `arenas.yml` 需要重启服务器；`/hilltop reloadconfig` 重载的是 game-settings.yml + monsters-config.yml + messages.yml。详见同目录 `commands-reference.md` 的 `/hilltop reloadconfig` 一行，以及 `arena-lifecycle.md` 的「参数编辑无需重启」。
+> 注：手动编辑 `arenas.yml` 需要重启服务器；`/hilltop reloadconfig` 重载的是 game-settings.yml + monsters-config.yml + messages.yml + display.yml。详见同目录 `commands-reference.md` 的 `/hilltop reloadconfig` 一行，以及 `arena-lifecycle.md` 的「参数编辑无需重启」。
 
 ## game-settings.yml —— 游戏参数
 

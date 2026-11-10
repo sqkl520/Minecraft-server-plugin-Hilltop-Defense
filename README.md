@@ -468,7 +468,35 @@ arenas:
   本局水晶: 12
 ```
 
-可在 `game-settings.yml` 的 `scoreboard.enabled` 关闭。
+可在 `game-settings.yml` 的 `scoreboard.enabled` 关闭（需与 `display.yml` 的同名开关**同时**为 `true` 才显示）。
+
+**布局可自定义**：侧边栏与玩家列表（Tab）的每一行都由 `display.yml` 控制——增删行、调整顺序、改显示条件、加分隔线与动画都不需要改代码。
+
+```yaml
+scoreboard:
+  enabled: true
+  refresh-ticks: 10
+  lines:
+    - separator: 20
+    - key: scoreboard.wave
+      args: [wave, totalWaves]
+      when: in-game
+    - key: scoreboard.kills
+      args: [playerKills]
+      when: alive
+```
+
+四种行型：`separator: N`（分隔线）、`blank: true`（空行）、`key: <i18n 键>`（静态文本）、`anim: [键1, 键2]`（动画，配 `frame-ticks`）。每行可用 `when` 指定可见条件（`waiting` / `starting` / `running` / `intermission` / `in-game` / `finished` / `start-countdown` / `waiting-for-players` / `alive` / `spectator` / `always`），用 `args` 取运行时数据（`wave` / `alivePlayers` / `playerKills` / `startCountdown` 等 18 个）。
+
+改完执行 `/hilltop reloadconfig` 即刻生效。写错不会让侧边栏变空白——坏行被跳过并打一条英文 WARNING，整份文件坏掉时退回内置默认布局。
+
+详见 [配置参考](docs/guides/config-reference.md#displayyml--侧边栏与-tab-栏布局)。
+
+### 玩家列表（Tab）
+
+Tab 栏也会显示本场信息：头/尾按上下文（大厅 / 对局 / 观战）分别渲染，玩家名按状态着色（存活 / 阵亡待复活 / 观战 / 管理员），并自动分带排序——存活的在前、阵亡的次之、观战者在后。
+
+布局同样在 `display.yml` 的 `tab:` 段配置。若你已经在用别的插件管 Tab，把 `tab.enabled` 设为 `false`，或用 `tab.contexts.lobby/arena/spectator` 单独交出某个上下文的控制权——关掉后本插件会主动把名字与排序复位成客户端默认，不会和别的插件抢。
 
 ### 统计与排行榜
 

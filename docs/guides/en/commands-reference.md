@@ -38,7 +38,7 @@
 | `/hilltop deploy` | Open deploy menu (Admin) | ❌ |
 | `/hilltop setup` | 8-step guided setup wizard (Admin) | ❌ |
 | `/hilltop config` | Open config center GUI (Admin) | ❌ |
-| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) | ✅ |
+| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml + display.yml) (Admin; arenas.yml still requires restart) | ✅ |
 | `/hilltop shop reload` | Reload villager shop config (Admin) | ✅ |
 | `/hilltop shop give <player> [amount]` | Give shop currency (Energy Crystals; default 1, max 6400) to an online player (Admin; works in any world, including the lobby) | ✅ |
 | `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance; **lobby world only** — arena changes are handled by map rollback, build mode does not affect arenas) | ❌ |
