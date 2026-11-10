@@ -7,3 +7,6 @@
 # 编译产物不入库：发布走 GitHub Releases，versions/ 仅本地备份
 /versions/
 *.jar
+
+# 临时工作区（多智能体流水线的 patch/日志/规格书）——过程产物不入库
+/.work/

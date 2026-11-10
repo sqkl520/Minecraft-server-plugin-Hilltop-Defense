@@ -1,0 +1,20 @@
+# 行尾与可执行位约定
+#
+# 背景：本机 core.fileMode=false，git 会忽略文件系统上的可执行位，
+# build.sh 若被提交为 100644，Linux CI 上 `./build.sh` 会 Permission denied。
+# CI workflow 因此改用 `bash ./build.sh` 调用（见 .github/workflows/build.yml），
+# 不依赖可执行位。若将来要恢复 `./build.sh` 直调，需 `git add --chmod=+x build.sh`。
+
+# Shell 脚本必须 LF：CRLF 会让 bash 报 `$'\r': command not found`
+*.sh text eol=lf
+
+# Windows 批处理必须 CRLF：LF 行尾的 .cmd 在部分 cmd.exe 版本下会被截断
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+# Java 源码与文档统一 LF
+*.java text eol=lf
+*.xml text eol=lf
+*.yml text eol=lf
+*.yaml text eol=lf
+*.md text eol=lf

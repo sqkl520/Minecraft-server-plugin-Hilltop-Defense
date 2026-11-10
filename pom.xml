@@ -13,8 +13,18 @@
     <description>Hilltop Village - Cooperative PvE Tower Defense</description>
 
     <properties>
-        <java.version>21</java.version>
+        <!-- 编译目标版本。刻意不叫 java.version：
+             ${java.version} 是 JVM 系统属性（运行 Maven 的实际 JDK 版本），
+             enforcer 的错误提示需要用它来报告「当前检测到」的真实版本。 -->
+        <java.target.version>21</java.target.version>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+        <!-- Test-only stack. MockBukkit 4.45.0 is the newest release in ~/.m2 that both
+             pins paper-api 1.21.4-R0.1-SNAPSHOT (the project's own API level) and asks
+             for JUnit 5.x (5.12.1). 4.116.3 requires JUnit 6.0.3, which would force a
+             junit-platform 6 upgrade, so it is deliberately NOT used. -->
+        <junit.version>5.12.1</junit.version>
+        <mockbukkit.version>4.45.0</mockbukkit.version>
+        <mockito.version>5.8.0</mockito.version>
     </properties>
 
     <repositories>
@@ -35,9 +45,30 @@
         <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter</artifactId>
-            <version>5.10.1</version>
+            <version>${junit.version}</version>
             <scope>test</scope>
         </dependency>
+        <!-- MockBukkit：测试内假服务端。test-scope，不进插件 JAR。
+             它自带 paper-api(compile)，但本项目已用 provided 声明同版本，Maven 就近取胜，
+             不会把 paper-api 打进产物。 -->
+        <dependency>
+            <groupId>org.mockbukkit.mockbukkit</groupId>
+            <artifactId>mockbukkit-v1.21</artifactId>
+            <version>${mockbukkit.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- Mockito：spy/mock 生产类与 Bukkit 接口，绕开 MockBukkit 未实现的成员。
+             byte-buddy-agent 必须显式声明（MockBukkit 只带 byte-buddy），
+             否则 JDK 21 上 inline mock maker 初始化失败。 -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+        <!-- 注意：不需要显式声明 byte-buddy-agent —— mockito-core 5.8.0 已把它作为
+             compile-scope 依赖带进来（会随 test scope 生效）。已实测确认：
+             去掉显式声明后 MockitoAvailabilityProbeTest 仍全绿。 -->
     </dependencies>
 
     <build>
@@ -59,13 +90,48 @@
         </resources>
         <finalName>${project.artifactId}-${project.version}</finalName>
         <plugins>
+            <!-- R-6: 在 validate 阶段最早检查运行 Maven 的 JDK。
+                 ${java.version} 在这里是 JVM 系统属性（运行 Maven 的实际 JDK 版本），
+                 maven-compiler-plugin 的编译目标改用 ${java.target.version}，
+                 避免 pom 属性遮蔽 JVM 属性、把「目标 21」误报成「当前 JDK 21」。 -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-enforcer-plugin</artifactId>
+                <version>3.5.0</version>
+                <executions>
+                    <execution>
+                        <id>require-jdk-21</id>
+                        <phase>validate</phase>
+                        <goals>
+                            <goal>enforce</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <requireJavaVersion>
+                                    <version>[21,)</version>
+                                    <message><![CDATA[
+【JDK 版本不匹配】需要 JDK 21，当前检测到 ${java.version}（pom.xml 编译目标为 ${java.target.version}）。
+JVM 实际版本：${java.specification.version}（${java.runtime.version}）。
+当前 JAVA_HOME=${java.home}，也就是运行 Maven 的 JDK 不是 21。
+解决办法（任选其一）：
+  1) 运行 ./build.sh clean package（本机/CI 自动探测并切换 JDK 21）；
+  2) 手动执行：export JAVA_HOME="D:\Java\zulu21.48.17-ca-jdk21.0.10-win_x64" 后再运行 mvn；
+     若本机 JDK 21 在别处，可用 HV_JDK21_HOME 覆盖：export HV_JDK21_HOME="/path/to/jdk21"。
+注意：不要用 JDK 17 直接跑 mvn，否则只会得到晦涩的「无效的目标发行版: 21」。
+]]></message>
+                                </requireJavaVersion>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
                 <version>3.11.0</version>
                 <configuration>
-                    <source>${java.version}</source>
-                    <target>${java.version}</target>
+                    <source>${java.target.version}</source>
+                    <target>${java.target.version}</target>
                 </configuration>
             </plugin>
             <plugin>
