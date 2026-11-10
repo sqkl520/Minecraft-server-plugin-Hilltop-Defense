@@ -4,6 +4,8 @@ import org.bukkit.Bukkit;
 import org.bukkit.Location;
 import org.bukkit.command.Command;
 import org.bukkit.command.CommandSender;
+import org.bukkit.command.PluginCommand;
+import org.bukkit.command.TabCompleter;
 import org.bukkit.entity.Player;
 import org.bukkit.entity.Snowball;
 import org.bukkit.event.EventHandler;
@@ -39,6 +41,7 @@ import com.hilltopvillage.mechanics.LobbyProtectionListener;
 import com.hilltopvillage.mechanics.MapRestoreManager;
 import com.hilltopvillage.mechanics.NodeListener;
 import com.hilltopvillage.mechanics.PlayerLifecycleListener;
+import com.hilltopvillage.mechanics.TabListManager;
 import com.hilltopvillage.mechanics.VillagerPreviewManager;
 import com.hilltopvillage.mechanics.VillagerSystem;
 import com.hilltopvillage.stats.StatsManager;
@@ -62,6 +65,8 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
     private MapRestoreManager mapRestoreManager;
     /** 部署向导第 5 步的村民预览实体管理器（插件级，跨竞技场唯一；标记与真村民隔离） */
     private VillagerPreviewManager villagerPreviewManager;
+    /** tab 栏管理器（ArenaScoreboard 的兄弟类）：广播式头尾、逐人刷新，无按玩家长生命周期对象 */
+    private TabListManager tabListManager;
 
     // 竞技场管理 GUI 的共享服务（/hilltop manage）
     private ArenaAdminService arenaAdminService;      // 无状态，仍做单例以便统一注入
@@ -92,10 +97,11 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         // Initialize shared managers
         this.languageManager = new LanguageManager(this);
         this.configManager = new ConfigManager(this);
-        // P2-34 外层兜底：两个数据管理器已各自做文件级容错（损坏文件重命名 .corrupt + 空数据启动），
-        // 此处再包一层防御，确保任何未预期的异常（如 dataFolder 无权限）不会让整个插件被禁用。
-        // 失败时保持字段为 null —— 所有消费方（ArenaInstance 的 save/restore、record、命令）
-        // 都在运行时经 getter 取用，null 优雅降级为「无物品快照 / 无统计」，不阻断对局本体。
+        // P2-34：只有 PlayerGoodsManager / StatsManager 两个数据管理器做隔离兜底 —— 它们已各自做文件级容错
+        // （损坏文件重命名 .corrupt + 空数据启动），且所有消费方都经 getter 取用，失败置 null 可降级为
+        // 「无物品快照 / 无统计」，不阻断对局本体。
+        // 其余核心模块（MapRestoreManager / ShopManager / MultiArenaManager 等）刻意不包裹：
+        // 核心模块初始化失败就应当让启动失败并禁用插件，而不是带着半初始化的状态继续跑。
         try {
             this.playerGoodsManager = new PlayerGoodsManager(this);
         } catch (Throwable t) {
@@ -131,6 +137,12 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         this.arenaAdminService = new ArenaAdminService(this);
         this.arenaResetService = new ArenaResetService(this);
         this.locationParticlePreview = new LocationParticlePreview(this);
+
+        // tab 栏：必须晚于 multiArenaManager（构造函数经 getter 取它，用于判定大厅/对局/观战上下文），
+        // 也晚于 configManager（每帧读 display.yml 的解析结果）。start() 内部自己判开关，
+        // 关掉 tab.enabled 时直接不调度，因此这里无条件调用是安全的。
+        this.tabListManager = new TabListManager(this);
+        this.tabListManager.start();
 
         // Initialize listeners（多竞技场路由）
         this.hammerListener = new HammerListener(this);
@@ -191,10 +203,18 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         Bukkit.getPluginManager().registerEvents(villagerPreviewManager, this);
 
         // Register tab completer
-        getCommand("hilltop").setTabCompleter(tabCompleter);
+        registerCommandHooks("hilltop", tabCompleter);
+        // 顶层快捷命令 /hub 与 /lobby（等价 /hilltop lobby；/lobby setspawn 走管理员）
+        registerCommandHooks("hub", tabCompleter);
+        registerCommandHooks("lobby", tabCompleter);
 
         // Generate documentation
-        new CommandsDocumentGenerator(this).generate();
+        // 纯文档产物：命令文档生成失败绝不能禁用插件（此时全部功能已就绪），只记 warning 继续启动。
+        try {
+            new CommandsDocumentGenerator(this).generate();
+        } catch (RuntimeException exception) {
+            getLogger().log(Level.WARNING, "Failed to generate the command reference (continuing startup)", exception);
+        }
 
         getLogger().info("Hilltop Village has been enabled!");
         getLogger().info("Multi-arena system loaded with " + multiArenaManager.getActiveArenas().size() + " arenas");
@@ -208,6 +228,18 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
                 fireballListener.shutdown();
             } catch (RuntimeException exception) {
                 getLogger().log(Level.SEVERE, "Failed to stop the Fireball task (continuing the disable sequence)", exception);
+            }
+        }
+
+        // tab 栏收尾：先取消刷新任务，再把每个在线玩家的名字/排序/头尾还原成「本插件从未接管过」的样子。
+        // 刻意放在竞技场停止「之前」——竞技场清场会逐个 removePlayer，玩家一旦离场就再没有还原的入口。
+        // onDisable 可能在 onEnable 早期失败后执行，故必须判空。
+        if (tabListManager != null) {
+            try {
+                tabListManager.stop();
+                tabListManager.restoreAll();
+            } catch (RuntimeException exception) {
+                getLogger().log(Level.WARNING, "Failed to restore the tab list (continuing the disable sequence)", exception);
             }
         }
 
@@ -335,6 +367,11 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         return multiArenaManager;
     }
 
+    /** tab 栏管理器（`/hilltop reloadconfig` 用它把新布局推给在线玩家） */
+    public TabListManager getTabListManager() {
+        return tabListManager;
+    }
+
     /** 别名方法，用于兼容 ArenaInstance 调用 */
     public MultiArenaManager getArenaManager() {
         return multiArenaManager;
@@ -435,7 +472,22 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
     @EventHandler(priority = EventPriority.NORMAL)
     public void onPlayerJoin(PlayerJoinEvent event) {
         Player player = event.getPlayer();
+        applyJoinState(player);
+        // tab 栏必须在这名玩家的最终上下文确定之后再推：重连回到竞技场、或落回大厅，
+        // 头/尾与排序分带都取决于「他现在在哪」。因此本调用刻意放在所有分支之后，
+        // 上面两条早期 return 已在 applyJoinState 内部消化，不会漏推。
+        if (tabListManager != null) {
+            tabListManager.apply(player);
+        }
+    }
 
+    /**
+     * 登录状态编排（原 onPlayerJoin 主体）。
+     *
+     * <p>抽成独立方法只为让 {@link #onPlayerJoin} 能在「无论走哪条路径」之后统一推送 tab：
+     * 原先的重连 / 已在竞技场两条路径直接 {@code return}，tab 推送若写在方法尾部就会被跳过。</p>
+     */
+    private void applyJoinState(Player player) {
         // 崩溃恢复：玩家离线期间若存在未归还的物品快照，登录时归还（不在竞技场时）
         // P2-34：管理器初始化失败时为 null → 跳过恢复（不阻断登录流程）
         if (playerGoodsManager != null
@@ -514,6 +566,10 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         hammerListener.cleanupPlayer(player);
         fireballListener.cleanupPlayer(player);
         lobbyProtectionListener.cleanupPlayer(player);
+        // tab 栏只丢这名玩家在四张缓存里的镜像，不尝试还原已失效的实体
+        if (tabListManager != null) {
+            tabListManager.cleanup(player);
+        }
         for (ArenaInstance arena : multiArenaManager.getActiveArenas()) {
             arena.getScoreboard().cleanupPlayer(player);
         }
@@ -525,6 +581,33 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
     @Override
     public boolean onCommand(CommandSender sender, Command command, String label, String[] args) {
         return commandHandler.handle(sender, command, label, args);
+    }
+
+    /**
+     * 给 plugin.yml 里声明的命令挂上 executor 与 tab completer。
+     *
+     * <p><b>为什么要显式 setExecutor：</b>{@code PluginCommand} 的构造函数把 owningPlugin 同时
+     * 塞进 {@code executor} 字段，所以「主类不注册也是能跑」只是因为它恰好实现了
+     * {@code CommandExecutor}（{@code Plugin extends TabExecutor}）。这是隐式巧合，不是契约：
+     * 一旦主类改成不那么直接的写法，命令就会静默失效。显式注册让依赖关系写在代码里。</p>
+     *
+     * <p><b>为什么要判空：</b>{@code JavaPlugin#getCommand} 在命令<b>未注册成功</b>时返回 null
+     * （例如 plugin.yml 拼错、或本插件被其它插件抢注了同名命令后 Bukkit 没把它挂到本插件名下）。
+     * 直接 {@code .setTabCompleter()} 会让整个 onEnable 抛 NPE，插件加载失败 ——
+     * 一条可选快捷命令不该拖垮整个插件，因此缺失时只警告并跳过。</p>
+     *
+     * @param commandName plugin.yml 里声明的命令名
+     * @param completer   要挂的补全器
+     */
+    private void registerCommandHooks(String commandName, TabCompleter completer) {
+        PluginCommand pluginCommand = getCommand(commandName);
+        if (pluginCommand == null) {
+            getLogger().warning("Command '" + commandName + "' is not registered in plugin.yml "
+                    + "(or another plugin claimed the name); /" + commandName + " will be unavailable.");
+            return;
+        }
+        pluginCommand.setExecutor(this);
+        pluginCommand.setTabCompleter(completer);
     }
 
 }

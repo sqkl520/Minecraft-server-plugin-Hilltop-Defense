@@ -12,6 +12,16 @@ commands:
     description: Main command for Hilltop Village plugin
     usage: /hilltop <start|stop|join|leave|lobby|status|list|arenas|manage|enable|disable|hammer|fireball|help|setup|deploy|config|reloadconfig|shop|lang|tps|gui|build|stats|top|wave>
     aliases: [hv, htv]
+  # 顶层快捷命令：等价于 /hilltop lobby（回大厅是所有人的基本能力，无权限要求）。
+  # 刻意不设 aliases —— hub / lobby 已是足够短的名字，再加别名只会扩大与其它插件的冲突面。
+  # 注意：本插件内一律用 JavaPlugin#getCommand 注册 executor / completer（见主类 onEnable），
+  # 所以这里不写 executor: 字段，避免与代码注册双写。
+  hub:
+    description: Teleport back to the lobby (same as /hilltop lobby)
+    usage: /hub
+  lobby:
+    description: Teleport back to the lobby; /lobby setspawn sets the lobby spawn (admin)
+    usage: /lobby [setspawn]
 permissions:
   hilltopvillage.admin:
     description: Admin commands for Hilltop Village
