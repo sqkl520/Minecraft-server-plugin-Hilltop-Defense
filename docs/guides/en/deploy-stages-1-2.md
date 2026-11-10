@@ -32,6 +32,43 @@ Paper auto-loads **only that single world** — other worlds are not loaded even
 - **Leaving it unchanged also works**: the plugin loads the arena/lobby worlds referenced in `arenas.yml`
 - **Lobby fallback**: if `lobby.world` is blank or points to a world that doesn't exist, the plugin falls back to the server's main world (`level-name`), so it works out of the box
 
+### Lobby spawn (a step independent of the 8-step wizard)
+
+> **This is not part of the 8-step wizard.** The wizard (Phase 3) only writes **arena** data (core / spawn points / mob spawn points / nodes / villagers / shop); the `lobby` section of `arenas.yml` is never written by it. Skip this and you are likely to hit the two traps below.
+
+**What ships as the factory default**
+
+```yaml
+lobby:
+  world: lobby        # factory default; if no world named `lobby` exists it silently falls back to the main world
+  spawn:              # factory placeholder — main-world coordinates, unrelated to your lobby world
+    x: 0.5
+    y: 100.0
+    z: 0.5
+```
+
+**The two traps**
+
+| Trap | Symptom | Cause |
+|------|---------|-------|
+| `lobby.world` names a world that doesn't exist | Players land outside your lobby and nothing is logged | `getLobbyWorldName()` **silently falls back to the main world** when `lobby.world` is blank or not loaded (by design) |
+| `lobby.spawn` is still the placeholder | Players land in mid-air / at a spot unrelated to your lobby | The factory coordinates are the main world's `0.5 / 100.0 / 0.5` and were never adjusted for your lobby world |
+
+**How to set it**
+
+Stand in the world you want to use as the lobby and run:
+
+```
+/hilltop lobby setspawn        # admin
+```
+
+- The world named in `lobby.world` **exists** → you must run it in that world (prevents arena coordinates from being silently written as the lobby spawn)
+- `lobby.world` is blank / names a world that **does not exist** (it can never be entered) → you may run it in **any world**; the plugin also sets `lobby.world` to your current world and explicitly says so ("lobby world set to X as well")
+
+> The `lobby.spawn` keys (x/y/z/yaw/pitch) are written to `arenas.yml` and **take effect immediately**: new logins, lobby respawns and `/hilltop lobby` all use the new point, no restart needed.
+>
+> Step 8 of the wizard checks the current configuration (lobby world not set, or spawn still at the placeholder) and reminds you if either applies: **a reminder only, never a blocker** — deployment still counts as complete.
+
 ## Phase 2: Configure the arena
 
 After installing the plugin, edit `plugins/HilltopVillage/arenas.yml`:
@@ -53,10 +90,10 @@ arenas:
     display-name: "&6&lSky Fortress"
     enabled: true
     world: hilltop_arena1        # arena world (must differ from the lobby)
-    waiting-location:            # where players wait before the match starts
-      x: 100.5
-      y: 80.0
-      z: 100.5
+    waiting-location:            # where players gather after /hilltop join, before the match
+      x: 100.5                   # optional: delete this whole section and the runtime falls back to core
+      y: 80.0                    # written by step 2 [Set as Waiting Area] or /hilltop deploy setwaiting
+      z: 100.5                   # "Restore initial state" does NOT clear it (not in DEPLOYMENT_KEYS)
     core:                        # player respawn point
       x: 100.0
       y: 64.0

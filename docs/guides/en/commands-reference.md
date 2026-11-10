@@ -16,7 +16,9 @@
 | `/hilltop join [arena]` | Join an arena (auto-matches an available one if omitted) | ❌ |
 | `/hilltop leave` | Leave the current arena | ❌ |
 | `/hilltop gui` | Open the arena selection menu (with status and player counts) | ❌ |
-| `/hilltop lobby` | Return to the lobby (sub-command `setspawn`: run it while standing in the lobby world to set the lobby spawn to your current position, effective immediately — Admin) | ❌ |
+| `/hilltop lobby` | Return to the lobby (works from any world; no re-teleport when you are already near the lobby spawn; if the lobby is not configured you land on the main world's spawn and get a hint. Sub-command `setspawn`: run it while standing in the lobby world to set the lobby spawn to your current position, effective immediately — Admin; when `lobby.world` is unusable you may run it in any world, and `lobby.world` is written too) | ❌ |
+| `/hub` | Shortcut for `/hilltop lobby` — return to the lobby (identical behaviour, no arguments accepted) | ❌ |
+| `/lobby [setspawn]` | Shortcut for `/hilltop lobby` — return to the lobby; `/lobby setspawn` sets the lobby spawn to your current position (same rules as `/hilltop lobby setspawn`, Admin) | ❌ |
 | `/hilltop status [arena]` | View game status (arena/wave/players in arena/mobs/nodes/awaiting respawn) | ✅ |
 | `/hilltop stats [player]` | View your own or someone else's stats | ✅ (with a player name) |
 | `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths/crystals) | ✅ |
@@ -48,6 +50,7 @@
 |------|------|
 | `confirmclear` | Confirm clearing all spawn points (the second confirmation for `clearspawns`) |
 | `setcore` | Set current location as game core |
+| `setwaiting` | Set current location as the waiting area (where joined players gather before the match; **optional** — defaults to the core; refused mid-match) |
 | `addspawn` | Add current location as player spawn point |
 | `listspawns` | List all player spawn points |
 | `delspawn <id>` | Delete a player spawn point by ID |
@@ -71,6 +74,7 @@
 
 ```
 /hilltop deploy setcore        # stand at the core location
+/hilltop deploy setwaiting     # stand at the waiting-area spot (optional; defaults to the core)
 /hilltop deploy addspawn       # stand at each player spawn location (repeatable)
 /hilltop deploy listspawns     # list all player spawn points
 /hilltop deploy addmobspawn    # stand at each mob spawn location (repeatable)

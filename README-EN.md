@@ -151,6 +151,25 @@ Paper auto-loads **only that single world** — other worlds are not loaded even
 - **Leaving it unchanged also works**: the plugin loads the arena/lobby worlds referenced in `arenas.yml`
 - **Lobby fallback**: if `lobby.world` is blank or points to a world that doesn't exist, the plugin falls back to the server's main world (`level-name`), so it works out of the box
 
+#### Lobby spawn (a step independent of the 8-step wizard — don't miss it)
+
+The 8-step setup wizard (Phase 3) **only writes arena data** (core, spawn points, mob spawn points, nodes, villagers, shop) and **never touches the `lobby` section of `arenas.yml`**. So the lobby spawn has to be set once, outside the wizard:
+
+```
+# Stand in the world you want to use as the lobby, then run (admin)
+/hilltop lobby setspawn
+```
+
+| Situation | Behaviour |
+|-----------|-----------|
+| `lobby.world` points to an existing world | You must run it **in that world** (prevents arena coordinates from being silently written as the lobby spawn) |
+| `lobby.world` is blank / points to a world that doesn't exist | You may run it **in any world**; the plugin also sets `lobby.world` to your current world and says so explicitly |
+
+> **What happens if you skip it**: the factory template ships `lobby.spawn` as the placeholder `0.5 / 100.0 / 0.5` (main-world coordinates). If `lobby.world` also points to a world that doesn't exist, the plugin **silently falls back to the main world** — players joining, respawning and leaving an arena all land on the main world's spawn (possibly in mid-air), and nothing is logged as an error.
+> Step 8 of the wizard reminds you about this based on the actual configuration (a reminder only — it never blocks, deployment still counts as complete).
+>
+> Recommended: put the real lobby world name in `lobby.world`, then use `setspawn` to place the point on a safe lobby platform.
+
 ### Phase 2: Configure the arena
 
 After installing the plugin, edit `plugins/HilltopVillage/arenas.yml`:
@@ -172,7 +191,7 @@ arenas:
     display-name: "&6&lSky Fortress"
     enabled: true
     world: hilltop_arena1        # arena world (must differ from the lobby)
-    waiting-location:            # where players wait before the match starts
+    waiting-location:            # where players wait before the match starts (optional; falls back to the core)
       x: 100.5
       y: 80.0
       z: 100.5
@@ -224,7 +243,7 @@ Go to the **arena world** (see Phase 2.5) and run:
 | Step | Content | Action |
 |------|---------|--------|
 | 1/8 Confirm world | Shows your current world name | Click [Confirm] |
-| 2/8 Set core | Stand at the village core location (the player respawn point) | Click [Set as Core] |
+| 2/8 Set core | Stand at the village core location (the player respawn point) | Click [Set as Core] (advances to step 3); the waiting area is optional — stand where players should gather, click [Set as Waiting Area], then [Set as Core]; either order works |
 | 3/8 Spawn points | Player spawns + mob spawn points (two independent sets, **at least 1 each**) | Walk to each spot, click [Add Current Location] (player) / [Add Mob Spawn] (mobs) in chat; click [Open Spawn Points Overview] to enter the hub (counts/status at a glance, two sub-manager GUIs for review/delete); click the single [Done] in the overview (both sets must be deployed to leave this step) |
 | 4/8 Node registration | Registering energy nodes (respawn anchors) (**at least 1 required**) | **Place the respawn anchor blocks first**, stand next to one and click [Add Node] (a hint appears if the block cannot be registered); click [Continue] to move on |
 | 5/8 Villagers | Positions of villagers to protect (**all dead = game lost**, **at least 1 required**) | Walk to a spot and click [Add Villager] — an invulnerable preview villager appears on the spot (numbered overhead, visible during this step only, removed when you leave it); click [Open Villager Manager] to review/delete ([Show Particles] inside previews all villagers in yellow); click [Done] when finished |
@@ -245,6 +264,8 @@ Go to the **arena world** (see Phase 2.5) and run:
 | **Villagers** | Must be protected; the count is however many you placed | **If every villager dies, the game is lost** |
 
 > **Required items**: player spawn points, mob spawn points, villagers and the shop location — all four are mandatory. If any is missing, clicking [Confirm & Save] is rejected and the wizard jumps back to the corresponding step.
+
+> **Waiting area (optional)**: step 2 also has a [Set as Waiting Area] button next to [Set as Core] — it writes your position to `arenas.<id>.waiting-location`, the spot where players gather after `/hilltop join` and before the match starts (**no extra step — the wizard stays at 8 steps**). Clicking it does **not** advance, so you can still click [Set as Core]. Skipping it is fine: players then wait on the core respawn point, and step 8 prints a non-blocking reminder in that case. You can change it at any time with `/hilltop deploy setwaiting`.
 
 ### Phase 4: Tune the game settings
 
@@ -321,6 +342,7 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 | Nodes registered | `/hilltop deploy` menu | Known nodes > 0 |
 | Villagers registered | `/hilltop deploy listvillagers` | At least 1 villager |
 | Shop set | `/hilltop deploy setshop`, then check on site | Shop villager spawned; use `/hilltop deploy clearshop` to start over |
+| Lobby spawn set | Stand in the lobby world and run `/hilltop lobby setspawn` | Reports it was written to `arenas.yml`; if the world named in `lobby.world` does not exist, it is set to your current world as well |
 | Overall status | `/hilltop status` | Shows wave/players/mobs/nodes |
 
 > If both spawn sets are empty, `/hilltop start` refuses to start and tells you to finish deployment first.
@@ -332,10 +354,17 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 /hilltop start     # admin starts (min-players required)
 ```
 
+> **Finishing the setup wizard does NOT put you on the roster.** After step 8 you are still standing in the arena world and are not registered as a player in that arena — running `/hilltop start` right away reports "0/N players in this arena". The correct order is:
+>
+> 1. Run `/hilltop join <arena-id>` to enter the waiting area (e.g. `/hilltop join arena1`);
+> 2. Wait until the player count reaches `min-players` (the countdown starts by itself), or have an admin force it with `/hilltop start <arena-id>`;
+> 3. If `join` reports the arena as **not found**, it is still being loaded from the enable queue — wait a few seconds and retry (`/hilltop status` shows its state).
+
 **Manual command cheat sheet (veterans)**
 
 ```
 /hilltop deploy setcore        # stand at the core location
+/hilltop deploy setwaiting     # stand at the waiting-area spot (optional; defaults to the core)
 /hilltop deploy addspawn       # stand at each player spawn location (repeatable)
 /hilltop deploy listspawns     # list all player spawn points
 /hilltop deploy addmobspawn    # stand at each mob spawn location (repeatable)
@@ -346,6 +375,7 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 /hilltop deploy listvillagers  # list all registered villagers
 /hilltop deploy setshop        # stand at the shop spot (spawns the shop NPC immediately)
 /hilltop deploy clearshop      # clear this arena's shop (refused mid-match)
+/hilltop lobby setspawn        # stand in the lobby world: set the lobby spawn to your position (independent of the 8-step wizard)
 ```
 
 ## Gameplay Workflow
@@ -477,11 +507,13 @@ Inventory, XP and health are saved when you enter an arena and restored when you
 
 Players wait in the lobby after joining the server and enter an arena via `/hilltop join` or `/hilltop gui`.
 
+- **Back to the lobby**: `/hilltop lobby`, or the two equivalent shortcuts **`/hub`** and **`/lobby`** (no permission needed, available to every player; arguments and behaviour are identical to `/hilltop lobby`, including `/lobby setspawn`)
 - **Lobby protection**: block break/place, damage, hunger, weather, item drops and container interaction are all blocked **inside the lobby world**
 - **Build mode**: admins can run `/hilltop build` to temporarily lift lobby protection for maintenance (run again to disable)
 - **Void protection**: falling out of the lobby world teleports you back to the lobby spawn
 - Lobby world and spawn are configured under `lobby.world` / `lobby.spawn` in `arenas.yml`
 - **Setting the lobby spawn**: an admin standing in the lobby world can run `/hilltop lobby setspawn` to save their current position (including facing) as the lobby spawn in `arenas.yml` — it **takes effect immediately**: new logins, lobby respawns and `/hilltop lobby` all use the new point, no restart needed
+  - **Fallback path**: if `lobby.world` is blank or points to a world that does not exist (so it can never be entered), you may run it **in any world**; the plugin then also sets `lobby.world` to your current world and tells you so. As long as the world named in `lobby.world` exists, the strict "must stand in that world" rule still applies
 
 ## Commands
 
@@ -495,7 +527,9 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop join [arena]` | Join an arena (auto-matches an available one if omitted) | ❌ |
 | `/hilltop leave` | Leave the current arena | ❌ |
 | `/hilltop gui` | Open the arena selection menu (with status and player counts) | ❌ |
-| `/hilltop lobby` | Return to the lobby (sub-command `setspawn`: run it while standing in the lobby world to set the lobby spawn to your current position, effective immediately — Admin) | ❌ |
+| `/hilltop lobby` | Return to the lobby (works from any world; no re-teleport when you are already near the lobby spawn; if the lobby is not configured you land on the main world's spawn and get a hint. Sub-command `setspawn`: run it while standing in the lobby world to set the lobby spawn to your current position, effective immediately — Admin; when `lobby.world` is unusable you may run it in any world, and `lobby.world` is written too) | ❌ |
+| `/hub` | Shortcut for `/hilltop lobby` — return to the lobby (identical behaviour, no arguments accepted) | ❌ |
+| `/lobby [setspawn]` | Shortcut for `/hilltop lobby` — return to the lobby; `/lobby setspawn` sets the lobby spawn to your current position (Admin, same rules as `/hilltop lobby setspawn`) | ❌ |
 | `/hilltop status [arena]` | View game status (wave/players/mobs/nodes/awaiting respawn) | ✅ |
 | `/hilltop stats [player]` | View your own or someone else's stats | ✅ (with a player name) |
 | `/hilltop top <type>` | Leaderboards (kills/wins/games/best-wave/nodes/deaths/crystals) | ✅ |
@@ -527,6 +561,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 |------|------|
 | `confirmclear` | Confirm clearing all spawn points (the second confirmation for `clearspawns`) |
 | `setcore` | Set current location as game core |
+| `setwaiting` | Set current location as the waiting area (where joined players gather before the match; optional — defaults to the core; refused mid-match) |
 | `addspawn` | Add current location as player spawn point |
 | `listspawns` | List all player spawn points |
 | `delspawn <id>` | Delete a player spawn point by ID |
@@ -551,7 +586,8 @@ Available while the wizard is in progress (normally triggered via clickable chat
 | Command | Description |
 |------|------|
 | `confirm-world` | Confirm game world (Step 1) |
-| `confirm-core` | Set current location as village core (Step 2) |
+| `confirm-core` | Set current location as village core (Step 2; advances to Step 3) |
+| `confirm-waiting` | Set current location as the waiting area (Step 2, **optional**; stays on Step 2, does not advance) |
 | `addspawn` | Add current location as player spawn point (Step 3, feedback includes index) |
 | `overview` | Open the Spawn Points Overview GUI (Step 3 hub: counts/status of both sets + two sub-manager entries + the single [Done]) |
 | `spawngui` | Open player spawn point manager GUI (Step 3, direct; [Back to Overview] returns to the hub) |
@@ -713,6 +749,16 @@ starter-kit:
     - material: TORCH
       amount: 8
 
+### Wave configuration (the `waves` section of `game-settings.yml`)
+
+The "wave composition" page in the GUI maps to the `waves` section at the end of `game-settings.yml`: numeric keys are wave numbers, `default` is the template used by waves with no explicit entry (the shipped template configures only waves 1 / 5 / 10 explicitly; every other wave falls back to it). Each wave has three fields: `count` (**per-player count** — actual spawns are `count × players present`), `total-mobs` (**per-player exact total cap** — the mix is trimmed proportionally when exceeded and never padded up; the smallest of three caps wins), and `weight` (legacy weight, used only when every `count` in the wave is 0 / missing).
+
+- **`total-mobs: 0` disables a wave** — the cap is trimmed to zero, so nothing spawns. This is the only supported way to skip a wave; do **not** express "spawn nothing" by deleting the whole `waves.default` section (a missing section means "restore factory defaults" and gets written back).
+- **Deleting a wave requires [Confirm & Save]**. Delete then `/hilltop reloadconfig` without saving and the wave reappears from disk (disk is authoritative).
+- A wave number you hand-write into the file (e.g. `waves: {"7": ...}`) **does** take effect after reload or restart (older versions discarded it silently; fixed in 1.1.0).
+
+See the `waves` section of [Configuration Reference](docs/guides/en/config-reference.md) for the full key-by-key explanation.
+
 ### config.yml
 
 Internal state file — it holds **no game settings** (those live in `game-settings.yml`), only the language and setup-wizard progress. Maintained automatically by the plugin.
@@ -741,8 +787,36 @@ See the individual files under `plugins/HilltopVillage/` for the complete refere
 
 ## Build
 
+Requires JDK 21 and Maven 3.9.9. The recommended way is the build script in the project root (the directory containing `pom.xml`):
+
 ```bash
-mvn clean package
+./build.sh clean package
+```
+
+`build.sh` automatically detects and switches to JDK 21 (it keeps `JAVA_HOME` as-is when that already points to JDK 21), and passes every argument through to Maven unchanged. With no arguments it is equivalent to `mvn clean package`. Examples:
+
+```bash
+./build.sh -o compile                  # offline compile
+./build.sh -DskipTests clean package  # build without tests
+./build.sh test                       # tests only
+```
+
+`build.sh` requires a Git Bash / MSYS environment; it cannot be run directly from native cmd or PowerShell. Override the JDK location with `HV_JDK21_HOME`, the auto-detection path with `HV_JDK21_GLOB` (default `/d/Java/zulu21.48.17-*`), or the Maven executable with `HV_MAVEN`.
+
+Manual path: if you call `mvn` directly, you must set `JAVA_HOME` to JDK 21 first. This machine's default shell points `JAVA_HOME` at JDK 17, which conflicts with the Java 21 compile target; without the switch, `maven-enforcer-plugin` stops the build at the `validate` phase with a clear JDK-mismatch message instead of the cryptic "invalid target release: 21" error. The diagnostic message is written in Chinese.
+
+> The compile-target property in `pom.xml` is now `<java.target.version>21</java.target.version>` instead of `java.version`: the old name shadowed the JVM system property `java.version`, which made the enforcer read the current JDK 17 as 21.
+
+```bash
+# Git Bash / MSYS
+export JAVA_HOME="D:/Java/zulu21.48.17-ca-jdk21.0.10-win_x64"
+"D:/maven/apache-maven-3.9.9/bin/mvn" clean package
+```
+
+```powershell
+# Native PowerShell
+$env:JAVA_HOME = "D:\Java\zulu21.48.17-ca-jdk21.0.10-win_x64"
+D:\maven\apache-maven-3.9.9\bin\mvn.cmd clean package
 ```
 
 The JAR file will be generated in the `target/` directory.

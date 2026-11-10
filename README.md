@@ -152,6 +152,28 @@ Paper 启动时**只自动加载这一个世界**，其他世界即使文件夹�
 - **也可以不改**：插件会加载 `arenas.yml` 里引用的竞技场/大厅世界
 - **大厅兜底**：若 `lobby.world` 留空或指向不存在的世界，插件自动回退到服务器主世界（`level-name` 世界），保证开箱可用
 
+#### 大厅出生点（独立于 8 步向导的一步，别漏）
+
+8 步部署向导（阶段 3）**只写竞技场的数据**（核心、生成点、刷怪点、节点、村民、商店），
+**不会碰 `arenas.yml` 的 `lobby` 段**。所以大厅出生点必须在向导之外单独设一次：
+
+```
+# 站到你要当大厅的那个世界里，然后执行（管理员）
+/hilltop lobby setspawn
+```
+
+| 情形 | 行为 |
+|------|------|
+| `lobby.world` 指向的世界存在 | 必须站在**那个世界**里执行（防误把竞技场坐标写成大厅出生点） |
+| `lobby.world` 为空 / 指向的世界不存在 | 可在**任意世界**执行，插件会同时把 `lobby.world` 设为你当前所在世界，并明确播报 |
+
+> **不设的后果**：出厂模板里 `lobby.spawn` 是占位值 `0.5 / 100.0 / 0.5`（主世界口径）。
+> 若 `lobby.world` 也指向不存在的世界，插件会**静默回退到主世界** —— 玩家进服、复活、离开竞技场
+> 都会落在主世界出生点（甚至是半空中），而日志里不会有任何报错。
+> 部署向导第 8 步的完成提示里会按实际情况提醒这一条（只提示、不阻断，部署本身照常算完成）。
+>
+> 建议：把 `lobby.world` 写成真实的大厅世界名，再用 `setspawn` 把出生点定在大厅安全平台上。
+
 ### 阶段 2：配置竞技场
 
 安装插件后，编辑 `plugins/HilltopVillage/arenas.yml`：
@@ -173,7 +195,7 @@ arenas:
     display-name: "&6&l天空堡垒"
     enabled: true
     world: hilltop_arena1        # 竞技场世界（与大厅不同）
-    waiting-location:            # 等待区（玩家加入后、开局前的落点）
+    waiting-location:            # 等待区（玩家加入后、开局前的落点）；可留空，留空则回退核心
       x: 100.5
       y: 80.0
       z: 100.5
@@ -223,7 +245,7 @@ arenas:
 | 步骤 | 内容 | 操作 |
 |------|------|------|
 | 1/8 确认世界 | 显示当前所在世界名 | 点击 [确认] |
-| 2/8 设置核心 | 站在村庄核心位置（玩家重生点） | 点击 [设为核心] |
+| 2/8 设置核心 | 站在村庄核心位置（玩家重生点） | 点击 [设为核心]（进入第 3 步）；等待区可选——站到玩家集合点后点 [设为等待区] 再点 [设为核心]，两个按钮顺序任意 |
 | 3/8 生成点管理 | 玩家出生点 + 怪物刷怪点（两套独立坐标，**各必须至少 1 个**） | 走到每个位置，点击聊天栏 [添加当前位置]（出生点）/ [添加刷怪点]（刷怪点）；点 [打开生成点总览] 进入枢纽界面（计数/状态一览、可进两个子管理界面查看/删除）；在总览中点唯一的 [完成]（两套点都配好才能离开本步） |
 | 4/8 节点管理 | 能量节点（重生锚）的注册（**至少 1 个**） | 先在地图上**放置重生锚方块**，走到旁边点击 [添加节点]（无法右键注册的节点会有提示）；点 [继续] 进入下一步 |
 | 5/8 村民放置 | 待保护村民的位置（**全部阵亡 = 游戏失败**，**至少 1 个**） | 走到目标位置点击 [添加村民] —— 登记处会**立刻生成一只不可伤害的预览村民**（头顶显示编号，仅本步可见，离开本步即清除）；或点 [打开村民管理] 打开 GUI 查看/删除（GUI 内 [显示粒子] 可黄色预览全部村民位置）；完成后点 [完成] |
@@ -232,6 +254,8 @@ arenas:
 | 8/8 部署完成 | 显示启动入口 + 启用指引（自动入队结果，未自动启用时附 [启用竞技场] 按钮） | 点击聊天栏的 /hilltop start |
 
 > **强制项**：玩家出生点、怪物刷怪点、村民、商店位置四者缺一不可。缺少任意一项时点 [确认保存] 会被拒绝，并自动跳回对应步骤补齐。
+
+> **等待区（可选）**：第 2 步除了 [设为核心]，还有一个 [设为等待区] 按钮 —— 把当前位置写进 `arenas.<id>.waiting-location`，作为玩家 `/hilltop join` 后、开局前的集合点（**不新增步骤，仍是 8 步**）。点它**不会**推进步骤，可以接着点 [设为核心]。不设也能走完全程，此时玩家会直接站在核心重生点上等开局；第 8 步会在这种情况下给一句提醒（不阻断）。在任意时刻也可用 `/hilltop deploy setwaiting` 设置。
 
 > **回改已过步骤**：`/hilltop setup goto <步骤>`（1-8）可跳回任意步骤重新操作。
 
@@ -321,6 +345,7 @@ arenas:
 | 节点已注册 | 部署菜单 `/hilltop deploy` | 已知节点数 > 0 |
 | 村民已注册 | `/hilltop deploy listvillagers` | 至少 1 个村民 |
 | 商店已设置 | `/hilltop deploy setshop` 设置后到现场确认 NPC | 商店村民已生成；想重来用 `/hilltop deploy clearshop` |
+| 大厅出生点已设置 | 站到大厅世界执行 `/hilltop lobby setspawn` | 提示已写入 `arenas.yml`；`lobby.world` 指的世界若不存在，会一并设为当前世界 |
 | 整体状态 | `/hilltop status` | 显示波次/玩家/怪物/节点 |
 
 > 若两套出生/刷怪坐标都为空，`/hilltop start` 会拒绝启动并提示先完成部署。
@@ -332,10 +357,17 @@ arenas:
 /hilltop start     # 管理员开局（需满足 min-players）
 ```
 
+> **部署向导跑完 ≠ 已经开得了局。** 完成第 8 步后你本人仍在竞技场世界里，且**尚未登记为场内玩家** —— 此时直接 `/hilltop start` 会提示「当前场内 0/N 名玩家」。正确顺序是：
+>
+> 1. 先 `/hilltop join <竞技场ID>` 进入等待区（例如 `/hilltop join arena1`）；
+> 2. 等场内人数达到 `min-players`（会自动倒计时开局），或由管理员 `/hilltop start <竞技场ID>` 强制开局；
+> 3. 若 `join` 提示竞技场**未找到**，说明它还在启用队列里加载世界，稍等几秒重试即可（`/hilltop status` 可看状态）。
+
 **手动命令速查（熟手）**
 
 ```
 /hilltop deploy setcore        # 站在核心位置执行
+/hilltop deploy setwaiting     # 站在等待区位置执行（可选，不设则用核心）
 /hilltop deploy addspawn       # 站在玩家出生点位置执行（可多次）
 /hilltop deploy listspawns     # 查看已设玩家出生点
 /hilltop deploy addmobspawn    # 站在怪物刷怪点位置执行（可多次）
@@ -346,6 +378,7 @@ arenas:
 /hilltop deploy listvillagers  # 查看已登记村民
 /hilltop deploy setshop        # 站在商店位置执行（立即生成商店 NPC）
 /hilltop deploy clearshop      # 清除本竞技场的商店（对局中会拒绝）
+/hilltop lobby setspawn        # 站在大厅世界执行：把当前位置设为大厅出生点（独立于 8 步向导）
 ```
 
 ## 游戏流程
@@ -474,11 +507,13 @@ arenas:
 
 玩家进服后统一在大厅等待，通过 `/hilltop join` 或 `/hilltop gui` 主动加入竞技场。
 
+- **回大厅**：`/hilltop lobby`，或两条等价短命令 **`/hub`** 与 **`/lobby`**（无需权限，所有玩家可用；参数与行为与 `/hilltop lobby` 完全一致，`/lobby setspawn` 同样可用）
 - **大厅保护**：破坏/放置方块、受伤、饥饿、天气、掉落物、容器交互在**大厅世界**内全部被阻止
 - **建造模式**：管理员执行 `/hilltop build` 可临时解除大厅保护，用于整修大厅（再次执行关闭）
 - **虚空保护**：大厅内掉出世界底部会自动传送回大厅出生点
 - 大厅世界与大堂出生点在 `arenas.yml` 的 `lobby.world` / `lobby.spawn` 配置
 - **设置大厅出生点**：管理员站在大厅世界内执行 `/hilltop lobby setspawn`，把当前位置（含朝向）设为大厅出生点并写入 `arenas.yml`，**立即生效** —— 新登录、大厅复活与 `/hilltop lobby` 都会走新点，无需重启
+  - **降级路径**：若 `lobby.world` 为空或指向的世界不存在（那个世界根本进不去），可在**任意世界**执行；插件会把 `lobby.world` 一并设为你当前所在世界并明确播报。只要 `lobby.world` 指向的世界存在，就仍严格要求站在那个世界里执行
 
 > 击杀怪物捡起能量水晶，右键商店村民打开商店，可购买重锤/烈焰蛋/世界树汁液补充弹药与修复材料（详见"商店系统"章节）。
 
@@ -493,7 +528,9 @@ arenas:
 |------|------|--------|
 | `/hilltop join [竞技场]` | 加入竞技场（不填则自动匹配可用竞技场） | ❌ |
 | `/hilltop leave` | 退出当前竞技场 | ❌ |
-| `/hilltop lobby` | 返回大厅（子命令 `setspawn`：站在大厅世界内执行，把当前位置设为大厅出生点并立即生效，管理员） | ❌ |
+| `/hilltop lobby` | 返回大厅（任意世界可用；已站在大厅出生点附近时不重复传送；大厅未配置时落到主世界出生点并给出提示。子命令 `setspawn`：站在大厅世界内把当前位置设为大厅出生点并立即生效，管理员；`lobby.world` 不可用时可在任意世界执行，此时会同时写入 `lobby.world`） | ❌ |
+| `/hub` | `/hilltop lobby` 的快捷命令 —— 返回大厅（行为完全一致，不接受任何参数） | ❌ |
+| `/lobby [setspawn]` | `/hilltop lobby` 的快捷命令 —— 返回大厅；`/lobby setspawn` 把当前位置设为大厅出生点（管理员，规则同 `/hilltop lobby setspawn`） | ❌ |
 | `/hilltop gui` | 打开竞技场选择菜单（带状态与人数） | ❌ |
 | `/hilltop status [竞技场]` | 查看游戏状态（波次/玩家/怪物/节点/等待复活） | ✅ |
 | `/hilltop stats [玩家名]` | 查看自己或他人的统计 | ✅（带玩家名时） |
@@ -526,6 +563,7 @@ arenas:
 |------|------|
 | `confirmclear` | 确认清除所有生成点（`clearspawns` 的二次确认） |
 | `setcore` | 将当前位置设为游戏核心 |
+| `setwaiting` | 将当前位置设为等待区（玩家 join 后、开局前的集合点；可选，不设则用核心；对局中拒绝） |
 | `addspawn` | 添加当前位置为玩家出生点 |
 | `listspawns` | 列出所有已设置的玩家出生点 |
 | `delspawn <id>` | 删除指定编号的玩家出生点 |
@@ -550,7 +588,8 @@ arenas:
 | 命令 | 说明 |
 |------|------|
 | `confirm-world` | 确认游戏世界（步骤 1） |
-| `confirm-core` | 将当前位置设为村庄核心（步骤 2） |
+| `confirm-core` | 将当前位置设为村庄核心（步骤 2，确认后进入步骤 3） |
+| `confirm-waiting` | 将当前位置设为等待区（步骤 2，**可选**；设置后停留在步骤 2，不推进） |
 | `addspawn` | 将当前位置添加为玩家出生点（步骤 3，反馈带序号） |
 | `overview` | 打开生成点总览 GUI（步骤 3 枢纽：两套点计数/状态 + 两个子管理界面入口 + 唯一 [完成]） |
 | `spawngui` | 打开玩家出生点管理 GUI（步骤 3，直达；界面内 [返回总览] 回到总览） |
@@ -712,6 +751,16 @@ starter-kit:
     - material: TORCH
       amount: 8
 
+### 波次配置（`game-settings.yml` 的 `waves` 段）
+
+GUI 的「波次组合」页对应 `game-settings.yml` 末尾的 `waves` 段：数字键是波次编号，`default` 是未特别配置的波次所用的模板（出厂只单独配置了 1 / 5 / 10 三波，其余波次全部靠它）喵。每波三个字段：`count`（**每人只数**，实际刷 `count × 在场人数`）、`total-mobs`（**每人精确总数上限**，超出按比例裁剪、不足不补齐；三层裁剪取最小）、`weight`（仅当全波 `count` 全 0 / 缺失时的兼容权重）喵。
+
+- **`total-mobs: 0` 可以停用一个波次**喵 —— 上限被裁到 0，一只不刷。这是「跳过某一波」的唯一受支持写法；**不要**用「删掉 `waves.default` 整段」来表达「不刷怪」，段缺失按「恢复出厂」处理并会被写回喵。
+- **删除波次必须点 [保存并应用配置]**喵。删完不保存就 `/hilltop reloadconfig`，该波次会按磁盘内容**重新出现**（磁盘是权威）喵。
+- 手工写进文件的新波次编号（如 `waves: {"7": ...}`）在 reload 或重启后**会真的生效**喵（旧版本会静默丢弃，1.1.0 已修）喵。
+
+完整逐项说明见 [配置文件逐项解释](docs/guides/config-reference.md) 的 `waves` 段喵。
+
 ### config.yml
 
 内部状态文件，**不含任何游戏参数**（游戏参数见 `game-settings.yml`），只保存语言与部署向导进度，插件自动维护。
@@ -740,8 +789,36 @@ language: "zh"    # zh / en
 
 ## 构建
 
+需要 JDK 21 与 Maven 3.9.9。推荐在项目根目录（`pom.xml` 所在目录）使用随仓库提供的构建脚本：
+
 ```bash
-mvn clean package
+./build.sh clean package
+```
+
+`build.sh` 会自动探测并切换 JDK 21（`JAVA_HOME` 已是 21 则直接沿用），所有参数原样透传给 Maven，不带参数时等价于 `mvn clean package`。例如：
+
+```bash
+./build.sh -o compile                  # 离线编译
+./build.sh -DskipTests clean package  # 跳过测试构建
+./build.sh test                       # 仅运行测试
+```
+
+`build.sh` 需要 Git Bash / MSYS 环境，原生 cmd / PowerShell 不能直接执行。可用 `HV_JDK21_HOME` 覆盖 JDK 21 位置，`HV_JDK21_GLOB` 覆盖自动探测路径（默认 `/d/Java/zulu21.48.17-*`），`HV_MAVEN` 覆盖 Maven 路径。
+
+手动方式：如果直接调用 `mvn`，必须先设置 JDK 21 的 `JAVA_HOME`。本机默认 shell 的 `JAVA_HOME` 指向 JDK 17，与编译目标 21 冲突；未切换时 `maven-enforcer-plugin` 会在 `validate` 阶段拦下构建并打印清晰的中文提示，不会再出现晦涩的「无效的目标发行版: 21」。
+
+> `pom.xml` 的编译目标属性已从 `java.version` 改名为 `<java.target.version>21</java.target.version>`：避免遮蔽 JVM 系统属性 `java.version`，否则 enforcer 会把当前 JDK 17 误读成 21。
+
+```bash
+# Git Bash / MSYS
+export JAVA_HOME="D:/Java/zulu21.48.17-ca-jdk21.0.10-win_x64"
+"D:/maven/apache-maven-3.9.9/bin/mvn" clean package
+```
+
+```powershell
+# 原生 PowerShell
+$env:JAVA_HOME = "D:\Java\zulu21.48.17-ca-jdk21.0.10-win_x64"
+D:\maven\apache-maven-3.9.9\bin\mvn.cmd clean package
 ```
 
 JAR 文件将生成在 `target/` 目录。

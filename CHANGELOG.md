@@ -5,20 +5,9 @@
 
 > 1.1.0 的第二个修复版：fix6 全量审查轮（12 专家通道全库审查 + V1 横向对账 + V2 对抗证伪，合并清单 ~40 条：P0=0/P1=3/P2=11/P3=~26）的四路并行修复 + 四路锐评轮裁定修正。
 > 审查产物：`docs/01-reviews/fix6/`（fix6-MASTER-BACKLOG.md 总报告）；修复规格书：`fix6-REPAIR-PLAN.md`（124KB）；锐评报告：`docs/01-reviews/fix6-critique/`。
+> 本段落另附 2026-11-01 ~ 11-04 的三轮全库审计与测试套件建设（round1 ~ round3，产物在 `docs/reports/round1~3/`）：不改版本号、不改产出行为，只为已落地的修复补回归守护。
+> 再附 2026-11-10 的 round5 深入轮（P1 / P2 + F3 / N1 + N2 / F4 + F5 / F6 / 只读测试守卫 / F7，产物在 `docs/reports/round5/`）：不改版本号，其中 `waves` 与 `nodes.buff-effects` 的载入语义属行为变更，服主请看文末「升级提示」。
 > 原 `1.0.9-SNAPSHOT` / `-fix1`~`-fix4` / `1.1.0-SNAPSHOT` / `-fix1` 的包与 GitHub Release 保留不动。
-
-### Changed（2026-10-24 ~ 10-26 — 日志英文化、日志等级修正、UX 修正与深度指南）
-
-- **日志全部英文化（121 处 / 19 个文件）**：全库 `getLogger()` / `Bukkit.getLogger()` 输出的中文日志统一改为英文——日志面向服主与运维，不受 `/hilltop lang` 影响；玩家可见文案（`messages.yml`）仍保持中英双语不变。同步统一风格：首字母大写（以文件名字面量起头的保持小写）、句尾不加句号、`+` 拼接保留可 grep 字面量、美式拼写、禁止工单号进日志
-- **日志等级修正（10 处）**：`arenas.yml` 写盘失败的 6 个入口统一为 SEVERE（原 3 处 WARNING）；战绩补录失败升 SEVERE；可重试的回滚失败降 WARNING；竞技场世界冲突/世界加载失败/文档生成失败/两个关服装饰性清理降 WARNING
-- **消除出厂即触发的假告警**：`empty-arena-end-seconds` 模板默认由 60 改为 **120**（先留足重连窗口再判空置），`GameConfig` 字段默认同步；旧出厂组合 60/60 静默不提示；该提示本身由 WARNING 降为 INFO（是建议而非故障）
-- **回滚失败日志防刷屏**：`MapRestoreManager` 逐块失败明细保留带坐标的 WARNING，但每 tick 最多 5 条，超出部分汇总为一条「本 tick 另有 N 个方块失败」
-- **`/hilltop status` 显示竞技场**：头部新增 `Arena: <id>` 行，走回退链解析时标注「（默认）」；`status-players` 措辞由「在线玩家」改为「**场内玩家**」（大厅玩家不计入）
-- **开局人数不足提示补指引**：`game-start-need-players` 明确「玩家需先 `/hilltop join` 进入竞技场（大厅里的人不计入）」
-- **`/hilltop build` 加世界守卫**：建造模式只对大厅世界生效，在其它世界执行会被拒绝并提示大厅世界名；已开启建造模式的玩家仍允许关闭（避免卡在开启状态）
-- **深度指南（`docs/guides/`）**：部署阶段、向导、竞技场生命周期、商店自定义、命令全表、配置逐项共 6 份中文指南 + 6 份英文指南（`docs/guides/en/`）随仓库发布，README 在部署指南、商店系统、命令、配置四处提供入口链接
-- **文档勘误**：`spawnpoints.yml` 迁移来源更正为商店村民位置；`blocksPerTick` 非法值回退口径按代码三分支写明（非数字/≤0 各打 WARNING，缺失/空白静默按 200）
-- **不涉及版本号变更**；日志与提示文案变更无需服主操作，服务端无需任何动作
 
 ### Fixed（2026-10-22 — Y1 状态机语义（含 2 条 P1））
 
@@ -55,8 +44,176 @@
 - **回滚失败态文案适配**（Y1-N2）：`game-start-restoring` 补「若长时间无变化需排查控制台日志」
 - **README 双语同步**：`/hilltop help` 标注从「（管理员）」改为「所有玩家可用（内容按权限分档）」（Y3-N2）；sessionWave javadoc 同步四处捕获现状（Y1-N3）
 
+### Changed（2026-10-24 ~ 10-26 — 日志英文化、日志等级修正、UX 修正与深度指南）
+
+- **日志全部英文化（121 处 / 19 个文件）**：全库 `getLogger()` / `Bukkit.getLogger()` 输出的中文日志统一改为英文——日志面向服主与运维，不受 `/hilltop lang` 影响；玩家可见文案（`messages.yml`）仍保持中英双语不变。同步统一风格：首字母大写（以文件名字面量起头的保持小写）、句尾不加句号、`+` 拼接保留可 grep 字面量、美式拼写、禁止工单号进日志
+- **日志等级修正（10 处）**：`arenas.yml` 写盘失败的 6 个入口统一为 SEVERE（原 3 处 WARNING）；战绩补录失败升 SEVERE；可重试的回滚失败降 WARNING；竞技场世界冲突/世界加载失败/文档生成失败/两个关服装饰性清理降 WARNING
+- **消除出厂即触发的假告警**：`empty-arena-end-seconds` 模板默认由 60 改为 **120**（先留足重连窗口再判空置），`GameConfig` 字段默认同步；旧出厂组合 60/60 静默不提示；该提示本身由 WARNING 降为 INFO（是建议而非故障）
+- **回滚失败日志防刷屏**：`MapRestoreManager` 逐块失败明细保留带坐标的 WARNING，但每 tick 最多 5 条，超出部分汇总为一条「本 tick 另有 N 个方块失败」
+- **`/hilltop status` 显示竞技场**：头部新增 `Arena: <id>` 行，走回退链解析时标注「（默认）」；`status-players` 措辞由「在线玩家」改为「**场内玩家**」（大厅玩家不计入）
+- **开局人数不足提示补指引**：`game-start-need-players` 明确「玩家需先 `/hilltop join` 进入竞技场（大厅里的人不计入）」
+- **`/hilltop build` 加世界守卫**：建造模式只对大厅世界生效，在其它世界执行会被拒绝并提示大厅世界名；已开启建造模式的玩家仍允许关闭（避免卡在开启状态）
+- **深度指南（`docs/guides/`）**：部署阶段、向导、竞技场生命周期、商店自定义、命令全表、配置逐项共 6 份中文指南 + 6 份英文指南（`docs/guides/en/`）随仓库发布，README 在部署指南、商店系统、命令、配置四处提供入口链接
+- **文档勘误**：`spawnpoints.yml` 迁移来源更正为商店村民位置；`blocksPerTick` 非法值回退口径按代码三分支写明（非数字/≤0 各打 WARNING，缺失/空白静默按 200）
+- **不涉及版本号变更**；日志与提示文案变更无需服主操作，服务端无需任何动作
+
+### Changed（2026-10-31 — 计分板与 Tab 栏改造）
+
+- **新增 `display.yml` 展示配置**：侧边栏与 Tab 栏布局从硬编码改为配置驱动；行型支持分隔线 / 空行 / 静态文本 / 动画（2-8 帧循环），每行可用 `when` 条件与 `args` 参数绑定；文件为纯手写，插件只读不写，注释长期保留
+- **侧边栏隐藏右侧红色分数**：调用 `Objective#numberFormat(NumberFormat.blank())`，此前每行尾部一直显示红色 1~15 数字（Paper 1.20.3 起引入）
+- **侧边栏行数上限 10 → 15**：超出上限由静默裁尾改为打一条英文 WARNING，不再无声丢弃玩家个人数据行
+- **删除 64 字符截断**：MC 1.13 起队伍 prefix/suffix 为 Component，无长度上限；原 `substring(0, 64)` 会切断颜色码 `§` 与 UTF-16 代理对，导致行尾乱码
+- **新增 Tab 栏管理**：每个玩家独立的自定义头/尾（按大厅 / 对局 / 观战三种上下文），玩家列表名按状态着色（存活 / 阵亡待复活 / 观战 / 管理员），并用 Paper 官方 `Player#setPlayerListOrder` 做分带排序——不篡改玩家名造假排序
+- **`/hilltop reloadconfig` 覆盖 `display.yml`**：布局、文案、开关全部热生效，无需重启
+- **新增 i18n 键 17 个**（en / zh 双语）：`scoreboard.separator` / `next-wave` / `mobs` / `arena` / `state` / `tip.*`，`tab.header.*` 5 个，`tab.name.*` 4 个；既有键文本一律未改（哈希基线不可重生成）
+- **不涉及版本号变更**
+
+### Fixed（2026-10-31 — 侧边栏渲染缺陷（5 项，含 1 条 Major））
+
+- **【Major】侧边栏行序错乱修复**：`setScore` 此前只在新建行时调用一次，行数变化（开局倒计时行出现/消失、玩家数据行整体增删）后旧行分数不重算，出现重复分数与行序跳动——现改为无条件执行 + `int[]` 缓存比对，仅值变时下发
+- **【Major】缩行残留幽灵空行修复**：行数减少时只 `unregister()` 队伍、未 `resetScores()` 分数条目，被移除的行以空白形式永久占据侧边栏——现改为先 `resetScores` 再 `unregister`
+- **`scoreboard.enabled` 热关闭生效**：开关此前只在 `show()` 读一次，中途关闭对已显示的侧边栏无效；现刷新任务每轮先判开关，关闭即拆板
+- **竞技场重置误伤其它场玩家修复**：`clear()` 未校验计分板归属，A 场重置会把已转场到 B 场的玩家侧边栏一并拆掉——现加 `getScoreboard() == state.board` 守卫
+- **重复 `show()` 时旧计分板对象清理**：此前直接覆盖 map 条目，旧 `Objective` 从未注销；现显式 `unregister()`
+- **村民计数从每玩家一次降为每竞技场一次**：`getAliveCount()` 是全量遍历 + 逐只 `isValid()`，此前每秒按玩家数重复执行；现改为每轮建一次不可变快照再分发给各玩家
+
+### Added（2026-11-03 — 测试基础设施与回归套件）
+
+- **测试依赖三件套（`pom.xml`，全部 test scope）**：`mockbukkit-v1.21:4.45.0`（其 pom 声明 paper-api `1.21.4-R0.1-SNAPSHOT`，与本项目主依赖同级）、`mockito-core:5.8.0`（inline mock maker，JDK 21 的 byte-buddy agent 门槛经探针实测通过）、`junit-jupiter` 5.10.1 → **5.12.1**（MockBukkit 4.45.0 的运行时声明，对齐后全链路只有单一 junit-platform 1.12.1）
+- **不升 MockBukkit 4.116.3 的理由**：它声明 `junit-jupiter-api:6.0.3`，会把整个构建拽到 junit-platform 6.x 线；4.93 / 4.100 / 4.110 本地只有 jar 没有 pom，无法离线核验，一律弃用
+- **离线可解析**：`mvn -o dependency:tree -Dscope=test` 干净通过，构建全程未联网；`paper-api` 保持 `provided`，MockBukkit 的传递依赖被本项目自身声明覆盖
+- **发布产物未被污染**：JAR 内匹配 `mockbukkit|mockito|junit|bytebuddy|hamcrest` 的条目数为 **0**，`plugin.yml` 的 version 仍为 `1.1.0-SNAPSHOT-fix2`
+- **夹具 `BareHost`**：`onEnable` 为空的插件宿主，供纯配置/菜单类测试使用。注意 `MockBukkit.load` 返回的是生成的 `BareHostProxy extends BareHost` —— `instanceof` 与 `getDataFolder()` 可用，但 `getClass()` 不等，已写进 javadoc，避免后人写 `assertEquals(BareHost.class, host.getClass())`
+- **夹具 `MockBukkitTestBase`**：mock/unmock 生命周期、`loadBareHost()` / `loadFullPlugin()` / `loadFullPluginWithArenas()` 三种宿主加载、世界供给、日志捕获。MockBukkit 是进程级单例，故该类**按设计不线程安全**
+- **规模：44 个新增测试类 / 572 条新增用例**，全量从 round1 结束的 97 → **669**；4 波次 / 12 个 Agent 装配，索引 51 个测试类。行为级覆盖 **50 / 75 = 66.7%**，剩余 25 个 = 18 个零引用 + 6 个仅 mock / 枚举常量 / 注释 + 1 个部分覆盖（`arena/ArenaInstance` 只有静态方法有断言）
+- **`JavaPlugin.getPlugin()` 的可测性突破**：Paper 1.21.4 的该方法**不走 `Bukkit.getPluginManager()`**，而是从类加载器反查 `ConfiguredPluginClassLoader`（`javap -p -c` 字节码确认：`instanceof` 不匹配即抛 `IllegalArgumentException`），MockBukkit 的 loader 永远满足不了，`BareHost` 与 `loadFullPlugin()` 都失败；但它是**静态方法**，可用 `mockStatic(JavaPlugin.class)` 钉成「已启用的 `BareHost`」绕开 —— 五个配置菜单由此首次可构造、渲染、点击与 `reopen()`，成本约 2.7 s 每测试类一次。**这一条推翻了 round2「构造函数硬阻塞、判为不划算」的结论**
+- **两条更便宜的捷径已被排除**：普通 `mock(HilltopVillagePlugin.class)` 撞 `IllegalPluginAccess`（`reopen()` 里的 `registerEvents`）；补 `isEnabled()=true` 撞 `getPluginLoader()` 返回 null 的 NPE。故 `plugin` 必须是「已启用的真实插件」，`BareHost` 是最便宜的那个
+- **`PlayerMock` 背包是 41 格不是 36 格**：`getStorageContents()` 只报 36，填满 36 格后 `addItem` 会把新物品塞进 36–40 号空槽并返回空 overflow —— 这正是 round2 判定「商店溢出不可构造」的真正原因；填满 41 格即立刻返回真溢出，且材质无需相同、PDC 不会被合并吞掉
+- **`mockStatic` 不外泄**：本类跑完后接 62 条既有 shop 测试 → `74/74` 绿，证明静态桩不向下游类泄漏；但它是线程局部的，若将来开启 surefire `parallel` 需重新验证，当前单 fork 串行为安全状态
+
+### Changed（2026-11-04 — 审计框架、变异纪律与假绿硬约束）
+
+- **round1 全库审计**：14 个源码切片 + 16 条 unverified 共 30 个审计单元，产出 **103 条 finding**；其中 **28 条**进过锐评波（Skeptic / Devil's Advocate / Arbiter / 交叉模式扫描四通道，早批次 10 条中撤销 3 条 = 撤销率 30%）；判为可修的 **11 条缺陷全部修复并经独立验收 PASS**（0 FAIL、0 `escalation_required`），这 11 条本身落在 16 个 Java 文件 / 366 行；全轮（含「把剩下的都修完」追加批次 fix-036~039）合计改动 **36 个文件 / 1906 行**，测试 94 → 97
+- **主Agent自己的补丁同样送验**：`slice-09-logic-003` 引入的 `waveSpawning` 标志，主Agent 自行在 `endGame()` 补的复位行被 `verify-013` 的探针证明无效（`spawnWave` 抛异常时没有任何代码会调到 `endGame()`，标志永久卡 true），最终改为在真实调用点加 try/catch、复位后原样上抛
+- **round2 测试建设**：572 条新用例；自查变异 **114 次**，独立复核抽样 **15/15 精确复现**，被证明太弱并修正 **8 次**；假绿 / 空洞 / `@Disabled` 测试 **0**，生产代码残留改动 **0**（除 `round2-12` 声明的 1 行）
+- **变异纪律**：每条修复都要有一次「破坏它 → 测试必须变红」的证明。round3 累计 **22 次变异 / 20 次捕获**，2 次未捕获经证明均为**等价变异**（`GameRulesMenu` 的 `spawn-radius` 三道冗余守卫，去掉任一道行为不变），拒绝为等价变异硬造测试——那等于测一个不存在的代码形状
+- **反向变异（本轮方法论提升）**：除「撤销修复」外，另做「把修复改成过度收紧 → 测试必须变红」，如 join 守卫改 `if (true)`、`isPending()` 改恒 true。常规做法只验「修好了」，很容易写出过度收紧的实现而测试照样绿；这两次反向变异证明守卫在**双向**都正确
+- **三条真实假绿路径被写成硬约束**：① MockBukkit 把 `UnimplementedOperationException` 转成 **SKIPPED 而非 FAILED**，Maven 照样 `BUILD SUCCESS`（初次探针即踩到 `Skipped: 1` + 成功行）；② Maven 增量编译会静默跳过被变异的源文件（`Nothing to compile - all classes are up to date`），每次变异后须确认输出含 `Compiling 75 source files ... target\classes`；③ 删除测试源后 `target/test-classes` 残留陈旧字节码仍在跑，须连同类文件一起删
+- **全量三跑（组 D 时点）**：`Tests run: 718, Failures: 0, Errors: 0, Skipped: 1`，三跑条数逐字一致；组 E 补测 `MonsterPropMenu` 后为 **723**，组 F（R-9 修复 + R-11 补测）后最终为 **730**（`mvn clean test -o` → `[WARNING] Tests run: 730, Failures: 0, Errors: 0, Skipped: 1` / `BUILD SUCCESS` / 29:53 min，编译含 `Compiling 75 source files ... target\classes` 与 `Compiling 63 source files ... target\test-classes`；162 份 XML 独立累加 `tests=730 / errors=0 / skipped=1`）。第 3 跑是计划外追加，用于证明变异还原后生产代码确实复绿；还原用 `_mutation-backups` 里的原文件 `cp`，**未用 `git checkout`**（这些修复从未提交，checkout 会把它们整个抹掉）；组 F 三次变异同样 `cp` 还原 + `md5sum -c OK`
+- **skip 审计不采信聚合行**：逐叶子解析三跑的 154 份 surefire XML 独立累加，唯一 skip 是 `YamlFilesTest.writeToReadOnlyFileThrows` 的 Windows 只读语义 `TestAbortedException`（round2 既知 skip，本轮无新增）；全库 `UnimplementedOperationException` 命中 **0**，`@Disabled` 计数 **0**
+- **`JAVA_HOME` 编译错配（R-6，已修复）**：`pom.xml` 新增 `maven-enforcer-plugin:3.5.0`（`require-jdk-21` 绑定 `validate`、`[21,)`），裸 `mvn` 在最早阶段即失败并给出含真实 JDK 版本 / `JAVA_HOME` / 两条解决路径的中文提示（改前 JDK 17 只有编译期 `错误: 无效的目标发行版：21`，改后 `RequireJavaVersion failed` 在 `validate` 拦下，主Agent 独立复现 `PIPE_EXIT=1`）；新建 `build.sh` 自动探测并切换到 JDK 21（`HV_JDK21_HOME` / `HV_JDK21_GLOB` 可覆盖，零参数默认 `clean package`），新建 `.mvn/jvm.config` 三行 UTF-8 参数保证中文提示不乱码（不用于切 JDK）；pom 属性 `<java.version>` 改名为 `<java.target.version>` 并同步 compiler source/target，因为同名属性会遮蔽 JVM 系统属性 `${java.version}`、首次负面实测把「当前检测到」误报成 21（JVM 实际 17），改名后才恢复真实的 17.0.20.1——此 bug 只有做负面验证才能发现。正面证据：默认 shell 为 JDK 17 时 `./build.sh -o compile` 自动探测 JDK 21 → `Rule 0: ... passed` / `BUILD SUCCESS`；删 `inputFiles.lst` 强制重编译得 `Compiling 75 source files with javac [debug target 21]` / `BUILD SUCCESS`；显式 JDK 21 下 `mvn -o -B compile` 与 `mvn -o -B test-compile` 均 `BUILD SUCCESS`（enforcer 约 +0.3–0.5 s）；JDK 25 的 `validate` 通过（符合 `[21,)`）；脚本四条分支与 `bash -n`、三文件 LF 行尾均已核验。未选 `maven-toolchains-plugin`（依赖项目外 `~/.m2/toolchains.xml`，缺文件只警告不生效）。版本号仍为 `1.1.0-SNAPSHOT-fix2`，未 bump
+- **R-6 残余如实保留**：新机器 / CI 首次需联网下载 enforcer 3.5.0（本机已预热、`-o` 可用）；`build.sh` 依赖 bash + `cygpath`，原生 cmd / PowerShell 不能直接执行；默认 glob 写死 `/d/Java/zulu21.48.17-*` 且只接受主版本 21；JDK 22+ 未验证全量编译与测试；`-Denforcer.skip=true` 仍可绕过。构建段文档同步与新入口全量回归**均已完成**：`CLAUDE.md` / README / README-EN / `docs/07-guides/JDK21-BUILD-GUIDE.md` 等已改为推荐 `./build.sh`（`.claude/agents/*.md` 与 `ralph*` 仍写手动 export，属次级漂移留待作者裁决）；默认 shell 为 JDK 17、未显式 `export` 时 `./build.sh -o clean test` → `Tests run: 730, Failures: 0, Errors: 0, Skipped: 1` / `BUILD SUCCESS`（`_logs/final-r6-verify.log`）。证据报告见 `docs/reports/round3/round3-06-r6-toolchain.md`
+- **生产代码零漂移**：9 份受测文件的 md5 与 `_mutation-backups/*/original-md5.txt` 逐份一致，且与主Agent前置核验逐字相同；恢复后再跑 clean 全量复绿作为反证
+
+### Fixed（2026-11-04 — 补完 6 条无守护的审计修复）
+
+- **`slice-06-logic-002`（跨场 join 判负链）→ `HilltopCommandHandlerArenaGuardTest`（4 条）**：RUNNING 时跨场 join 不得把原场推成 `DEFEAT`，断言直接盯缺陷的真实伤害（队友被记负）而非实现细节；配「WAITING 仍须换场成功」的反向对照，撤销修复（恢复 `&& inCurrentWorld` 合取）即红
+- **`slice-03-logic-004`（禁用 QUEUED 场播报）→ 同测试类**：`arena-disabled-ok` 与 `arena-already-disabled` **正反成对**断言，单改任一半都会被抓住；另配「真·已禁用仍应报 already-disabled」对照，防「恒报成功」的过度修复
+- **`slice-08-logic-002`（`spawn-radius-max` 减号把值往上跳）→ `SpawnRadiusMaxRightClickTest`（11 条）**：min=100、max=40 时按右键由 40 跳成 105（+65）的缺陷签名被精确复现；修复后的正确行为是**不动**，而「只钳位不改 setter」的克制版同样满足，故另设「正常区间仍 -5」「恰在有效下界时放行」「连续右键单调不增」「全组合 `after <= spawnMax`」四条区分实现
+- **`slice-08-logic-004`（主手槽缺 SHIFT 分支）→ `MonsterMainHandShiftTest`（12 条）**：输入值刻意选 `BLAZE_ROD` —— 它不在 `WEAPON_CYCLE` 的 12 个预设内，使「循环到下一个预设」的实现无法偶然对上；另守住 LEFT 仍循环、空输入回落、表外材质回落、MIDDLE 行为与副手对照
+- **`slice-08-logic-009`（菜单 `else` 兜底收窄为显式 LEFT）→ `ConfigMenuLeftWhitelistTest`（12）+ `WaveMenusLeftWhitelistTest`（4）+ `MonsterPropMenuLeftWhitelistTest`（5）**：`grep` 实测源码共 **6 处** `else if (clickType == ClickType.LEFT)`，本轮守护 **6 处全覆盖**（组 D 时点行号 `GameRulesMenu:139` / `ItemSettingsMenu:194` / `MonsterSettingsMenu:336` / `NodeSettingsMenu:97` / `WaveSettingsMenu:331` / `WaveSettingsMenu:568`，最后一处见下条；组 F 插入 3 行注释后 `WaveSettingsMenu` 两处平移为 `:334` / `:571`）；每处跑 9 种非白名单 `ClickType`（比 round1 审计点名的 5 种更严），并成对断言同一槽位按 LEFT 仍 `+step`——只断言「MIDDLE 不改」的话，把整段分支删掉的实现同样会绿；**组 F 另在 `WaveSettingsMenu.java:264` 新判定并修复了同型第 7 处**（round3 R-9，从未被编号为 round1 finding，**不计入上述 round1 的 6 处**）——新增 `WaveMenusLeftWhitelistTest.MonsterRowCountSlot` 3 条，M1 还原裸 `else` → `Tests run: 7, Failures: 1`（`expected: <6> but was: <7>`，只红正向半），M2 改成 `else if (LEFT && false)` → `Tests run: 7, Failures: 1`（`expected: <7> but was: <6>`，只红反向对照半），正反落点相反喵
+- **`slice-12-dc-004`（商店溢出掉落被重置销毁）→ `ShopOverflowPaidDropTest`（6 条）**：拆成打标侧 / 跳过侧 / 端到端三组 `@Nested`。打标侧钉住 `ShopListener` 的**两个** `dropItemNaturally` 调用点都写 `PAID_DROP_KEY`；跳过侧钉住 `ArenaInstance.clearDroppedItems` 按该键放行而其余仍删（含「带别的 PDC 键仍被删」对照，判据是键本身而非「有 PDC 就放行」）；端到端走真实 `arena1` 的「购买溢出 → `resetNow()` → 货还在」
+- **测试量 669 → 730（round3 共 61 条）**：组 A 4 条 + 组 B 39 条 + 组 C 6 条 + 组 E 5 条 + 组 F 7 条（`WaveMenusLeftWhitelistTest.MonsterRowCountSlot` 3 + `WavePaginationClampTest` 4）；组 E 时点为 723，组 F 全量 `Tests run: 730, Failures: 0, Errors: 0, Skipped: 1`，新类 `Skipped` 全 0，唯一 skip 仍是 `YamlFilesTest.writeToReadOnlyFileThrows` 的 Windows 只读语义，`UnimplementedOperationException` 命中 0
+- **`MonsterPropMenu#addDblItem` 补测完成（关闭 R-7）**：`slice-08-logic-009` 的第 6 处调用点（组 D 时点 `WaveSettingsMenu.java:568`，组 F 后为 `:571`）此前无测试守护，还原成裸 `else` 时全量仍绿；新增 `MonsterPropMenuLeftWhitelistTest`（5 条 / 3 个 `@Nested`，覆盖 slot 19 health / 46 explode-multiplier / 47 经 `addIntItem` 委托），全量随之 718 → **723**，第 6 处由此**双向**受守护——正向变异（还原裸 `else`）3 条红并精确复现缺陷签名 `3.0→3.5` / `40→50` / `60→80`，反向变异（`LEFT && false`）恰红在同 3 条的**对照半**，落点相反，证明正反两半各自独立承重
+- **R-9 生产代码修复（行为变更，关闭 R-9）**：`src/main/java/com/hilltopvillage/config/menu/WaveSettingsMenu.java:264` 的 `WaveDetailMenu` 怪物组成行由裸 `} else {` 收窄为 `} else if (clickType == ClickType.LEFT) {`，并补中文注释说明「`slice-08-logic-009` 同型漏网点（round3 R-9）」——此前 MIDDLE / DROP / NUMBER_KEY / SWAP_OFFHAND / DOUBLE_CLICK 等非白名单点击会静默把该怪种数量 +1 并写配置，修复后这些点击不再改怪物数量，LEFT / RIGHT / SHIFT 分支行为不变；同文件显式 LEFT 白名单由此为 3 处（`:264` / `:334` / `:571`），剩余 `:84` / `:91` / `:111` 三处裸 `else` 并不同时具备「接收 `ClickType`」与「写配置」两个条件，非同型缺陷故未动；守护见 `WaveMenusLeftWhitelistTest.MonsterRowCountSlot` 3 条与 M1/M2 正反两次变异（各 `Tests run: 7, Failures: 1`，落点相反），三次变异均 `cp` 还原 + `md5sum -c OK`，当前 md5 `87a7b8742651485d64aaaa9d0847a6de`
+- **波次列表行点击白名单收窄（行为变更，作者 2026-11-04 裁决）**：`src/main/java/com/hilltopvillage/config/menu/WaveSettingsMenu.java:91` 的波次列表行由裸 `} else {` 收窄为 `} else if (clickType == ClickType.LEFT) {` —— 此前 MIDDLE / DROP / NUMBER_KEY / SWAP_OFFHAND / DOUBLE_CLICK 等**所有**非 SHIFT 点击都会关掉当前菜单并打开波次详情菜单（不写配置，属「丢出键 / 中键意外跳转」的 UX 缺陷），修复后只有 LEFT 打开详情；SHIFT_LEFT / SHIFT_RIGHT 的删除波次分支（P2-33 的 `ConfigManager.removeWave` 记账）一字未动，行为保持不变。守护见 `WaveMenusLeftWhitelistTest.WaveRowLeftOnly` 3 条（正向半扫 8 种非白名单 ClickType，断言 `admin.getOpenInventory().getTopInventory().getHolder()` 仍是同一个列表菜单实例；反向对照半断言 LEFT 后 holder 变成 `WaveDetailMenu`），M1 还原裸 `else` → `Tests run: 10, Failures: 1`（只红正向半），M2 改成 `LEFT && false` → `Tests run: 10, Failures: 1`（只红反向对照半），落点相反；全量 `Tests run: 733, Failures: 0, Errors: 0, Skipped: 1`（唯一 skip 仍是 `YamlFilesTest.writeToReadOnlyFileThrows` 的 Windows 只读语义），变异均 `cp` 还原 + `md5sum -c OK`，md5 `49e9f5a8f28cd1a12db13fd29149fe82`
+- **R-11 分页钳制补测（关闭 R-11）**：新建 `WavePaginationClampTest`（4 条 / 2 个 `@Nested`：`RealPaginationPath` 2、`SinglePageStaleValue` 2）；策略 A 不碰反射——往 `GameConfig#getWaves()` 放 22 个最简 `WaveConfig`（`SLOTS_PER_PAGE=21`），真实点 slot 53 翻到第 1 页，再把波数删回 3 并 `reopen()`；策略 B 在 3 波次场景用反射把私有 `page` 设为 `7` / `-3`，验证上界与下界；判别性断言用外部可观测的渲染结果（slot 9 波次图标与 clickAction），不直接断言私有字段。M3 把 `WaveSettingsMenu.java:53` 的 `page = Math.max(0, Math.min(page, totalPages - 1))` 降级为 `page = Math.max(0, page)` → `Tests run: 4, Failures: 2`，红在两条正向场景、两条对照半仍绿；本轮未改分页生产逻辑
+- **R-2 商店「部分可容纳」切分形态补测（round4 组 D）**：新建 `src/test/java/com/hilltopvillage/shop/ShopOverflowPartialFitTest.java`（6 条 / 3 个 `@Nested` + 1 条夹具自检）。此前 `ShopOverflowPaidDropTest` 只观测「背包全满 → 整件溢出」，**未**观测「背包还能装一部分」时 `addItem` 的拆分语义。探针先钉死三条夹具前提：① `BOW` 的 `maxStackSize` 是 **1**，plan 原文假设的「BOW 60/64 半格」在 MockBukkit 里根本不存在，故改用 `ARROW` / `EMERALD` 造半格；② `countCurrency` 只看 `getStorageContents()`（36 格）+ 副手，**不含 4 个护甲槽**；③ `addItem` 先填空槽、再并半满叠。断言一律「包内合计 + 地上件数 + 地上数量」三点并列（购买侧：半格 56 + 买 8 → 恰好 64 零掉落；半格 60 + 买 8 → 并入 4、地上恰好 1 件 4。退款侧：残留 70 + 退款 15 → 整件 15 落地；副手 60 + 退款 15 → 并入 4、地上恰好 1 件 11），只断言「地上有货」会漏掉「重复掉落」与「入包部分被吞」两种相反缺陷。残余风险如实登记：`InventoryMock` 只按材质合并且合并会丢 PDC，故「入包部分是否保留 PDC」在本环境**不可断言**
+- **F-3 删波次「菜单半边 × 磁盘半边」接缝补测（round4 组 D，缺口真实存在）**：对账确认两半各自有测试却从未接上——`WaveMenusLeftWhitelistTest#shiftClicksStillDeleteTheWave` 的 `ConfigManager` 是 `MenuTestSupport.config(cfg)` 造的 **mock**（只能证「菜单会调 removeWave」，证不了「磁盘干净」）；`ConfigManagerTest#removeWaveTombstonesTheKeyOnDisk` 是**直接调 API**、不经菜单。新建 `src/test/java/com/hilltopvillage/config/menu/WaveDeleteEndToEndTest.java`（3 条），用**真实** `ConfigManager` + 真实 `WaveSettingsMenu` 走「点 SHIFT_LEFT → 真实 removeWave → 真实 saveToFile → 磁盘 → 新开 ConfigManager 重载」。关键断言是 `hasUnsavedChanges()` 必须在删除后变 true —— 否则主菜单保存按钮（`MainConfigMenu` 的 LIME_WOOL）不出现，`removedWaveKeys` 墓碑永远不会落盘
+- **F3-D1（新发现真实缺陷，本轮只测不改）**：`GameConfig` 构造器**无条件预置**波次 1 / 5 / 10，而 `ConfigManager#loadFromFile` 的 `wavesBeforeReload` 回填只在「内存里已有该编号」时才留 —— 于是**删除出厂波次 1/5/10 后重载（`loadFromFile` 或重启）必然复活**，且下一次 `saveToFile()` 会把它写回磁盘。探针实测：`removeWave(1)` → 磁盘 `[default,5,10]` → `loadFromFile()` → 内存 `[1,5,10]` → `saveToFile()` → 磁盘 `[default,5,10,1]`。同理，管理员手写进 `game-settings.yml` 的**新**波次（非 1/5/10）在**首次**载入时会被静默丢弃且零日志（`wavesBeforeReload` 里没有它），随后任一次保存都不会写回。两条都属于「配置权威来源分裂」，建议单独立项裁决（改 `GameConfig` 预置策略或让 `loadFromFile` 无条件下从磁盘补建）
+- **PDC namespace 全库复核（round4 组 B 发现的隐患，组 D 复核影响面）**：生产代码有**两种**键构造风格 —— `new NamespacedKey("hilltopvillage", ...)` 字面量（`ShopListener.PAID_DROP_KEY` 及 5 个 AI goal 的 `GoalKey`）与 `new NamespacedKey(plugin, ...)` 宿主派生（`NpcManager` / `ShopManager` / `WaveManager` / `HammerListener` / `FireballListener` / `NodeListener` / `VillagerSystem` / `VillagerPreviewManager` / `SetupWizard`）。后者在 `loadBareHost()` 默认名 `HilltopVillageTestHost` 下会得到 `hilltopvillagetesthost:*`，与线上的 `hilltopvillage:*` **不是同一个键**。逐个复核结论：真正受影响（用默认 `loadBareHost()` 且断言宿主派生键）的只有 **1 个类 2 处**（`ShopManagerTest:161` / `:198` 用 `new NamespacedKey(host, ...)` **跟随宿主名**因此自洽）；`NpcManagerTest` 全类已显式命名 `HilltopVillage` 并加断言钉住（`:134`），`ShopListenerEntityTest` 同（`:344` / `:489` 直接写字面量键），这两个类**不受影响**。`ShopOverflowPaidDropTest` 的 6 条**亦不受影响**：`PAID_DROP_KEY` 是硬编码字面量，与宿主无关。故 round3 的守卫**建立在线上真实存在的键上**，不需 fix
+- **测试量 733 → 802（round4 共 69 条：组 A 0 + 组 B 53 + 组 C 7 + 组 D 9）**：组 B 为 `NpcManagerTest` 37 条 + `ShopListenerEntityTest` 16 条；组 C 为 `ArenaGuardMultiPlayerTest` 3 条 + `ArenaStatusLoadingObservabilityTest` 4 条；组 D 为 `ShopOverflowPartialFitTest` 6 条（购买侧 2 / 退款侧 2 / 对照 1 / 夹具自检 1）+ `WaveDeleteEndToEndTest` 3 条；组 A 只交付 `build.cmd` / CI workflow / GUIDE，无 Java 测试。全量三份独立证据一致 `Tests run: 802, Failures: 0, Errors: 0, Skipped: 1`（组 D 变异前、组 D 全部还原后终跑、主Agent 后台复核）
+- **仍无守护的残余项（如实记录，不声称已覆盖）**：`slice-08-logic-006`（分页钳制）与 `WaveDetailMenu` 怪物行同型 `else` 两项**已由组 F 关闭**，不再列为缺口；仍成立的是 `slice-08-logic-009` 的「4 处 vs 6 处」历史口径不一致（以源码 grep 的 **6 处**为准）与 `slice-12-dc-004` 只观测「全满 → 全溢出」、未观测「部分可容纳」的切分形态；组 F 新产生的残余 5 条：① R-9 只覆盖 `wave 1` 第一个怪种行（slot 27），所有行共享同一循环与 lambda，将来若有行手写 lambda 绕过则抓不到；② R-9 未单独测 SHIFT_LEFT / SHIFT_RIGHT 的聊天输入与属性页路径；③ R-11 删波次是直接改 `GameConfig` map 模拟，生产路径为 `ConfigManager.removeWave` + `reopen()`，测试钉住渲染入口契约但不覆盖 `removeWave` 的磁盘记账；④ `WaveSettingsMenu.java:91` 的非 SHIFT 兜底会用 MIDDLE / DROP 打开详情菜单，不写配置、按派发要求未动，是否算 UX 问题需作者裁决；⑤ 其它文件仍有任意 ClickType 都执行动作的 `ct -> ...` 形状（`MonsterSettingsMenu.java:146/177/296`、`WaveSettingsMenu.java:390/613`），属既有设计意图且超出本轮单文件约束，未修改
+
+### Docs（2026-11-04 — 三轮审计与测试报告归档）
+
+- **`docs/reports/round1/`（88 份）**：侦察切片表、30 个审计单元产物、4 通道锐评、39 份修复报告、11 份独立验收报告与 `round1-ledger.md`；`round1-final-report.md` 只做排序 / 索引 / 统计，不改子 Agent 措辞与裁决
+- **`docs/reports/round2/`（18 份 + `_mutation-backups/`）**：测试基础设施报告、9 份分层测试报告、独立质量审核、失败定因、最终验证与 `round2-ledger.md`；`round2-final-report.md` 逐类列出 51 个测试类的用例数与其守护的修复 ID
+- **`docs/reports/round3/`（组 D 时点 5 份；组 E / F 追加 `round3-04-tests-monsterprop.md`、`round3-05-r9-r11.md` 后共 7 份，另含 `_logs/`、`_mutation-backups/`）**：三组测试报告 + `round3-ledger.md` + `round3-final-report.md`（含逐条守护矩阵、残余风险 R-1~R-13、假绿风险专章）+ 组 E 补测报告 + 组 F 的 `round3-05-r9-r11.md`（R-9 生产修复与 R-11 分页钳制补测，最终报告已追加 §9 组 F 追记、ledger 已追加 §8）；`_logs/` 留存组 D 三份全量日志与三套 surefire XML 快照（各 154 份），并留存组 F 全量日志 `r9-r11-full.log`
+- **产物边界**：round1 / round2 的最终报告只做排序、索引与统计，不改子 Agent 的措辞与裁决；round3 的最终报告在装配之外另做守护矩阵的**独立核验**（逐条打开测试源码找判别性断言，不采信组的自我声明）。凡「组自报」的变异结论一律标注来源；判别力不足的证据（如 round3 run 2 不 clean、`Nothing to compile`，本质只是重跑同一批字节码）在报告内显式写明而非当作独立结论
+
+### Fixed（round5 P1 — waves 波次载入重建（F2 + 症状 2））
+
+- **【P1】F2 compositions 丢失修复**：`loadFromFile()` 的 `waves` 段改为「波次的所有字段都从磁盘重建」，不再「就地覆盖内存里已有的 `MobComposition`」——旧实现对内存里不存在的怪种走 `comp == null → continue`，于是经 GUI 给第 1 波新增 `flying-dropper` 后 reload 会静默丢回两个怪种（Add Monster 在出厂配置下的唯一起步用法，开箱即坏）
+- **【P1】症状 2 磁盘新波次被丢弃修复**：`wc == null` 分支不再依赖 carry-over（拿不到就 `continue`），改为按磁盘内容新建 `WaveConfig`——管理员手写或 GUI 新建的波次（如 `waves."7"`）现在真的会在 reload 后生效，而不是无声消失
+- **新增 `isSpawnableMobKey` 判据**（`ConfigManager`）：合法怪种 = monsters 段的键（小写归一）∪ 可生成的 `EntityType`（复用既有 `parseSpawnableEntityType`，含 `Mob` 子类守卫）。此前判据只认「内存里已有该怪种」，既丢内容又打一条说反话的 warning；现在 `waves.3.compositions.zombie` 这类**运行时本来就支持**的写法会被接受，`arrow` / `item` 等非 Mob 类型仍被拒
+- **新增 `readWaveInt` 类型判别**：`total-mobs` / `count` / `weight` 一律走 `contains` + `instanceof Number`，禁止裸 `getInt`——后者对缺键与字符串 `"9"` 都静默返回 0，会让该波空转（`total-mobs: 0`）或整波落进原版僵尸兜底（`weight` 全 0）
+- **值层默认值**：`total-mobs` 缺键回落 `waves.default` 的上限；`count` 缺键默认 `0`；`weight` 缺键默认 **`1`**（不是 0，否则 `WaveManager` 的 `totalWeight <= 0` 会把整波换成 `spawnDefaultWave` 的原版僵尸）；负数钳 0
+- **W2 静默面封堵（新增 warning）**：只写 `total-mobs`、没有 `compositions`（或全部条目被丢弃）的波次会打一条汇总 warning 点名该波——改造前它会变成一个「波次出现了但刷 5+2×波数只原版僵尸」的波次且控制台零输出
+- **warning 文案诚实化**：`waves.*.compositions` 的未知键文案改为「既不是 monsters 段键、也不是可生成的原版实体类型」，不再断言「合法键就是 monsters 段那些键」
+- **测试**：新增 `WavesKeySetAlignmentTest`（6 条）——出厂模板五层断言（键集 / 逐怪 count·weight / 两合计 / `total-mobs`）、手写波次按磁盘建、加怪种往返、原版实体键接受与非 Mob 键拒绝、`weight` 缺键默认 1、W2 warning 存活证明
+- **本阶段范围**：只修 F2 与症状 2。症状 1（删除波次后 reload 复活）留给后续阶段；`wavesBeforeReload` 本阶段保留（现为死变量），保存侧差量删除与 `waves.default.compositions` 对齐同样未在本阶段实施
+
+### Fixed（round5 P2 — waves 键集对齐（症状 1）+ F3 default 配比对齐）
+
+> 归因说明：本节 P2 只负责「键集归磁盘」（`getWaves().clear()` + 按磁盘重建 + 删 `wavesBeforeReload` 死变量）与 F3（`waves.default.compositions` 对齐）。下面列的第一条**行为变更**（未保存的删除被 reload 撤销）的**主体在 P1 就已经发生**——P1 把数字波次改成「无条件按磁盘新建」之后，自建波次那一支的删除复活就已成立；P2 只是让出厂波次 1/5/10 也跟上同一语义，并把键集补齐。
+
+- **【P2】症状 1 键集对齐**：`loadFromFile()` 的 `waves` 段在按磁盘重建前先 `getWaves().clear()`，于是内存波次表严格等于磁盘上的数字键集——磁盘删掉的波次（含构造器预置的 1/5/10）在 reload 后不再复活，也不再被下一次 `saveToFile()` 原样写回磁盘。清空只落在 `if (waveSection != null)` 之内：文件不可用（只读降级）与整段 `waves` 缺失两条路径仍保留内存值 / 出厂三波
+- **重建形状改为「先建后换」**：数字波次先在局部 map 里全部解析完，再用一次 `clear()` + `putAll()` 换入活 Map——解析期抛异常时内存保持进场时的状态，不会留下半张波次表（半张表 + 快照未推进会让保存按钮亮着，一按就把半张表固化进磁盘）
+- **删除 `wavesBeforeReload` 死变量**：P1 之后它已无读者，连同解释 carry-over 的 7 行注释一并删除；`activeConfig = new GameConfig()` 与 F-002 的「用磁盘重建内存」注释保留
+- **新增 G4 告警**：`waves` 段存在但没有任何数字键（只剩 `default`，或 `waves: {}`）时打一条 warning 说明「所有波次将回落 `waves.default` 配比」——`clear()` 让这条路径第一次可达，此前它零输出
+- **【F3】`waves.default.compositions` 键集对齐**：模板波次（`defaultWave`，`victory-waves: 20` 而模板只定义 1/5/10 ⇒ 16/20 波实际使用它）的配比改为严格按磁盘段重建——磁盘新增的怪种现在真的生效（此前被判「未知」丢键，还打一条说反话的拼写错误 warning），磁盘删掉的怪种不再被构造器预置复活
+- **F3 三条守卫**：① `waves.default.compositions` 子段不存在（含裸头 / 列表 / 标量）时**不清空**，保留出厂 3 条配比；② 子段存在但解析后为空（`compositions: {}` 或全部键不可用）时**同样不清空**，并告警指向正道 `waves.default.total-mobs: 0`；③ `defaultWave` 为 null 时在 `loadFromFile()` 最前面归一化（`snapshot()` 对它无 null 保护，降级载入路径会直接 NPE）
+- **F3 修 `waves.default.total-mobs` 的裸 `getInt`**：`total-mobs: '12'`（带引号）此前静默读成 0、`-3` 读成 -3，两者都会让所有缺 `total-mobs` 的数字波次拿到非法上限（整局零刷怪且零日志）；现走与数字波次同一个 `readWaveInt`（非数值回落当前值 + 告警，负数钳 0 + 告警）
+- **测试**：新增 `DefaultWaveAlignmentTest`（8 条 / T1 ~ T7 + G4）——删除不复活、新增生效且不误报拼写错误、段缺失保留出厂配比（守卫 A）、显式空保留 + 告警（守卫 B）、`total-mobs` 字符串/负数不静默变 0、单条坏键不连坐、null `defaultWave` 降级载入不 NPE（守卫 C）、空波次表 G4 告警；`ConfigManagerTest` 的 carry-over 用例改名并更正描述（断言未变）
+
+### Fixed（round5 N1 + N2 — 配置 GUI 保存回执与波次墓碑寿命）
+
+- **【N1】配置 GUI 的「保存并应用配置」不再谎报成功**：`MainConfigMenu` 的保存按钮此前直接丢弃 `ConfigManager#saveToFile()` 的返回值，随后无条件播「所有配置已保存」+ 生效时机提示 + 成功音效。该返回值涵盖三条静默失败路径（`game-settings.yml` 闸门只读、settings 的 IO 失败、settings 写成功但 `monsters-config.yml` 写失败），丢弃后管理员在磁盘完全没变的情况下被告知保存成功，重启后设置消失且无任何线索。现改为消费返回值：成功走原文案与原音效；失败播新增的 `config.menu.main.save-failed`（说明「改动仅在内存、重启丢失、请查控制台日志，含磁盘空间/权限/只读降级三条线索」）并改播铁砧落地音 `BLOCK_ANVIL_LAND`。与 `HilltopCommandHandler` 的 `repairitem`、`SetupWizard#autoSave` 既有纪律对齐
+- **【N2】波次删除记账（`removedWaveKeys`）的寿命收窄到「它那一次 `game-settings.yml` 写盘」**：`saveToFile()` 原先把 `removedWaveKeys.clear()` 放在「monsters 也写成功」分支（F-001 门控），于是「settings 已落盘、墓碑仍存活」的中间态能跨过一次完整保存。墓碑判据读的是**当前内存**（`!getWaves().containsKey(n)`），一旦中间发生 `loadFromFile()` / `revertAll()` 这类整份替换内存且不维护墓碑的操作，判据可能反向翻转（跳过清除 + 常规全量写回把该波次写回磁盘）。现改为 settings 写成功后立即清空；`lastSavedSnapshot` 与 `loadTimeNormalizationPending` 的 monsters 门控原样保留（F-001 要保住的「快照不推进 ⇒ 保存按钮继续亮 ⇒ 重试」只依赖快照，与墓碑无关）
+- **失败分支日志诚实化**：`monsters-config.yml` 写失败时的 warning 由「keeping the unsaved-changes state **and pending wave deletions** so the next save retries them」改为只承诺「未保存状态」会被重试——墓碑已提前兑现，原先那句承诺的是波次删除的重试，在改动后必为假
+- **测试**：新增 `MainConfigMenuSaveResultTest`（2 条，GUI 点击链双向：失败播 `save-failed` + `BLOCK_ANVIL_LAND` 且保存按钮仍可见，成功保留原文案与原音效）与 `WaveTombstoneLifetimeTest`（3 条：P2 之后 reload 不复活出厂波次的回归守卫、墓碑不得越界删掉管理员事后手写补回的波次、部分失败分支的 warning 不得再承诺波次重试）；变体验证 4 个（N1 回退为无条件成功 / 墓碑清空挪回 monsters 分支 / warning 文案回退 / 移除 P2 的 `getWaves().clear()`）全部按预期变红
+
+### Fixed（round5 F4 + F5 — 节点增益空表语义 + 自定义怪种静默忽略）
+
+- **【F4】`nodes.buff-effects` 键集归磁盘**：`loadFromFile()` 与 `mergeExternalChanges()` 的判据由「双重 `isEmpty()`」改为 `isSet()` + `isList()`——键缺失 = 出厂默认，键存在 = 磁盘权威（含显式空表）。此前 `buff-effects: []`（想关掉全部节点增益）与「全部条目都写错」两种输入都被当成「没配」，内存保留构造器预置的 `RESISTANCE:0 / REGENERATION:0`，紧接着的 `saveToFile()` 又把预置写回磁盘（删除无效 + 值静默回退两症齐发）。两份守卫必须同改：只改加载侧时「载入后手改成空表再点保存」仍会被内存旧值覆盖
+- **【F4】消费侧同改（`NodeSystem#loadConfig`）**：删除「空表时补 `RESISTANCE:1` + `REGENERATION:0`」的分支。只改配置侧会让「磁盘空表 + 游戏里仍有增益」成为更难查的分歧，且补进来的 `RESISTANCE:1` 与预置的 `:0` 还不一致，玩家拿到的等级无从解释；空表现在等于「不施加任何增益」
+- **【F4】新增两条告警**：`buff-effects` 写成标量/段（`getStringList` 会静默返回空表，若按显式清空处理，一次手滑的引号就会关掉全部增益）→ 保留内存值并告警；全部条目都被拒（每条已各有一条 warning）→ 补一条「结果为空表」的结论，否则「写错了」与「本来就想全关」在日志里不可区分
+- **【F5】`monsters-config.yml` 的自定义怪种段不再静默**：`loadMonstersConfig()` 末尾新增 `warnUnsupportedMonsterSections()`——对「磁盘上有段、内存没有对应怪物」的键打一条汇总 warning 并点名。此前这条路径**零日志**：`YamlFiles#monstersConfigValidator` 只要求「每段含任一已知子键」，照抄一段、写全 20 个字段的文件完全合法，而加载循环只遍历内存键集（构造器闭集 3 键）根本不看它——同一错误在 `game-settings.yml` 的 `monsters` 侧是会报的，两份文件口径不一致
+- **【F5】行为不变**：自定义怪种仍**不生效**（每个怪种需要代码里绑定的专用 AI，`WaveManager#spawnCustomMob` 的 `switch` 是闭集），本修复只补可观测性。warning 同时给出正道：要刷原版怪就在 `waves.<n>.compositions` 用 `EntityType` 名（运行时本来就支持）；判据对大小写不敏感、且只认「顶层是段」（与 validator 同口径，顶层标量与大写内置键都不报警）
+- **测试**：新增 `NodeBuffEffectsKeyAuthorityTest`（7 条：显式空表清空内存 / 经保存后磁盘仍空且键保留 / 全部非法清空 + 结论告警 / 形态错保留内存 + 告警 / 外部修改合并尊重空表 / 反向对照「键缺失保留出厂预置」与「部分非法只留有效条目」）、`NodeBuffEffectsConsumerTest`（3 条：空表不施加任何增益 / 反向对照非空照常施加且 amplifier 取配置值 / 出厂配置仍给两条）、`MonstersConfigUnsupportedSectionWarningTest`（6 条：新段产生点名 warning / 行为不变 / 反向对照「出厂模板安静」与「大写内置键不报」/ 与 dc-002 告警互不吞没 / 顶层标量不报）
+- **变异验证 5 次**（含 1 次反向）：撤销加载侧修复 → 红 4 条；只撤销合并侧 → 红 1 条（两份守卫各自独立承重）；撤销消费侧补默认值 → 红 1 条且两条反向对照仍绿；删掉 F5 告警调用 → 红 2 条正向、反向对照仍绿；把加载侧改成「无条件清空」（过度收紧）→ 反向对照红 2 条
+
+### Fixed（round5 F6 — 外部修改白名单补 `spawning.spawn-radius-spread`）
+
+- **【F6】`mergeExternalChanges` 白名单补 `spawning.spawn-radius-spread`**：该键「写有」（`saveToFile`）、「读有」（`loadFromFile`，缺键保留代码默认 3.0）、「有运行期消费者」（`WaveManager` 在 `spawn-radius-max` 未配置时用它做生成点随机扩散），但全库没有任何 GUI/命令编辑入口（`GameRulesMenu` 只暴露 min/max 与两个 cap）——却漏在外部修改合并白名单外。症状：载入配置后手改该键，再回 GUI 点保存，合并阶段跳过它，紧接着的全量回写用内存旧值把磁盘覆盖回去，手改静默消失且日志不区分是哪几个键被吞
+- **补法沿用同段既有模式**：`hasNumber(disk, ...)` + 基线守卫（只有「内存值仍等于上次落盘快照」时才让磁盘值胜出），与相邻的 `spawning.spawn-y-offset` / `spawning.airdrop-max-per-dropper` 完全同款；键缺失或类型损坏仍是跳过并保留内存值
+- **全量差集核对（写集合 72 项 vs 白名单 24 键 + 4 个 monsters 模式键 = 差集 48 项）**：除本键外，其余 47 项的判定为——**40 项有 GUI/命令入口**（`fireball.*` 全部数值与材质、`hammer.material`/`itemsadder-id`/`custom-model-data`/tier 三档 9 键/`aftershock-ticks`/`smash-timeout-ticks`/`cooldown-seconds`/`max-uses`、`min/max-players`、`victory-waves`、`wave-interval-seconds`、`nodes.base-health`/`buff-radius`/`self-destruct-multiplier`/`repair-amount-per-cost`/`repair-cost-item`、`spawning.spawn-radius-min`/`max`/`global-mob-cap`/`mob-cap-per-player`、`waves.*` 共 3 项）刻意排除，游戏内为权威；**7 项是死键**（`world-name`、`core.x/y/z`、`hammer.base-damage`、`hammer.effect-radius`、`hammer.visual-display-ticks`）——写有、读有、**零消费者**，真正的世界/核心来源是 `arenas.yml` 的 per-arena 定义，三个 hammer 键的模板注释自认「已废弃，不再读取」。死键不满足不变式的「有运行期消费者」合取条件，**不进白名单**（加进去只会强化「改它能生效」的错误暗示，与 F7 删 `nodeBlockTypes` 同源判据），属独立清理项而非本缺陷
+- **F10 评估与落地**：两份手工镜像的「已知顶层键」清单（`ConfigManager.KNOWN_TOP_LEVEL_KEYS` 与 `YamlFiles.GAME_SETTINGS_KNOWN_TOP_LEVEL_KEYS`）可以反射比对——两字段虽为 `private static final`，测试与生产同在 unnamed module、classpath 运行，`getDeclaredField + setAccessible` 不受模块层限制（本仓库已有读取私有字段的先例）。已加哨兵用例，任一侧增删顶层键而另一侧未同步即红
+- **测试**：新增 `SpawnSpreadMergeWhitelistTest`（5 条）——① 判别性：载入后手改 spread → 保存后内存与磁盘都必须是磁盘值（修前红在内存 3.0）；② 反向对照：有 GUI 入口的 `spawn-radius-min` 手改必须被内存压回（挡「把整段都合并」的过度修复）；③ 基线守卫：本会话内改过的值必须胜过磁盘；④ 对照：磁盘缺该键时合并跳过、保留代码默认而非读成 0；⑤ F10 清单反射比对
+- **变异验证 3 次**：移除刚加的白名单条目 → 红 1 条（判别性用例，内存仍 3.0）；去掉基线守卫改成「磁盘无条件胜出」 → 红 1 条（会话内改动被吞）；在 `YamlFiles` 镜像里删掉 `waves` 一项 → 红 1 条（F10 哨兵）；三次均以 `cp` + `md5sum -c` 还原并校验一致
+
+### Fixed（round5-37 — 只读写测试的守卫方向修正）
+
+- **【缺陷】`YamlFilesTest#writeToReadOnlyFileThrows` 的 `Assumptions.assumeFalse(isWindows(), ...)` 方向装反**：它跳过的 Windows 恰恰是唯一会抛 `IOException` 的平台，而它真跑的 Linux 上 `YamlFiles.write` 会静默成功 —— `assertThrows` 必红。已在真实 Linux JVM（非 root）复现：`setWritable(false)` 后 `tmp + ATOMIC_MOVE` 覆盖**成功**（`threw=false`），目标内容被改掉；只有直接 open-for-write 会被拒。因此该用例从未处于「跑且通过」的状态：Windows 一直被 skip，Linux 上必然失败，也是首次 CI 唯一预期会红的用例
+- **根因是平台语义而非写错一行判断**：`write()` 走「同目录 tmp + `ATOMIC_MOVE`」，而 POSIX 的 `rename(2)` 只校验**目录**写权限、完全不看被覆盖文件的权限位；Windows 的 `MoveFileEx` 则在目标带 `FILE_ATTRIBUTE_READONLY` 时返回 `ERROR_ACCESS_DENIED`。两套语义相反，任何单一平台守卫都必然在另一半平台上错，所以不能靠「一条用例 + 一条假设」覆盖
+- **改法：按平台各测各的真实失败形态，两条互斥执行**——① 新增 `writeIntoUnwritableDirectoryThrows`（POSIX，`assumeTrue(isPosix())`）：父目录收到 `r-x`（0555）后同目录 tmp 建不出来 → 必然抛 `IOException`，不经 rename 语义、POSIX 上恒成立；② `writeToReadOnlyFileThrows` 改为 `assumeTrue(isWindows())`：目标只读 → `ATOMIC_MOVE` 被拒 → 抛 `IOException`。两条都补了「目标文件内容必须保持原样」与「失败后不留 .tmp」两条现场断言，覆盖原子写的核心承诺
+- **平台判定改用能力探测而非内核名**：`isPosix()` 走 `FileStore.supportsFileAttributeView(PosixFileAttributeView.class)`，而不是 `os.name` —— 决定 `setPosixFilePermissions` 能否用的是**路径所在文件系统**，不是内核名字（Windows 盘挂载、网络/FUSE 挂载都无权限位）
+- **无法构造真实失败时显式跳过而非假失败**：两条用例在设完权限后都补了前置校验（`assumeFalse(Files.isWritable(dir))` / `assumeFalse(file.canWrite())`）。root 用户、ACL 挂载、FAT 类文件系统会无视权限位，那种环境里断言 `IOException` 只会得到与被测代码无关的假红，因此如实跳过并在 skip 原因里写明
+- **本地验证（不是"看代码像对的"）**：① Windows 真跑 → `24 tests / 0 failures / 1 skipped`，skip 的是 POSIX 那条；② 改造后的源码在 WSL Debian 的 ext4 上、以非 root 用户 `tester` 编译并运行 → POSIX 用例通过，skip 的反而是 Windows 那条（与旧行为完全互补）；③ 同一 Linux 环境下把旧写法与新写法并排跑 → **旧红新绿**，证明改造确实翻转了结果；④ 变异验证：把 `write()` 的 `finally` 改成 `catch (IOException)` 吞掉写失败 → Windows 侧红 2 条、Linux 侧红 2 条（含本用例），说明新用例不是永远绿的空转测试；变异后以备份 + `md5sum` 校验还原（`11725d7c…`）
+- **生产代码零改动**：`src/main/` 一字未改，仅测试与探针脚本；全量 `846 / 0 failures / 0 errors / 1 skipped`，skip 叶子由「Windows 上被跳的只读用例」换成「Windows 上被跳的 POSIX 目录用例」，总数恒为 1
+
+### Changed（round5 F7 — 删除 `nodeBlockTypes` 死字段）
+
+- **【F7】删除 `GameConfig.nodeBlockTypes`（含 `getNodeBlockTypes` / `setNodeBlockTypes` / `snapshot()` 拷贝 / `equals` 比较 / `hashCode` 分量）**：该字段预置了 4 种材质（`BEACON` / `ENCHANTING_TABLE` / `ENDER_CHEST` / `RESPAWN_ANCHOR`），但 `NodeSystem#loadConfig` 自 1.0.9 起硬编码 `nodeBlockTypes.clear(); add(RESPAWN_ANCHOR)`，全库零消费者、YAML 无此键、GUI 只有一行「固定为重生锚」的说明性展示、`saveToFile` 也从不写它 —— 是一个「永不生效的假配置」，未来若有人接上消费者会立刻拿到 4 种错误材质
+- **保留原位注释而不是静默消失**：字段位置留下说明（节点方块固定为 `RESPAWN_ANCHOR`；要支持多材质必须先实现 `NodeSystem` 的消费者再重新引入），避免下一位维护者把删字段误读成「漏实现」
+- **`NodeSystem` 侧零改动**：`nodeBlockTypes` 字段 / `loadConfig` 的 `clear()+add()` / `isNodeBlock` 全部保持原样（那是真正在用的实现，与 `GameConfig` 的同名字段无关）
+- **测试替换而非删除**：`GameConfigTest#snapshotIsolatesNodeBlockTypes`（原本只测「snapshot 拷贝了新 ArrayList」）换成 `nodeBlockTypesIsNotReintroducedAsFakeConfig`——反射断言该字段与两个访问器都不得重新出现，把「这是有意删除」这个决定钉在测试里，而不是让一条永远为真的断言留在那里
+- **无行为变更**：节点方块识别链路（`NodeSystem.isNodeBlock` → `RESPAWN_ANCHOR`）一字未改，玩家可见行为与配置往返均无差异
+
+### Docs（round5 — `waves` 段文档补全与 README 同步）
+
+- **`docs/guides/config-reference.md` / `docs/guides/en/config-reference.md` 新增「`waves` 段」一节**：此前这两份逐项解释**完全没有 `waves` 的文档**（只有 `arenas.yml` 的 `victory-waves`），而 `waves` 是决定每波刷什么、刷多少的核心段。新节说明 `count`（每人只数）/ `total-mobs`（每人精确总数上限，三层裁剪取最小）/ `weight`（仅全波 `count` 全 0 时回退权重路径）三个字段，并写明 `total-mobs: 0` 是「跳过某一波」的唯一受支持写法
+- **README / README-EN 各加一节「波次配置」/「Wave configuration」**：摘要 `waves` 三字段语义，并同步 1.1.0 的三条行为变更——① `total-mobs: 0` 停用波次；② 删除波次后必须点 [保存并应用配置]，否则 reload 会按磁盘内容复活；③ 手写的新波次编号在 reload / 重启后**真的生效**（旧版本静默丢弃）
+- **不涉及版本号变更**；纯文档，无需服主做任何操作
+
 ### ⚠️ 升级提示（升级到本版必读）
 
+- **【行为变更】reload 以磁盘为权威**：GUI 里删过但**未保存**的波次，会在 `/hilltop reloadconfig`（或 GUI 的「加载配置文件」按钮）后按磁盘内容**重新出现**；要真正删掉波次，请删除后点「保存并应用配置」。同理，`waves.default.compositions` 的增删也只在保存后落盘
+- **【行为变更】删掉整段 `waves` / `waves.default` 不等于「不刷怪」**：段缺失按「恢复出厂」处理（重建出 1/5/10 与出厂 default 配比），下一次保存会把它们写回磁盘。真要停掉未配置波次，请写 `waves.default.total-mobs: 0`
+- **【修复】手写进 `game-settings.yml` 的新波次编号现在真的会生效**：旧版本里非 1/5/10 的波次（含经 GUI「新建波次」建的）在 reload / 重启后会被静默丢弃；本版起按磁盘内容重建，`waves: {"7": ...}` 这类写法 reload 后立即生效。`waves.<n>.compositions` 里用原版 `EntityType` 名（如 `zombie`）也已被接受
+- **【行为变更】`nodes.buff-effects: []` 现在真的是「关闭全部节点增益」**：旧版本里显式空表被当成「没配」，节点仍给出厂的 `RESISTANCE` / `REGENERATION`；现在空表即无增益。键被整段删掉（不是写成 `[]`）时语义不变，仍是「回出厂默认」
+- **【提示非变更】`monsters-config.yml` 里自建的怪物段现在会报警**：每个怪种都需要代码里绑定的专用 AI，所以新增段不会生效（本版只补告警，行为不变）；新告警会点名那些段，并提示「要刷原版怪请在 `waves.<n>.compositions` 用 `EntityType` 名」
 - **删除命令编号 1 基化（行为变更）**：`/hilltop deploy delspawn|delmobspawn|delvillager <编号>` 的编号从 1 开始（与列表显示一致）——旧习惯的 `delspawn 0` 将报「编号不存在」，请按列表显示编号操作
 - **`/hilltop help` 开放给所有玩家**（内容按权限分档显示）；此前仅管理员可用
 - **`/hilltop stop` 语义修复**：强停不再播「对局失败」假战报、不记负场（修复前双人局强停会把部分玩家错误记负）

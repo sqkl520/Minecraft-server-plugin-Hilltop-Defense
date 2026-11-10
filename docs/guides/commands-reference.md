@@ -11,8 +11,10 @@
 |------|------|--------|
 | `/hilltop join [竞技场]` | 加入竞技场（不填则自动匹配可用竞技场） | ❌ |
 | `/hilltop leave` | 退出当前竞技场 | ❌ |
-| `/hilltop lobby` | 返回大厅（子命令 `setspawn`：站在大厅世界内执行，把当前位置设为大厅出生点并立即生效，管理员） | ❌ |
+| `/hilltop lobby` | 返回大厅（任意世界可用；已站在大厅出生点附近时不重复传送；大厅未配置时落到主世界出生点并提示。子命令 `setspawn`：站在大厅世界内把当前位置设为大厅出生点并立即生效，管理员；`lobby.world` 不可用时可在任意世界执行，此时会同时写入 `lobby.world`） | ❌ |
 | `/hilltop gui` | 打开竞技场选择菜单（带状态与人数） | ❌ |
+| `/hub` | `/hilltop lobby` 的快捷命令 —— 返回大厅（行为完全一致，不接受任何参数） | ❌ |
+| `/lobby [setspawn]` | `/hilltop lobby` 的快捷命令 —— 返回大厅；`/lobby setspawn` 把当前位置设为大厅出生点（规则与 `/hilltop lobby setspawn` 相同，管理员） | ❌ |
 | `/hilltop status [竞技场]` | 查看游戏状态（竞技场/波次/场内玩家/怪物/节点/等待复活） | ✅ |
 | `/hilltop stats [玩家名]` | 查看自己或他人的统计 | ✅（带玩家名时） |
 | `/hilltop top <类型>` | 查看排行榜（kills/wins/games/best-wave/nodes/deaths/crystals） | ✅ |
@@ -44,6 +46,7 @@
 |------|------|
 | `confirmclear` | 确认清除所有生成点（`clearspawns` 的二次确认） |
 | `setcore` | 将当前位置设为游戏核心 |
+| `setwaiting` | 将当前位置设为等待区（玩家 `/hilltop join` 后、开局前的集合点；**可选**，不设则用核心；对局中拒绝） |
 | `addspawn` | 添加当前位置为玩家出生点 |
 | `listspawns` | 列出所有已设置的玩家出生点 |
 | `delspawn <id>` | 删除指定编号的玩家出生点 |
@@ -67,6 +70,7 @@
 
 ```
 /hilltop deploy setcore        # 站在核心位置执行
+/hilltop deploy setwaiting     # 站在等待区位置执行（可选；不设则用核心）
 /hilltop deploy addspawn       # 站在玩家出生点位置执行（可多次）
 /hilltop deploy listspawns     # 查看已设玩家出生点
 /hilltop deploy addmobspawn    # 站在怪物刷怪点位置执行（可多次）

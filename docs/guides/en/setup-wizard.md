@@ -27,13 +27,50 @@ Go to the **arena world** (see Phase 2.5 in `deploy-stages-1-2.md`) and run:
 | Step | Content | Action |
 |------|---------|--------|
 | 1/8 Confirm world | Shows your current world name | Click [Confirm] |
-| 2/8 Set core | Stand at the village core location (the player respawn point) | Click [Set as Core] |
+| 2/8 Set core | Stand at the village core location (the player respawn point) | Click [Set as Core] (advances to step 3); the waiting area is optional, see "Waiting area in step 2" below |
 | 3/8 Spawn points | Player spawns + mob spawn points (two independent sets, **at least 1 each**) | Walk to each spot, click [Add Current Location] (player) / [Add Mob Spawn] (mobs) in chat; click [Open Spawn Points Overview] to enter the hub (counts/status at a glance, two sub-manager GUIs for review/delete); click the single [Done] in the overview (both sets must be deployed to leave this step) |
 | 4/8 Node registration | Registering energy nodes (respawn anchors) (**at least 1 required**) | **Place the respawn anchor blocks first**, stand next to one and click [Add Node] (a hint appears if the block cannot be registered); click [Continue] to move on |
 | 5/8 Villagers | Positions of villagers to protect (**all dead = game lost**, **at least 1 required**) | Walk to a spot and click [Add Villager] — an invulnerable preview villager appears on the spot (numbered overhead, visible during this step only, removed when you leave it); click [Open Villager Manager] to review/delete ([Show Particles] inside previews all villagers in yellow); click [Done] when finished |
 | 6/8 Shop location | Where the villager shop NPC stands (**required — deployment cannot finish without it**) | Stand where you want it and click [Set Shop Location]; [Show Particles] previews it in gold; [Clear Shop Location] wipes it to start over, [Continue] moves on |
 | 7/8 Config preview | Overview of core/player-spawns/mob-spawns/nodes/villagers/players/waves | Click [Confirm & Save] in the GUI |
 | 8/8 Done | Shows the start entry plus an enable hint (auto-queue outcome; an [Enable Arena] button is attached when not auto-enabled) | Click /hilltop start in chat |
+
+### Waiting area in step 2 (optional, no extra step)
+
+Step 2 sends two buttons in chat: `[Set as Core]` and `[Set as Waiting Area] (optional)`.
+
+| Button | Command | Writes | Advances? |
+|--------|---------|--------|-----------|
+| `[Set as Core]` | `/hilltop setup confirm-core` | `arenas.<id>.core` | ✅ goes to step 3 |
+| `[Set as Waiting Area]` | `/hilltop setup confirm-waiting` | `arenas.<id>.waiting-location` (`x/y/z/yaw/pitch`) | ❌ stays on step 2 |
+
+- **What the waiting area is**: where players stand after `/hilltop join` while the start countdown runs
+  (`ArenaDefinition.getWaitingLocation()`, which backs `ArenaInstance.getLobbySpawn()`). When it is not set,
+  the runtime falls back to the core, so players wait on the respawn point.
+- **The two buttons are independent and order-free**: waiting-then-core and core-then-waiting are both just
+  two separate writes. After `[Set as Waiting Area]` the button row is re-sent so you can still click
+  `[Set as Core]`.
+- **Optional, never blocking**: at step 8 a `setup.done-no-waiting` reminder is appended when the waiting area
+  is unset or identical to the core (click it to run `/hilltop setup goto 2`). Deployment still completes.
+- **Equivalent entry point**: `/hilltop deploy setwaiting` from anywhere (refused while a match is running).
+- **"Restore initial state" does not clear it**: `waiting-location` is deliberately absent from
+  `ArenaManager.DEPLOYMENT_KEYS`, on the same level as `world` / `enabled` — resetting an arena keeps it
+  (if you delete it yourself, the runtime falls back to the new core).
+
+### Step 8 also reminds you about the lobby spawn
+
+The 8-step wizard **only writes arena data** — the `lobby` section of `arenas.yml` is never touched. So after
+`setup.done-next`, the Step 8 banner appends a `setup.done-lobby` reminder when the current configuration matches:
+
+| Trigger | Note |
+|---------|------|
+| `lobby.world` is empty | The lobby silently falls back to the main world |
+| The world named in `lobby.world` does not exist / is not loaded | Same, and that world can never be entered |
+| `lobby.spawn` is still the factory placeholder `0.5 / 100.0 / 0.5` | The factory coordinates are main-world based — players may land in mid-air |
+
+The reminder names the exact command `/hilltop lobby setspawn` (click to fill in chat) and says what happens if you skip it. **It is a reminder, not a blocker** — deployment still counts as complete and the arena is still queued. When both the lobby world and the spawn are configured, nothing extra is sent.
+
+> For the full lobby-spawn instructions (including the fallback path when `lobby.world` is unusable) see the "Lobby spawn" section in `deploy-stages-1-2.md`.
 
 > **Required items**: player spawn points, mob spawn points, villagers and the shop location — all four are mandatory. If any is missing, clicking [Confirm & Save] is rejected and the wizard jumps back to the corresponding step.
 
@@ -52,7 +89,8 @@ Available while the wizard is in progress (normally triggered via clickable chat
 | Command | Description |
 |------|------|
 | `confirm-world` | Confirm game world (Step 1) |
-| `confirm-core` | Set current location as village core (Step 2) |
+| `confirm-core` | Set current location as village core (Step 2; advances to Step 3) |
+| `confirm-waiting` | Set current location as the waiting area (Step 2, **optional**; stays on Step 2, does not advance) |
 | `addspawn` | Add current location as player spawn point (Step 3, feedback includes index) |
 | `overview` | Open the Spawn Points Overview GUI (Step 3 hub: counts/status of both sets + two sub-manager entries + the single [Done]) |
 | `spawngui` | Open player spawn point manager GUI (Step 3, direct; [Back to Overview] returns to the hub) |
