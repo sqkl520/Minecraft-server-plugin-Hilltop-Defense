@@ -1,0 +1,4177 @@
+# ============================================================
+#  messages-legacy.yml —— 历史出厂文案哈希基线
+#
+#  由 .work/fix-critical/gen-messages-legacy.mjs 从 git tag 全量生成，请勿手改。
+#  每个键列出该键在历史版本里出现过的全部出厂值哈希（SHA-256 前 16 位）。
+#  用途：老服务器第一次升级时还没有 _meta 基线，插件靠这份表认出
+#        「磁盘上这行旧文案确实是我们发过的」，从而安全地把它更新成新文案。
+#  键不存在于此表 ⇒ 一律视为服主自定义，永不覆盖。
+# ============================================================
+
+en.already-in-arena:
+  - "7fec1d4dd5f0c60b"
+en.arena-already-disabled:
+  - "a4c9713ac2905ea4"
+en.arena-auto-left:
+  - "81e3172e7f71b91e"
+en.arena-detail-players:
+  - "488d9d0d3f10dc05"
+en.arena-detail-status:
+  - "0450b4ac67b8a895"
+en.arena-detail-status-unknown:
+  - "fc0764a5d4370bec"
+en.arena-detail-title:
+  - "321767df26c96699"
+en.arena-detail-wave:
+  - "5082a7bc5b944845"
+en.arena-detail-world:
+  - "67c2a0292bf8c51c"
+en.arena-detail-world-unloaded:
+  - "dbfd3a239cad5c03"
+en.arena-disable-in-progress:
+  - "c24b1f06a674e55a"
+en.arena-disabled:
+  - "d37419ad0144df92"
+en.arena-disabled-ok:
+  - "fcb74555484b50ec"
+en.arena-enable-already-queued:
+  - "15ce4fe61237db0c"
+en.arena-enable-already-ready:
+  - "c0ae8cc1249be69b"
+en.arena-enable-failed:
+  - "9116293133c14fa1"
+  - "b6a9da1e0d755ac3"
+en.arena-enable-queued:
+  - "929d601ade4b65a2"
+en.arena-full:
+  - "9f64956dbacb4288"
+en.arena-issue-disabled:
+  - "ced66c0ad8e987a7"
+en.arena-issue-flag-disabled:
+  - "603b5b255e31fc12"
+  - "647c53d5fe4ef8fc"
+en.arena-issue-undeployed:
+  - "cd7ec6a3e925d248"
+en.arena-issue-world:
+  - "8640c80f5b98fd10"
+en.arena-left:
+  - "b29e1839c238221d"
+en.arena-list-entry:
+  - "d7731b8dceece69e"
+en.arena-list-footer:
+  - "b0647c0595072038"
+en.arena-list-header:
+  - "d842ba391c1efd50"
+en.arena-list-help-admin:
+  - "c5291d001601d5b8"
+en.arena-list-help-title:
+  - "92f9a679b312ea64"
+en.arena-map-missing:
+  - "90b32b7726f75675"
+en.arena-no-mob-spawns:
+  - "293baf7819637b77"
+en.arena-no-spawn-points:
+  - "e89a33a8929156d4"
+en.arena-not-deployed:
+  - "f9a0a9ecc1feef24"
+  - "fe703ac094d8bcae"
+en.arena-not-deployed-hint:
+  - "1749eb4d7f03b556"
+  - "60e89eb5558533eb"
+  - "ed1ca5bdec720b03"
+en.arena-not-found:
+  - "f40f088202cd6dcd"
+en.arena-started:
+  - "4abbb20d9e233914"
+en.arena-status-disabled:
+  - "d46f97e94bb1e189"
+en.arena-status-ending:
+  - "897eee788ad6c41d"
+en.arena-status-header:
+  - "7134e7eb12059214"
+en.arena-status-loading:
+  - "596c9ba6a84c2da4"
+en.arena-status-map-missing:
+  - "e063e35ecdeb31b2"
+en.arena-status-queued:
+  - "bd4ad334e65cc938"
+en.arena-status-running:
+  - "dede383b756512cf"
+en.arena-status-starting:
+  - "d3fb0be921e90aa3"
+en.arena-status-statistics:
+  - "c592ec447474139c"
+en.arena-status-undeployed:
+  - "e5c24692f1297970"
+en.arena-status-waiting:
+  - "7a9ca5bcf67fb231"
+en.arena.access-denied:
+  - "7103b08feed1ad04"
+en.btn.return-lobby:
+  - "c57b1bd31c58658a"
+en.build-mode-off:
+  - "4fbce00aae9092f3"
+en.build-mode-on:
+  - "8a3975eecf240bd3"
+en.config-reloaded:
+  - "3820704a9b551136"
+en.config.invalid-material:
+  - "55cb20952161878e"
+en.config.invalid-material-not-item:
+  - "862aae6e738147e5"
+en.config.menu.common.back:
+  - "7fb7b00451148bd5"
+en.config.menu.common.back-lore:
+  - "116dbaab9ed93e1b"
+en.config.menu.common.click-cycle:
+  - "26129fac1078f3d9"
+en.config.menu.common.click-edit:
+  - "dd97901a8cda9789"
+en.config.menu.common.click-toggle-custom:
+  - "c4e206d954966c0f"
+en.config.menu.common.current:
+  - "35a969b7aad26858"
+en.config.menu.common.current-value:
+  - "7bc4542c2f16687f"
+en.config.menu.common.empty-hand:
+  - "c6c094bc0054f9cb"
+en.config.menu.common.leave-blank-clear:
+  - "fa584b8a14bebe94"
+en.config.menu.common.left-click:
+  - "516f6257f0e353b3"
+en.config.menu.common.none:
+  - "dc937b59892604f5"
+en.config.menu.common.right-click:
+  - "28f9ec1f0f8db9d9"
+en.config.menu.common.setting-prefix:
+  - "617ca63845923fa5"
+en.config.menu.common.shift-custom:
+  - "104e9063d11933d3"
+en.config.menu.common.shift-edit:
+  - "4536085dd3344e39"
+en.config.menu.common.unset:
+  - "8290035d4cf4b736"
+en.config.menu.input.cancel-hint:
+  - "82568a07f113c7dc"
+en.config.menu.input.cancelled:
+  - "bee678200224f979"
+en.config.menu.input.invalid-number:
+  - "a3e6ce60b8e720a9"
+en.config.menu.input.number-prompt:
+  - "db9632d3e60b9c99"
+en.config.menu.input.text-prompt:
+  - "35214e35871527ac"
+en.config.menu.input.timeout:
+  - "2c4d2f4da8984ac2"
+en.config.menu.items.editing-fireball:
+  - "46fd4c79403e5cb5"
+en.config.menu.items.editing-hammer:
+  - "b2fdd2c4f4c03bbd"
+en.config.menu.items.enter-model-id:
+  - "7e309a3db9cfd63c"
+en.config.menu.items.fireball-tab:
+  - "cc173df6702cba90"
+en.config.menu.items.fireball-tab-desc:
+  - "cff58e0da5d51be8"
+en.config.menu.items.fireball.cooldown:
+  - "9455e1490c5519c3"
+en.config.menu.items.fireball.cooldown-desc:
+  - "04a0b2217797f408"
+en.config.menu.items.fireball.damage:
+  - "bb40bed222f04d7c"
+en.config.menu.items.fireball.damage-desc:
+  - "68b678808809fa78"
+en.config.menu.items.fireball.knockback:
+  - "6fc9e3426c568def"
+en.config.menu.items.fireball.knockback-desc:
+  - "01a0877745ec18a6"
+en.config.menu.items.fireball.mat:
+  - "16f9496174e0282f"
+en.config.menu.items.fireball.mat-desc:
+  - "6d74b0b55d2f82ab"
+en.config.menu.items.fireball.mat-section:
+  - "385a40910f1947ec"
+en.config.menu.items.fireball.max-travel:
+  - "372f386e611d69e5"
+en.config.menu.items.fireball.max-travel-desc:
+  - "aac4a606f3bd4776"
+en.config.menu.items.fireball.proximity-fuse:
+  - "3ddc50e1e6379aea"
+en.config.menu.items.fireball.proximity-fuse-desc:
+  - "8a2c47f248236a72"
+en.config.menu.items.fireball.radius:
+  - "28bf6fd52dfb5b5d"
+en.config.menu.items.fireball.radius-desc:
+  - "3677ca32aaa9b73e"
+en.config.menu.items.fireball.speed:
+  - "ac03475332394031"
+en.config.menu.items.fireball.speed-desc:
+  - "058339291441a30e"
+en.config.menu.items.hammer-tab:
+  - "593cd7d956c64e03"
+en.config.menu.items.hammer-tab-desc:
+  - "896c0c53a513cf46"
+en.config.menu.items.hammer.aftershock:
+  - "2c3536a1dff86cf8"
+en.config.menu.items.hammer.aftershock-desc:
+  - "0d86bd58cb806191"
+en.config.menu.items.hammer.cooldown:
+  - "ea609aed94718893"
+en.config.menu.items.hammer.cooldown-desc:
+  - "250bbe9143b38dd0"
+en.config.menu.items.hammer.custom-model:
+  - "d5c5a684d418ed13"
+en.config.menu.items.hammer.custom-model-desc:
+  - "b6d02701f5211633"
+en.config.menu.items.hammer.high-charge:
+  - "8ef4c77a86fc798b"
+en.config.menu.items.hammer.high-charge-desc:
+  - "4a098128284eb40e"
+en.config.menu.items.hammer.high-damage:
+  - "0c874f581a4534f1"
+en.config.menu.items.hammer.high-damage-desc:
+  - "869c51aab9262fbd"
+en.config.menu.items.hammer.high-radius:
+  - "14b09e401eadf8b8"
+en.config.menu.items.hammer.high-radius-desc:
+  - "171de65db8be4290"
+en.config.menu.items.hammer.high-tier:
+  - "8b08e9c22f653918"
+en.config.menu.items.hammer.ia-model:
+  - "19cc5c7d403c0ff3"
+en.config.menu.items.hammer.low-damage:
+  - "0c874f581a4534f1"
+en.config.menu.items.hammer.low-damage-desc:
+  - "58bf0fe6f50b87b4"
+en.config.menu.items.hammer.low-radius:
+  - "14b09e401eadf8b8"
+en.config.menu.items.hammer.low-radius-desc:
+  - "0aa4ee289b1e86bb"
+en.config.menu.items.hammer.low-tier:
+  - "344f778cf16b8fc3"
+en.config.menu.items.hammer.mat:
+  - "8eb6d8f4b9786ec6"
+en.config.menu.items.hammer.mat-desc:
+  - "6d74b0b55d2f82ab"
+en.config.menu.items.hammer.max-uses:
+  - "938995c98910c144"
+en.config.menu.items.hammer.max-uses-desc:
+  - "bd25943d16c57307"
+en.config.menu.items.hammer.med-charge:
+  - "8ef4c77a86fc798b"
+en.config.menu.items.hammer.med-charge-desc:
+  - "33b52481da4cf1cb"
+en.config.menu.items.hammer.med-damage:
+  - "0c874f581a4534f1"
+en.config.menu.items.hammer.med-damage-desc:
+  - "b8145dbfa0687283"
+en.config.menu.items.hammer.med-radius:
+  - "14b09e401eadf8b8"
+en.config.menu.items.hammer.med-radius-desc:
+  - "7f8c9dc171e54f2b"
+en.config.menu.items.hammer.med-tier:
+  - "c96a8f8bb6555c3d"
+en.config.menu.items.hammer.model:
+  - "ba315356ac942674"
+en.config.menu.items.hammer.smash-timeout:
+  - "b57b6e3f187d10b2"
+en.config.menu.items.hammer.smash-timeout-desc:
+  - "a2a3bee892e3209f"
+en.config.menu.items.header:
+  - "1d58ee007d1d8687"
+en.config.menu.items.title:
+  - "76df6ad0fd408eb4"
+en.config.menu.main.header:
+  - "e7e6fa5604c91954"
+en.config.menu.main.header-lore1:
+  - "9d30efd3f83919e9"
+en.config.menu.main.header-lore3:
+  - "acc68d7d85545d9a"
+en.config.menu.main.items:
+  - "b05cdc255e644654"
+en.config.menu.main.items-lore1:
+  - "1c1b97de74930196"
+en.config.menu.main.items-lore2:
+  - "73422de85a41e92d"
+en.config.menu.main.items-lore3:
+  - "1c53ffec5fa58d60"
+en.config.menu.main.items-noperm:
+  - "d3144ce4c2ad6a47"
+en.config.menu.main.monsters:
+  - "7c25ea4ff6de7d58"
+en.config.menu.main.monsters-lore1:
+  - "8fa30f567ad78ae8"
+en.config.menu.main.monsters-lore2:
+  - "64812e6ea97bbce8"
+en.config.menu.main.monsters-lore3:
+  - "b0fb8154e670c485"
+en.config.menu.main.monsters-noperm:
+  - "2dc680513df4fe3a"
+en.config.menu.main.no-changes-msg:
+  - "1a3153ba43da3c3e"
+en.config.menu.main.nodes:
+  - "5721cda9a0836c4b"
+en.config.menu.main.nodes-lore1:
+  - "f0b7c35d99b41891"
+en.config.menu.main.nodes-lore2:
+  - "2d326c6a22cb46df"
+en.config.menu.main.nodes-lore3:
+  - "87cf54960007f256"
+en.config.menu.main.nodes-noperm:
+  - "2902685a38391763"
+en.config.menu.main.perm-separator:
+  - "3b2e8119b6fcc97d"
+en.config.menu.main.permission-admin-desc:
+  - "bf656fd5391c7913"
+en.config.menu.main.permission-info:
+  - "5878b91575b3458b"
+en.config.menu.main.reload:
+  - "dd39a10d442850c0"
+en.config.menu.main.reload-lore1:
+  - "affa824b9de50642"
+en.config.menu.main.reload-lore2:
+  - "a0d52f0307a3c918"
+en.config.menu.main.reloaded-msg:
+  - "7fda17e2b3b0a8d4"
+en.config.menu.main.revert:
+  - "b478f74bf4e52ffc"
+en.config.menu.main.revert-lore:
+  - "bd34bc833be6f76c"
+en.config.menu.main.reverted-msg:
+  - "b422bc730ceb49a9"
+en.config.menu.main.rules:
+  - "25b56619ff19217f"
+en.config.menu.main.rules-lore1:
+  - "a670461f2b5fdd87"
+en.config.menu.main.rules-lore2:
+  - "24c95090cb050c75"
+en.config.menu.main.rules-lore3:
+  - "db50430a116f38c1"
+en.config.menu.main.rules-lore4:
+  - "2add31b49929df94"
+en.config.menu.main.rules-noperm:
+  - "10e6f6bd638ea32c"
+en.config.menu.main.save:
+  - "434e5575763acb19"
+en.config.menu.main.save-lore1:
+  - "4daa802a3f56cef4"
+en.config.menu.main.save-lore2:
+  - "47111e0836c08819"
+en.config.menu.main.saved-hint:
+  - "5f9557b661641b80"
+en.config.menu.main.saved-msg:
+  - "332434ea2ca8964e"
+en.config.menu.main.title:
+  - "558be190464b74a9"
+en.config.menu.main.uptodate:
+  - "98151871b7c6d2a3"
+en.config.menu.main.uptodate-lore:
+  - "5acea7411c817f94"
+en.config.menu.main.waves:
+  - "a963ad2d43a8a5fa"
+en.config.menu.main.waves-lore1:
+  - "7181f5a8d1cb3119"
+en.config.menu.main.waves-lore2:
+  - "886d029b6b5525d5"
+en.config.menu.main.waves-lore3:
+  - "619933b880888d59"
+en.config.menu.main.waves-noperm:
+  - "7ca66be239dc86d5"
+en.config.menu.mat.blaze-powder:
+  - "5b0acd275d0a4ac0"
+en.config.menu.mat.bow:
+  - "a01546128a8307bd"
+en.config.menu.mat.chainmail-boots:
+  - "548300016575d545"
+en.config.menu.mat.chainmail-chestplate:
+  - "b52ee35519ce8ba5"
+en.config.menu.mat.chainmail-helmet:
+  - "dd5ec7ca6a917337"
+en.config.menu.mat.chainmail-leggings:
+  - "39a45a1f5dcb72dc"
+en.config.menu.mat.crossbow:
+  - "44f05d34905904b1"
+en.config.menu.mat.diamond-axe:
+  - "d531dea28560860d"
+en.config.menu.mat.diamond-boots:
+  - "fd99dda797b76f11"
+en.config.menu.mat.diamond-chestplate:
+  - "03a128af90346a6e"
+en.config.menu.mat.diamond-helmet:
+  - "54aeccbe80c8a6f8"
+en.config.menu.mat.diamond-leggings:
+  - "fc35b4c2febe1c23"
+en.config.menu.mat.diamond-sword:
+  - "9e17ae343d1379ca"
+en.config.menu.mat.fire-charge:
+  - "67419f8dab20ca33"
+en.config.menu.mat.firework-rocket:
+  - "0968671be2fdc4d7"
+en.config.menu.mat.golden-axe:
+  - "53ee0af7ca07c4c2"
+en.config.menu.mat.golden-boots:
+  - "586ecf0ef30f91b5"
+en.config.menu.mat.golden-chestplate:
+  - "e9a102ba4c1ed879"
+en.config.menu.mat.golden-helmet:
+  - "28f8304e7fc5ba3a"
+en.config.menu.mat.golden-leggings:
+  - "70f6f8427ad79c58"
+en.config.menu.mat.golden-sword:
+  - "15db8103ffe53e43"
+en.config.menu.mat.gunpowder:
+  - "ed9485dca097b710"
+en.config.menu.mat.iron-axe:
+  - "ac4a098622768845"
+en.config.menu.mat.iron-boots:
+  - "05a058f4d32978c5"
+en.config.menu.mat.iron-chestplate:
+  - "d81a5c0928aa7cfa"
+en.config.menu.mat.iron-helmet:
+  - "2001d86a177c02ff"
+en.config.menu.mat.iron-leggings:
+  - "e527309b4129fa34"
+en.config.menu.mat.iron-sword:
+  - "2ca8837b7a3dea59"
+en.config.menu.mat.leather-boots:
+  - "f8e3c289cecfe95e"
+en.config.menu.mat.leather-chestplate:
+  - "f46d46a451c302d5"
+en.config.menu.mat.leather-helmet:
+  - "00d84765511c7c92"
+en.config.menu.mat.leather-leggings:
+  - "f29b57351bc7ed88"
+en.config.menu.mat.magma-cream:
+  - "badb6412690c5576"
+en.config.menu.mat.netherite-axe:
+  - "9795a8f271fa3b3f"
+en.config.menu.mat.netherite-boots:
+  - "91bbe4315d462c87"
+en.config.menu.mat.netherite-chestplate:
+  - "cf202a7df5d38fcd"
+en.config.menu.mat.netherite-helmet:
+  - "c0d6eecb428460ea"
+en.config.menu.mat.netherite-leggings:
+  - "100c156bb2eef063"
+en.config.menu.mat.netherite-sword:
+  - "7ac1c2045e50041f"
+en.config.menu.mat.shield:
+  - "480d4be7d61fe52b"
+en.config.menu.mat.stone-axe:
+  - "6f71b32080395e75"
+en.config.menu.mat.stone-sword:
+  - "140b2c09c9e10521"
+en.config.menu.mat.totem-of-undying:
+  - "756bfcb717d37e41"
+en.config.menu.mat.trident:
+  - "71c095b134e2d3b1"
+en.config.menu.mat.wooden-axe:
+  - "53f7171950759c4e"
+en.config.menu.mat.wooden-sword:
+  - "8e3a648b9b9e1231"
+en.config.menu.monsters.airdrop-cooldown:
+  - "92644d28c831c264"
+en.config.menu.monsters.airdrop-cooldown-desc:
+  - "b039f60715d6c30f"
+en.config.menu.monsters.airdrop-count:
+  - "344a0337d8a88be8"
+en.config.menu.monsters.airdrop-count-desc:
+  - "ed7ccc512e0484d9"
+en.config.menu.monsters.airdrop-logic:
+  - "75254d4d3e687f5a"
+en.config.menu.monsters.airdrop-lore1:
+  - "321d05ac7ea99478"
+en.config.menu.monsters.airdrop-lore2:
+  - "49710afdbe90f5de"
+en.config.menu.monsters.airdrop-lore3:
+  - "9ee245779354bb33"
+en.config.menu.monsters.airdrop-lore4:
+  - "f1433a5b1030cf3c"
+en.config.menu.monsters.armor-prompt:
+  - "d6b0571cd3474a60"
+en.config.menu.monsters.armor-wear:
+  - "7f9defc2c6ce97bb"
+en.config.menu.monsters.armor-wear-desc:
+  - "7e7bfbd099a8d8a3"
+en.config.menu.monsters.base-damage:
+  - "192a5d9e344936d3"
+en.config.menu.monsters.base-damage-desc:
+  - "1a210edb64f86b35"
+en.config.menu.monsters.boots:
+  - "929433e4be1dbd23"
+en.config.menu.monsters.chestplate:
+  - "efd648433f738f60"
+en.config.menu.monsters.cooldown-ticks:
+  - "150cc25a8867bd17"
+en.config.menu.monsters.cooldown-ticks-desc:
+  - "6ccc8e7628d5723a"
+en.config.menu.monsters.custom-model-data:
+  - "d5c5a684d418ed13"
+en.config.menu.monsters.custom-model-data-desc:
+  - "b6d02701f5211633"
+en.config.menu.monsters.cycle-boots:
+  - "829dce9e990af9c7"
+en.config.menu.monsters.cycle-chestplate:
+  - "f6ded3ad3f3c27c2"
+en.config.menu.monsters.cycle-helmet:
+  - "b711f4551b7c8ef0"
+en.config.menu.monsters.cycle-leggings:
+  - "2f5f53ae960e2f6e"
+en.config.menu.monsters.cycle-offhand:
+  - "591b78d1d036b06e"
+en.config.menu.monsters.cycle-weapons:
+  - "eed51599e9d57a40"
+en.config.menu.monsters.editing:
+  - "8348b137f6807653"
+en.config.menu.monsters.entity-explosion:
+  - "d4f9a6e824475a20"
+en.config.menu.monsters.entity-explosion-desc:
+  - "ba7133a88b2dc233"
+en.config.menu.monsters.entity-explosion-off:
+  - "d0919bb1692df58b"
+en.config.menu.monsters.entity-explosion-on:
+  - "bc1171311a2b3f58"
+en.config.menu.monsters.explode-beetle:
+  - "9923b3f5ad6b6134"
+en.config.menu.monsters.explode-beetle-desc:
+  - "4cd7da7cc6ce5f9c"
+en.config.menu.monsters.explode-logic:
+  - "4e28c43627edba5d"
+en.config.menu.monsters.explode-lore1:
+  - "b7a63a9b98b748bd"
+en.config.menu.monsters.explode-lore2:
+  - "bc79b8aab9a32340"
+en.config.menu.monsters.explode-lore3:
+  - "e76e49a206aefddb"
+en.config.menu.monsters.explode-lore4:
+  - "e99b88c27b3bd044"
+en.config.menu.monsters.explode-lore5:
+  - "b2dc2f05ab5a9f75"
+en.config.menu.monsters.explode-multiplier:
+  - "7d1761f3f4e04ded"
+en.config.menu.monsters.explode-multiplier-desc:
+  - "5765b89090dd3e52"
+en.config.menu.monsters.flying-dropper:
+  - "3a4eb96d7bc120cc"
+en.config.menu.monsters.flying-dropper-desc:
+  - "74f7652b4cf49221"
+en.config.menu.monsters.header:
+  - "7723ffde3a54aac3"
+en.config.menu.monsters.health:
+  - "55898449eb74fb2e"
+en.config.menu.monsters.helmet:
+  - "a47fdf6415fc436e"
+en.config.menu.monsters.hook-claw-hunter:
+  - "0a2e449098dc0280"
+en.config.menu.monsters.hook-claw-hunter-desc:
+  - "99ee178ef17819c5"
+en.config.menu.monsters.hook-velocity:
+  - "cc85fd4f65c00faf"
+en.config.menu.monsters.hook-velocity-desc:
+  - "bfa9a2ef7515174c"
+en.config.menu.monsters.ia-model:
+  - "c3052139e33f13a5"
+en.config.menu.monsters.ia-model-prompt:
+  - "e7fdef844aad4c1c"
+en.config.menu.monsters.leggings:
+  - "166f79114abace7d"
+en.config.menu.monsters.main-hand:
+  - "ed3897f136ee1f8a"
+en.config.menu.monsters.model-appearance:
+  - "1737da4a7c7da07f"
+en.config.menu.monsters.model-appearance-desc:
+  - "ed3d2d7d0987c68a"
+en.config.menu.monsters.off-hand:
+  - "bfd173c2f222b066"
+en.config.menu.monsters.offhand-prompt:
+  - "6f865a3cf188a72e"
+en.config.menu.monsters.speed:
+  - "7912f291504c3589"
+en.config.menu.monsters.stun-duration:
+  - "5f7d07c1130a2d8d"
+en.config.menu.monsters.stun-duration-desc:
+  - "d5bea5dc4c3bedf2"
+en.config.menu.monsters.target-info:
+  - "266d66ef5f6798c0"
+en.config.menu.monsters.target-lore1:
+  - "26c3fc79276f2024"
+en.config.menu.monsters.target-lore2:
+  - "ede29cf7457702f2"
+en.config.menu.monsters.target-lore3:
+  - "2d267b2a8fc63b8b"
+en.config.menu.monsters.target-lore4:
+  - "c57ea0018f7491a1"
+en.config.menu.monsters.title:
+  - "2eb49f323413a9b5"
+en.config.menu.nodes.base-health:
+  - "bf185c9099c606eb"
+en.config.menu.nodes.base-health-desc:
+  - "baaba0bf071be77a"
+en.config.menu.nodes.block-types-fixed:
+  - "250414f91cad6175"
+en.config.menu.nodes.block-types-header:
+  - "42e9b4f147b3ba4e"
+en.config.menu.nodes.buff-radius:
+  - "7ba69192dc958230"
+en.config.menu.nodes.buff-radius-desc:
+  - "4aaac1d9e8941de1"
+en.config.menu.nodes.header:
+  - "c97170ade3635378"
+en.config.menu.nodes.repair-amount:
+  - "c94740b0da435538"
+en.config.menu.nodes.repair-amount-desc:
+  - "723bae0c177997a8"
+en.config.menu.nodes.repair-item:
+  - "15528df59ce5447e"
+en.config.menu.nodes.repair-item-cmd1:
+  - "bb7702b61621c56c"
+en.config.menu.nodes.repair-item-cmd2:
+  - "67cb747dd35befa4"
+en.config.menu.nodes.repair-item-current:
+  - "35a969b7aad26858"
+en.config.menu.nodes.repair-item-hint:
+  - "bf3d870a46d269be"
+en.config.menu.nodes.self-destruct:
+  - "e5dd79f6c394223a"
+en.config.menu.nodes.self-destruct-desc:
+  - "cecfb3f3eeac74bd"
+en.config.menu.nodes.title:
+  - "ec3573172e9fdf00"
+en.config.menu.rules.global-mob-cap:
+  - "0f8e218d82d253f9"
+en.config.menu.rules.global-mob-cap-desc:
+  - "bf779491e8970a16"
+en.config.menu.rules.header:
+  - "f732c04922f718b9"
+en.config.menu.rules.max-players:
+  - "d6271860d5f643a7"
+en.config.menu.rules.max-players-desc:
+  - "4afd8561bff7e694"
+en.config.menu.rules.min-players:
+  - "4ac22b6d621d1483"
+en.config.menu.rules.min-players-desc:
+  - "15d0c8e2a6837a33"
+en.config.menu.rules.mob-cap-per-player:
+  - "59a66011b2ddab1c"
+en.config.menu.rules.mob-cap-per-player-desc:
+  - "7b3c13b46e28a5ca"
+en.config.menu.rules.spawn-max-radius:
+  - "316301dfd3f41c76"
+en.config.menu.rules.spawn-max-radius-desc:
+  - "8263f94896b8850e"
+en.config.menu.rules.spawn-min-radius:
+  - "38cb2bee14f96b09"
+en.config.menu.rules.spawn-min-radius-desc:
+  - "c616b05ed76ce761"
+en.config.menu.rules.title:
+  - "26da732a1ef8c2a1"
+en.config.menu.rules.victory-waves:
+  - "1ad16da70b36a650"
+en.config.menu.rules.victory-waves-desc:
+  - "ab01d17961b79f2a"
+en.config.menu.rules.wave-interval:
+  - "1b3612b220cb2fbd"
+en.config.menu.rules.wave-interval-desc:
+  - "2f98a4ef7ea9cd77"
+en.config.menu.waves.add-monster-added:
+  - "18069d03d0c312a4"
+en.config.menu.waves.add-monster-all-added:
+  - "4c603b54dcaa7be2"
+en.config.menu.waves.add-monster-all-added-desc:
+  - "13bc8929b6f9c544"
+en.config.menu.waves.add-monster-click:
+  - "6cb073f24258adf4"
+en.config.menu.waves.add-monster-damage:
+  - "2dd25a85c2ff7dfc"
+en.config.menu.waves.add-monster-default:
+  - "f51d1b0488a0e57f"
+en.config.menu.waves.add-monster-header:
+  - "66233f8312abba1b"
+en.config.menu.waves.add-monster-hp-speed:
+  - "e14051c82d6e2f8c"
+en.config.menu.waves.add-monster-title:
+  - "2229d03a5d9d8ad3"
+en.config.menu.waves.add-wave:
+  - "207647c0e2b44c22"
+en.config.menu.waves.add-wave-desc1:
+  - "7b785a21c4473eea"
+en.config.menu.waves.add-wave-desc2:
+  - "023080a2c204f71d"
+en.config.menu.waves.click-edit:
+  - "df38dd616cb4f91f"
+en.config.menu.waves.count-per-player-hint:
+  - "53e97b7e6252b18f"
+en.config.menu.waves.default-hint:
+  - "6013b8517f855af1"
+en.config.menu.waves.default-template:
+  - "39e5294d64983126"
+en.config.menu.waves.default-total:
+  - "58b5fe7a3f51851b"
+en.config.menu.waves.deleted:
+  - "882fd4a8349a9d83"
+en.config.menu.waves.detail-add-monster:
+  - "6b8965a8d6014dd0"
+en.config.menu.waves.detail-add-monster-btn:
+  - "c06ccc5be17977eb"
+en.config.menu.waves.detail-add-monster-desc1:
+  - "c6862c2d39c27c4b"
+en.config.menu.waves.detail-add-monster-desc2:
+  - "0d45099b69f245ad"
+en.config.menu.waves.detail-click-mob:
+  - "4c50da20d2853106"
+en.config.menu.waves.detail-count-semantics:
+  - "01705a3e718dcf3e"
+en.config.menu.waves.detail-header:
+  - "b16cf2d154ba00b5"
+en.config.menu.waves.detail-instructions:
+  - "c7b6e9aff0f7d2af"
+en.config.menu.waves.detail-shift-props:
+  - "0f3c0a8086f1dc20"
+en.config.menu.waves.detail-shift-weight:
+  - "4e3737f91f821ff6"
+en.config.menu.waves.detail-title:
+  - "99c019040ab44f99"
+en.config.menu.waves.detail-total:
+  - "44c1a59775df6bdb"
+en.config.menu.waves.header:
+  - "d5594e09f9fb91e4"
+en.config.menu.waves.mob-count-weight:
+  - "b34664e01e4fd449"
+en.config.menu.waves.mob-left-count:
+  - "9a5f3cca21741a60"
+en.config.menu.waves.mob-not-found:
+  - "8d6fa8313d1e1b43"
+en.config.menu.waves.mob-shift-props:
+  - "d9c4cbdb56616848"
+en.config.menu.waves.mob-shift-weight:
+  - "0834be498ea61439"
+en.config.menu.waves.mob-stats:
+  - "c7c8e129af3397c2"
+en.config.menu.waves.mob-weight-label:
+  - "acf5d8aaed4a41d6"
+en.config.menu.waves.must-keep-one:
+  - "1c559b60a9ce45ca"
+en.config.menu.waves.next:
+  - "e4299d254f3cb11a"
+en.config.menu.waves.previous:
+  - "739adb6d87800452"
+en.config.menu.waves.prompt-new-wave:
+  - "a8de5892dcd1a799"
+en.config.menu.waves.prompt-weight:
+  - "da387afe299766b3"
+en.config.menu.waves.prop-airdrop-cooldown:
+  - "1630b8a045298fd2"
+en.config.menu.waves.prop-airdrop-count:
+  - "6e419f47e4c9104b"
+en.config.menu.waves.prop-armor-cycle-hint:
+  - "98fa73f579859160"
+en.config.menu.waves.prop-cooldown:
+  - "fd7b617832c99b68"
+en.config.menu.waves.prop-header:
+  - "80f5c460af752a8f"
+en.config.menu.waves.prop-hook-speed:
+  - "ca8908badb53f674"
+en.config.menu.waves.prop-ia-prompt:
+  - "6c39b24c0ceed878"
+en.config.menu.waves.prop-offhand-cycle-hint:
+  - "a8c26bb0cd4f6270"
+en.config.menu.waves.prop-stun:
+  - "59dd31edfaf8709d"
+en.config.menu.waves.prop-title:
+  - "677ee3c1f0fcde7e"
+en.config.menu.waves.prop-weapon-cycle-hint:
+  - "660dffb4e4bc0e0b"
+en.config.menu.waves.shift-delete:
+  - "14b2103f7b4c8a10"
+en.config.menu.waves.title:
+  - "256698dca1372f52"
+en.config.menu.waves.total-cap-hint:
+  - "6333cd0b1d3e7289"
+en.config.menu.waves.total-mobs:
+  - "58b5fe7a3f51851b"
+en.config.menu.waves.wave-created:
+  - "00f3936d9170f8aa"
+en.config.menu.waves.wave-exists:
+  - "956bd356202fec09"
+en.config.menu.waves.wave-label:
+  - "c6e7120fad162353"
+en.config.menu.waves.wave-not-found:
+  - "1b0c6ed12cf179a3"
+en.config.node-added:
+  - "beee05b321a75312"
+en.config.node-exists:
+  - "d19e3d4a17ccd0dc"
+en.config.node-removed:
+  - "1e3dfb48c2443075"
+en.config.reload-arena-notice:
+  - "f044fe69743d8852"
+en.config.repairitem-set:
+  - "e7a64c9c990691ab"
+en.config.unknown-sub:
+  - "168e015dcf7a6e5c"
+en.countdown-cancelled:
+  - "5b90ebc0d6095b9f"
+en.countdown-message:
+  - "f4a9b69bb6e46d39"
+en.defeat-all-down:
+  - "25b9c8a54d870394"
+en.defeat-countdown:
+  - "9d4d6f06acbea574"
+en.defeat-not-enough-players:
+  - "270bae77f3dce9ca"
+en.defeat-stats-header:
+  - "207b59e32fcbfeb8"
+en.defeat-stats-line:
+  - "032ad79b68f0ca91"
+  - "3770f70527d002a6"
+en.defeat-villagers-dead:
+  - "3e7c1e75e0c75d0a"
+en.deploy.addspawn-added:
+  - "07dbd00eb0679bdc"
+  - "5337c7a0e28e5606"
+en.deploy.addspawn-coords:
+  - "565265a110fa3195"
+en.deploy.addvillager-added:
+  - "53dde004079e2226"
+en.deploy.addvillager-coords:
+  - "565265a110fa3195"
+en.deploy.clearmobspawns-already:
+  - "e3afde153a75df7a"
+en.deploy.clearmobspawns-confirm:
+  - "2156c3144ccf5320"
+en.deploy.clearmobspawns-warning:
+  - "7567f9a00e8d444a"
+en.deploy.clearshop-done:
+  - "f0a654cdad8f91ca"
+en.deploy.clearshop-in-game:
+  - "a39b61de4ff2499b"
+en.deploy.clearshop-none:
+  - "6d59f3224ed14232"
+en.deploy.clearshop-write-failed:
+  - "0ea60525793cfe3b"
+en.deploy.clearspawns-already:
+  - "dd8184d859d15c37"
+en.deploy.clearspawns-confirm:
+  - "613be444a71a0368"
+en.deploy.clearspawns-expired:
+  - "0b2fcf386c244ced"
+en.deploy.clearspawns-warning:
+  - "241a9eec5389cb41"
+en.deploy.clearvillagers-already:
+  - "cf9f40e30b47b220"
+en.deploy.clearvillagers-confirm:
+  - "f51910c68219bf37"
+en.deploy.clearvillagers-done:
+  - "c63f459addd8d3bf"
+en.deploy.clearvillagers-warning:
+  - "07e6832296de5578"
+en.deploy.cmd-addmobspawn:
+  - "035836ed987778ab"
+en.deploy.cmd-addspawn:
+  - "0ec482c9d5a486bb"
+  - "87085b25491fd666"
+en.deploy.cmd-addvillager:
+  - "030febf7a0ce78dc"
+en.deploy.cmd-clearmobspawns:
+  - "63b13ea10b42ce9d"
+en.deploy.cmd-clearshop:
+  - "0e20f5bbbfe0f226"
+en.deploy.cmd-clearspawns:
+  - "53dbeb1bc75796ba"
+en.deploy.cmd-clearvillagers:
+  - "a47b9e7b781c12c6"
+en.deploy.cmd-confirmclear:
+  - "e201a5dc75e0d372"
+en.deploy.cmd-confirmclearmob:
+  - "31412d047a864563"
+en.deploy.cmd-confirmclearvillagers:
+  - "9e4f0f8971f0aa13"
+en.deploy.cmd-delmobspawn:
+  - "80085b06b4e82d2b"
+en.deploy.cmd-delspawn:
+  - "569f1b22970c3b88"
+en.deploy.cmd-delvillager:
+  - "310f32561df2031a"
+en.deploy.cmd-listmobspawns:
+  - "1a1305d0c4c649ce"
+en.deploy.cmd-listspawns:
+  - "7f9802e926e1125e"
+en.deploy.cmd-listvillagers:
+  - "adea090814a0305c"
+en.deploy.cmd-node-hint:
+  - "a6435775591b482f"
+en.deploy.cmd-reloadnodes:
+  - "8f36fd4a524d0cfd"
+en.deploy.cmd-setcore:
+  - "009033978d40e695"
+en.deploy.cmd-setshop:
+  - "eec7d7f0e52a324a"
+en.deploy.cmd-setup:
+  - "fd4e7d861bd51d35"
+en.deploy.cmd-showparticles:
+  - "6ab3df41ac589645"
+en.deploy.confirmclear-done:
+  - "4670faaaba00cb4c"
+  - "d3e558c07fff766a"
+en.deploy.confirmclear-no-pending:
+  - "29eb6a76d588a310"
+en.deploy.confirmclearmob-done:
+  - "c1ff7ad70b410071"
+en.deploy.confirmclearmob-no-pending:
+  - "959cda21695dbf9f"
+en.deploy.confirmclearvillagers-no-pending:
+  - "296250ffa86cc163"
+en.deploy.delmobspawn-deleted:
+  - "1e58dc76fdd75628"
+en.deploy.delmobspawn-not-found:
+  - "d5817719df4e3f94"
+en.deploy.delmobspawn-usage:
+  - "17ff02111108fbf3"
+  - "7c2fd69f801fe756"
+en.deploy.delspawn-deleted:
+  - "79b87d907f06c8e7"
+en.deploy.delspawn-invalid-number:
+  - "010a0f859c2be9a0"
+en.deploy.delspawn-not-found:
+  - "bd2a20e793a67add"
+en.deploy.delspawn-usage:
+  - "258f8cb2c6a67943"
+  - "38b65165d6ced35d"
+en.deploy.delvillager-deleted:
+  - "21fa4553f0473f6f"
+en.deploy.delvillager-not-found:
+  - "46fa3b35aa5507e9"
+en.deploy.delvillager-usage:
+  - "31103ee8361b54b0"
+  - "8ce18137e6da906c"
+en.deploy.desc-addmobspawn:
+  - "87456ffebf57f981"
+en.deploy.desc-addspawn:
+  - "2619737b1d0fd406"
+  - "5f0111f3d1037279"
+en.deploy.desc-addvillager:
+  - "c621fbeeb35f249e"
+en.deploy.desc-clearmobspawns:
+  - "f92d66d8a9bfb34d"
+en.deploy.desc-clearshop:
+  - "bc1fac2138a400e0"
+en.deploy.desc-clearspawns:
+  - "eb305c0186b42fd0"
+en.deploy.desc-clearvillagers:
+  - "a58b9b2a109b6f3f"
+en.deploy.desc-confirmclear:
+  - "a0e6bf64f9477b52"
+en.deploy.desc-confirmclearmob:
+  - "b0c9bbe301b061e1"
+en.deploy.desc-confirmclearvillagers:
+  - "22ee2a5c8cb9d68c"
+en.deploy.desc-delmobspawn:
+  - "9f3957b12d100fb0"
+en.deploy.desc-delspawn:
+  - "0cc0a5e1c2083234"
+en.deploy.desc-delvillager:
+  - "89f9200c3e1b6d80"
+en.deploy.desc-listmobspawns:
+  - "81ba45fa97132b0e"
+en.deploy.desc-listspawns:
+  - "6e8e1649fc2ac82e"
+en.deploy.desc-listvillagers:
+  - "839ce2706aa761c9"
+en.deploy.desc-node-hint:
+  - "507a19256fb44a78"
+en.deploy.desc-reloadnodes:
+  - "4a5dd12cbc190cf5"
+  - "d3a660c4091f3608"
+en.deploy.desc-setcore:
+  - "229134d6e7e22e8a"
+en.deploy.desc-setshop:
+  - "1b0298cd7adaf216"
+en.deploy.desc-setup:
+  - "fb964a858c697dca"
+en.deploy.desc-showparticles:
+  - "8ccfa4a0eeda5498"
+en.deploy.listmobspawns-empty:
+  - "22809cb1cab8bb41"
+en.deploy.listmobspawns-entry:
+  - "78fea9785ddc0242"
+en.deploy.listmobspawns-header:
+  - "e0242c13861f71a6"
+en.deploy.listmobspawns-hint:
+  - "aec91b2b66aca22d"
+en.deploy.listspawns-empty:
+  - "c55c498917bd38ab"
+  - "cd0efe623c4c0f13"
+en.deploy.listspawns-entry:
+  - "78fea9785ddc0242"
+en.deploy.listspawns-header:
+  - "d7ebeeb0dbba571b"
+en.deploy.listspawns-hint:
+  - "a5ecb127bde4d324"
+en.deploy.listvillagers-empty:
+  - "92229e674641a280"
+en.deploy.listvillagers-entry:
+  - "78fea9785ddc0242"
+en.deploy.listvillagers-header:
+  - "62dda99d27500c21"
+en.deploy.menu-core-coords:
+  - "9c22a25929610428"
+en.deploy.menu-core-unset:
+  - "369aec0e523d3722"
+en.deploy.menu-game-control-label:
+  - "d32f94639a4d56d7"
+en.deploy.menu-hint-addmobspawn:
+  - "647f3f16d72edddf"
+en.deploy.menu-hint-addspawn:
+  - "5dbccd305f9cc0e0"
+  - "b36eef3c05fbbd42"
+en.deploy.menu-hint-addvillager:
+  - "195adb8d54824b1c"
+en.deploy.menu-hint-clearmobspawns:
+  - "4245ac45817d3f32"
+en.deploy.menu-hint-clearshop:
+  - "2c817057f36a79c6"
+en.deploy.menu-hint-clearspawns:
+  - "c183fce7169a5a16"
+en.deploy.menu-hint-confirmclear:
+  - "20455939eb9141c2"
+en.deploy.menu-hint-delmobspawn:
+  - "8080526a380ceaee"
+en.deploy.menu-hint-delspawn:
+  - "619de714f42a941f"
+en.deploy.menu-hint-delvillager:
+  - "9243f9b485258960"
+en.deploy.menu-hint-listmobspawns:
+  - "d19961b09fb54a12"
+en.deploy.menu-hint-listspawns:
+  - "851d6620f2120990"
+en.deploy.menu-hint-listvillagers:
+  - "74a9d715c8721846"
+en.deploy.menu-hint-reloadnodes:
+  - "0a0dcc073681736a"
+en.deploy.menu-hint-setcore:
+  - "d2755933dd75faf7"
+en.deploy.menu-hint-setshop:
+  - "65d03ca82a1e7caf"
+en.deploy.menu-hint-showparticles:
+  - "035e7e5c3f090330"
+en.deploy.menu-hint-start:
+  - "dca96808849179eb"
+en.deploy.menu-hint-status:
+  - "a6c0094d04c2d727"
+en.deploy.menu-hint-stop:
+  - "bc70995c0360f169"
+en.deploy.menu-hover:
+  - "641afad3def4d3d5"
+en.deploy.menu-mobspawn-count:
+  - "c4de9aa16fd689e9"
+en.deploy.menu-no-permission:
+  - "6f4cbb4c34bf054a"
+en.deploy.menu-nodes:
+  - "8c4b509b4e67e840"
+en.deploy.menu-operations-label:
+  - "32d0db5cbf0cd76a"
+en.deploy.menu-random-no:
+  - "d4cc44c0f5c01438"
+en.deploy.menu-random-yes:
+  - "9323a3581c4dae40"
+en.deploy.menu-shop-label:
+  - "be12f1c38e0eafd7"
+en.deploy.menu-spawn-count:
+  - "65947a9978842618"
+en.deploy.menu-state:
+  - "3d28458346b62bce"
+en.deploy.menu-status-label:
+  - "23d4435946e053fd"
+en.deploy.menu-tip:
+  - "aaf713ea28091200"
+en.deploy.menu-title:
+  - "a86b54a897f36bf6"
+en.deploy.menu-title-line1:
+  - "84b9af1b47394ead"
+  - "a120b1bc0c4deabe"
+en.deploy.menu-villager-label:
+  - "ef76d439bf8839cd"
+en.deploy.menu-villagers:
+  - "58ecc6e0986a2464"
+en.deploy.mobspawn-added:
+  - "90793ae2a79d2b7e"
+en.deploy.mobspawn-coords:
+  - "565265a110fa3195"
+en.deploy.must-be-in-arena-world:
+  - "69f33aac9876fa2b"
+en.deploy.reloadnodes-done:
+  - "f21105b485040349"
+en.deploy.reloadnodes-scanning:
+  - "060337e8cd07cdab"
+en.deploy.save-failed:
+  - "1b8d1b9ffff82b8a"
+en.deploy.setcore-coords:
+  - "9903f5e7e951e722"
+en.deploy.setcore-set:
+  - "8e760811e4d5137f"
+en.deploy.setshop-coords:
+  - "9903f5e7e951e722"
+en.deploy.setshop-in-game:
+  - "4b4805a9b542a8c5"
+en.deploy.setshop-set:
+  - "811523094b4a3ec7"
+en.deploy.unknown-sub:
+  - "19c95646476bbee3"
+en.deploy.unknown-sub-hint:
+  - "251abf8ada8fc672"
+en.fireball.cooldown-message:
+  - "f79768dd05778ee8"
+en.fireball.lore-cooldown:
+  - "4bb58e73d1ecb2b6"
+en.fireball.lore-cooldown-none:
+  - "13af9595aba0605c"
+en.fireball.lore-damage:
+  - "114882fc1cd07a25"
+en.fireball.lore-use:
+  - "e26acd398f3e449e"
+en.game-defeat:
+  - "2c6f9fe147dd0de6"
+en.game-ended:
+  - "a8b88aa5a9960333"
+en.game-ended-no-players:
+  - "3dab4aca08f81f62"
+en.game-force-stopped:
+  - "1372d47bc0e29614"
+en.game-in-progress:
+  - "733b788866ea177c"
+en.game-start:
+  - "ef30140c501090c8"
+en.game-start-already-running:
+  - "b2bdbfcd5482de2b"
+en.game-start-need-players:
+  - "257572851f108f5b"
+en.game-start-restoring:
+  - "339705c6595f36c2"
+en.game-started:
+  - "d892f84494999e12"
+en.game-starting:
+  - "ca48f4ef0599c416"
+en.game-stopped:
+  - "62d9db073c723f2b"
+en.game-victory:
+  - "6a9c38d8613e0fa9"
+en.goods-restored:
+  - "47716c180b59789f"
+en.gui-arena-admin-hint:
+  - "7b38a274fcaff797"
+en.gui-arena-lore-cannot-join:
+  - "d0172cd908103b3e"
+en.gui-arena-lore-click-join:
+  - "6ef05ddcf98dc02a"
+en.gui-arena-lore-map:
+  - "22986356e6a46871"
+en.gui-arena-lore-players:
+  - "8faba5f97cca4c9b"
+en.gui-arena-lore-status:
+  - "8384c4f7a1a181c6"
+en.gui-arena-select-title:
+  - "0c8daaf9f07582b4"
+en.gui-help-lore-gray:
+  - "54c64ce8de285b09"
+  - "eb7324435344d3b0"
+en.gui-help-lore-green:
+  - "57fc942d6e66bf7f"
+  - "ad19b6cf4848764c"
+en.gui-help-lore-red:
+  - "548160edbf442160"
+  - "7e5ab0557ac85b21"
+en.gui-help-lore-yellow:
+  - "07b018203ad7b209"
+  - "984da8006a093c19"
+en.gui-help-title:
+  - "d2e39d1b51c2f273"
+en.gui-no-arenas:
+  - "5e57db8f148c273f"
+en.gui-no-arenas-lore:
+  - "f917f9cd32779d62"
+en.hammer.bossbar.charging:
+  - "be629c874acd05f7"
+en.hammer.bossbar.ready:
+  - "e75feea766c5d64a"
+en.hammer.bossbar.smashing:
+  - "3b56ab8769eba875"
+en.hammer.broken:
+  - "1684a8329acebe91"
+en.hammer.cooldown:
+  - "97a4c44f83b65eda"
+en.hammer.lore-uses:
+  - "79e22d0af2d2274d"
+en.hammer.lore1:
+  - "c2fa79726bc245aa"
+en.hammer.lore2:
+  - "6610b03a033b1d4b"
+en.hammer.lore3:
+  - "7691c75bf5dd3336"
+en.hammer.not-running:
+  - "350d86de931cce62"
+en.hammer.smash.high:
+  - "8fedaad4f25b8f9d"
+en.hammer.smash.low:
+  - "1f0b1dffb2e3f9e8"
+en.hammer.smash.medium:
+  - "1f0b1dffb2e3f9e8"
+en.hammer.tier.high:
+  - "c4ebc6d4a5832cd9"
+en.hammer.tier.low:
+  - "f793de205ead5ac3"
+en.hammer.tier.medium:
+  - "8e588cd187741f1c"
+en.hint.leave-command:
+  - "b6fc4e1dee197424"
+en.hint.spectate-leave:
+  - "2f2a10e5626253c1"
+  - "79181a9a7c263046"
+en.item.fireball-name:
+  - "a989478d34b70b82"
+en.item.hammer-name:
+  - "8ef301a49a928cb2"
+en.item.repair-cost-name:
+  - "e5efb3027cfc443a"
+en.join-failed:
+  - "ea53c0bfa813fdb7"
+en.join-queue:
+  - "165620af36893cee"
+en.joined-game:
+  - "c5dcc05a4a69da1b"
+en.lang.invalid:
+  - "fac2094cedafc535"
+en.lang.switched:
+  - "3f8053aa9588dcf9"
+en.lang.usage:
+  - "b4654ab0c47a5156"
+en.left-game:
+  - "89f799da69b151ee"
+en.lobby-protected:
+  - "826482855a8274ec"
+en.lobby-teleported:
+  - "b4872f5a7810b56c"
+en.lobby.setspawn-done:
+  - "51082452da0fd340"
+en.lobby.setspawn-effect:
+  - "3fef2f352bfffa0b"
+en.lobby.setspawn-failed:
+  - "c732cde3440a0524"
+en.lobby.setspawn-not-lobby-world:
+  - "746b6a59117da7b7"
+en.manage.back:
+  - "7f20c10c21826845"
+en.manage.detail.back:
+  - "7c312ecb9b1f91d4"
+en.manage.detail.disable:
+  - "319d87e1fd4e8c0c"
+en.manage.detail.enable:
+  - "41eedbb6caf45c37"
+en.manage.detail.enable-not-deployed:
+  - "08cbfe5ccfdf26ac"
+en.manage.detail.enable-setup-hint:
+  - "b223916cdd616ff1"
+en.manage.detail.mobspawns:
+  - "f738dc1a738abc0a"
+en.manage.detail.mobspawns-lore:
+  - "d16eeb569a7c3266"
+en.manage.detail.nodes:
+  - "34d60ddb4a82fbdc"
+en.manage.detail.nodes-lore:
+  - "27fe163eeac2c674"
+en.manage.detail.params:
+  - "60d9aaeb82d38e3f"
+en.manage.detail.params-inert:
+  - "12a6ca540b1da116"
+en.manage.detail.params-lore:
+  - "59ea8b2f6c3b2258"
+en.manage.detail.reset:
+  - "c16b21527cc35eca"
+en.manage.detail.reset-lore1:
+  - "4cefba253f64d3f0"
+en.manage.detail.reset-lore2:
+  - "2d49e05c87be687f"
+en.manage.detail.reset-lore3:
+  - "b885cc56712c5700"
+en.manage.detail.reset-lore4:
+  - "1952623bc44141aa"
+en.manage.detail.shop:
+  - "7643ff1290772c58"
+en.manage.detail.shop-clear-in-game:
+  - "ba032424743ddd79"
+en.manage.detail.shop-clear-lore:
+  - "28daac3275562e3b"
+en.manage.detail.shop-clear-none:
+  - "1045e56a3691beaa"
+en.manage.detail.shop-cleared:
+  - "c121da14a25c819a"
+en.manage.detail.shop-lore:
+  - "fa6976ab43c9a9de"
+en.manage.detail.shop-none:
+  - "519ef4492b286148"
+en.manage.detail.spawns:
+  - "1acefd4b3b25d23c"
+en.manage.detail.spawns-lore:
+  - "75abc1db8f1338ec"
+en.manage.detail.teleport-core:
+  - "723d81f19f896976"
+en.manage.detail.teleport-core-lore:
+  - "d2c4695b57b32e87"
+en.manage.detail.villagers:
+  - "e64f328e9dac8d5f"
+en.manage.detail.villagers-lore:
+  - "40b76541c6e99150"
+en.manage.entry.delete:
+  - "1b66d51c8e442244"
+en.manage.entry.delete-failed:
+  - "cf4d8eea45fadd69"
+en.manage.entry.deleted:
+  - "1c6d7f5ff41eaadf"
+en.manage.entry.lore-world:
+  - "45b9f01204fa9719"
+en.manage.entry.name:
+  - "ffc79a47123aa9d4"
+en.manage.entry.particles:
+  - "49da0a0b0da8bdf2"
+en.manage.entry.particles-empty:
+  - "e547adcb6dce7c9d"
+en.manage.entry.teleport:
+  - "0bf56b7fdf960c3e"
+en.manage.entry.teleported:
+  - "4f17db914a8cb72a"
+en.manage.list.empty:
+  - "c158942f99dd94f5"
+en.manage.list.entry-click:
+  - "1af7350b61d7cff7"
+en.manage.list.entry-counts:
+  - "c56d6e2567b44081"
+en.manage.list.entry-deployed:
+  - "c97b509e58bf4167"
+en.manage.list.entry-disabled:
+  - "edd6f3f5880bfbe0"
+en.manage.list.entry-enabled:
+  - "9b516e491447b52d"
+en.manage.list.entry-id:
+  - "c6f6ccf9bffc7b83"
+en.manage.list.entry-no-core:
+  - "a2c90e61abfaca00"
+en.manage.list.entry-params:
+  - "58cf943d1d03531d"
+en.manage.list.entry-players:
+  - "9a4de29de7786758"
+en.manage.list.entry-shop:
+  - "4bec15185b489656"
+en.manage.list.entry-shop-none:
+  - "175a9687833caf69"
+en.manage.list.entry-status:
+  - "ca9fa43fd6860a8f"
+en.manage.list.entry-undeployed:
+  - "6a3fcdf89f81b6fd"
+en.manage.list.entry-world:
+  - "45b9f01204fa9719"
+en.manage.list.entry-world-missing:
+  - "6c9fc563cbe6daca"
+en.manage.list.header:
+  - "f0b0ab2b50a5cf00"
+en.manage.list.page:
+  - "053403eee7890a61"
+en.manage.list.source-yaml:
+  - "538135df1f92735f"
+en.manage.page.empty:
+  - "c1547c390d43eb51"
+en.manage.page.next:
+  - "68059d4a3e216114"
+en.manage.page.prev:
+  - "11a9364924587132"
+en.manage.params.auto-started:
+  - "4d40588a232e66d9"
+en.manage.params.blocked-countdown:
+  - "6a2ad402e91ec136"
+en.manage.params.blocked-hint:
+  - "7ccb520ab7b8682c"
+en.manage.params.blocked-in-game:
+  - "08ffd3d6de66cef1"
+en.manage.params.click-hint:
+  - "1166bb62c6d6bb1f"
+en.manage.params.edit-hint:
+  - "a23a73efbcd66d99"
+en.manage.params.invalid:
+  - "871943cf5aa537bb"
+en.manage.params.range:
+  - "b3f784353401d154"
+en.manage.params.saved:
+  - "500cbc028cd173da"
+en.manage.params.write-failed:
+  - "0ea60525793cfe3b"
+en.manage.preview.header:
+  - "c7ed889aa379ce54"
+en.manage.reset.blocked-already:
+  - "8ab4987814eb56bf"
+en.manage.reset.blocked-game-progress:
+  - "08ffd3d6de66cef1"
+en.manage.reset.blocked-missing-core:
+  - "6e008ce44a13e85c"
+en.manage.reset.blocked-not-found:
+  - "6ebc378bf4872b08"
+en.manage.reset.blocked-pending:
+  - "0484a25322d13c1e"
+en.manage.reset.blocked-reset-progress:
+  - "f9460d9af52d3f51"
+en.manage.reset.cancel-btn:
+  - "3facad1772ee3985"
+en.manage.reset.cancel-btn-lore:
+  - "b520bef468d14678"
+en.manage.reset.cancelled:
+  - "1f1b18d1604b4b39"
+en.manage.reset.confirm-btn:
+  - "ea725f1fe4f92627"
+en.manage.reset.confirm-btn-lore:
+  - "27c39560269873c0"
+en.manage.reset.confirm-item:
+  - "c9f53a72551dba9d"
+en.manage.reset.done:
+  - "1a9d716490192627"
+en.manage.reset.done-data:
+  - "113f3367de7700b9"
+en.manage.reset.done-enable-rejected:
+  - "e8a073abd73feaaf"
+en.manage.reset.done-missing-core:
+  - "57512c8b33751d40"
+en.manage.reset.done-nodes:
+  - "3d70ad1da9e7b7d7"
+en.manage.reset.done-not-ready-before:
+  - "f5d9a9db35211077"
+en.manage.reset.done-not-reinstated:
+  - "f3cfa1bb847948f0"
+en.manage.reset.done-reinstated:
+  - "4119fca89cff952a"
+en.manage.reset.done-shop:
+  - "3a0186f3a6ffdb39"
+en.manage.reset.fail-restore:
+  - "f282f7c9c1cd93a4"
+en.manage.reset.fail-skipped-world:
+  - "c60ac76b49da0cd2"
+en.manage.reset.fail-step-data:
+  - "367874e10714ea22"
+en.manage.reset.fail-step-nodes:
+  - "440f56d0e3dd3d26"
+en.manage.reset.fail-step-shop:
+  - "9528f8d61a37786a"
+en.manage.reset.partial:
+  - "33d0b8734d0e78fc"
+en.manage.reset.started:
+  - "a8b1d39b033fd282"
+en.manage.reset.warn-core:
+  - "5f86002fc466c47c"
+en.manage.reset.warn-keep:
+  - "6560e633964ba87e"
+en.manage.reset.warn-map:
+  - "745a9b5d1ffa81bb"
+en.manage.reset.warn-nodes:
+  - "c09f6c53a8c3bec0"
+en.manage.reset.warn-params:
+  - "b1b72c1d74c421d3"
+en.manage.reset.warn-players:
+  - "24eb0b7afea7b72a"
+en.manage.reset.warn-shop:
+  - "bddda878abf59214"
+en.manage.reset.warn-spawns:
+  - "e04e688b5a07454c"
+en.manage.reset.warn-title:
+  - "6a8d544e64b7c27e"
+en.manage.reset.warn-villagers:
+  - "33983262f5d661f7"
+en.manage.title.detail:
+  - "8c80ff504e0dcda4"
+en.manage.title.list:
+  - "c18033f859779e5d"
+en.manage.title.mobspawns:
+  - "9023ffd92aec565c"
+en.manage.title.nodes:
+  - "c00589cccadfc408"
+en.manage.title.params:
+  - "14a19ba377a1ffff"
+en.manage.title.reset-confirm:
+  - "fa2ca12dacdd6dbf"
+en.manage.title.spawns:
+  - "8a9543a26d901b3b"
+en.manage.title.villagers:
+  - "fff64ba4ce8f59d1"
+en.messages-reloaded:
+  - "3281bebc650c7876"
+en.mob.airdrop-dropper:
+  - "fe9cdf43f8a96520"
+en.mob.explode-beetle:
+  - "a6041c229d56bb2d"
+en.mob.hook-claw-hunter:
+  - "76a802c1c3687a70"
+en.no-active-arenas:
+  - "8de10190fa8adbe1"
+en.no-arenas-available:
+  - "c6b3e0a67aed9a12"
+en.no-permission:
+  - "53962bf273fa4c59"
+en.node.block-protected:
+  - "446da79bca266abf"
+en.node.destroyed:
+  - "3d9bb3b918abfe00"
+en.node.repair-full:
+  - "6b8629657960f472"
+en.node.repair-item-lore1:
+  - "1e1779a44dedd62d"
+en.node.repair-item-lore2:
+  - "3a078c6d692e15db"
+en.node.repair-not-running:
+  - "b9bad40c010f86ad"
+en.node.repaired:
+  - "779f8e5380f46a8e"
+en.nodes.scan-complete:
+  - "f312afe6e275a3ac"
+en.nodes.scan-empty-hint:
+  - "3ab0cbf914005d61"
+en.nodes.scan-start:
+  - "336e3e0144524f73"
+en.not-in-arena:
+  - "2ae55a51ee220a7b"
+en.particles.hint:
+  - "17967ce4db1b17d2"
+  - "82eb8fb5fbba0cd2"
+en.particles.no-mobspawnpoints:
+  - "370f7ecf8dc0509f"
+en.particles.no-nodes:
+  - "e7f47f83e656fe70"
+en.particles.no-shopnpc:
+  - "a426f47d5f6acbe8"
+en.particles.no-spawnpoints:
+  - "45bba83d286ae177"
+en.particles.no-villagers:
+  - "caf9e9dd58591b48"
+en.particles.showing:
+  - "30cbc436f919174e"
+en.particles.showing-mobspawns:
+  - "e7c826a36e93a9f9"
+en.particles.showing-nodes:
+  - "8294c7305fcde82f"
+en.particles.showing-shop:
+  - "8a816a08a1eb3b29"
+en.particles.showing-villagers:
+  - "3f56f7f0b5595b59"
+en.player-died:
+  - "cc687d9512d799b1"
+en.player-joined:
+  - "54ff527cf254afd6"
+en.player-joined-need-more:
+  - "3fd090bc04295b43"
+en.player-left:
+  - "f5fb4c2aadedcd48"
+en.player-only-command:
+  - "1de877a8990ce4a1"
+en.player-reconnecting:
+  - "81d0e4c0d334e716"
+en.player-rejoined:
+  - "a245d5c59997cd6e"
+en.players-only:
+  - "a239b20cb56812f3"
+en.received-fireball:
+  - "9be7aca6c17c805b"
+en.received-hammer:
+  - "ea3dfa0b16344449"
+en.rejoin-welcome:
+  - "d15eaf842f659ce7"
+en.respawn-blocked-no-node:
+  - "ad5686f58f111861"
+en.respawn-waiting:
+  - "5ba6b6ff6805f28c"
+  - "644032b65d529ffe"
+en.respawned:
+  - "126d44ae5e394bca"
+en.scoreboard.alive:
+  - "91bd1804ba32b95e"
+en.scoreboard.crystals:
+  - "8881d326f90f4971"
+en.scoreboard.deaths:
+  - "6c9415bdda32b175"
+en.scoreboard.kills:
+  - "c6eddfdf6c6d7a09"
+en.scoreboard.nodes:
+  - "181276a73b4f5516"
+en.scoreboard.spectators:
+  - "f62d379726e79b15"
+en.scoreboard.starting:
+  - "944d0813bd918e89"
+en.scoreboard.title:
+  - "8cd1ab46a7143768"
+en.scoreboard.villagers:
+  - "c52f3b8a5e48bd65"
+en.scoreboard.waiting:
+  - "1d0afc405c40900a"
+en.scoreboard.wave:
+  - "5cc19d2fa949ad5c"
+en.setup.already-done:
+  - "463113f322dc629f"
+en.setup.btn-add:
+  - "37de8371e48d223a"
+en.setup.btn-add-lore:
+  - "4c0bdf56475bdf88"
+  - "9c764ec956d59c59"
+en.setup.btn-add-mobspawn:
+  - "1fad53263bc071ac"
+en.setup.btn-add-node:
+  - "06cb48e51f161127"
+en.setup.btn-add-villager:
+  - "eba5dd4a751442fc"
+en.setup.btn-add-villager-lore:
+  - "6c3f6b8a08ed7e6b"
+en.setup.btn-back-overview:
+  - "270fcea20c73ee03"
+en.setup.btn-clear-shop:
+  - "c677da49704ce06d"
+en.setup.btn-confirm:
+  - "164890d55327dd44"
+en.setup.btn-confirm-core:
+  - "c696daf4e6b2d754"
+en.setup.btn-confirm-lore:
+  - "ea625f14d27953dd"
+en.setup.btn-confirm-world:
+  - "2f545539548da85a"
+en.setup.btn-continue:
+  - "770949ebcdf44aad"
+en.setup.btn-done:
+  - "e649568b36807f79"
+en.setup.btn-done-lore:
+  - "e6ff941ce602538b"
+en.setup.btn-enable-arena:
+  - "9e58d62254c0f2c3"
+en.setup.btn-list-villagers:
+  - "d4075dccd0ff8d86"
+en.setup.btn-next-page:
+  - "332663ffcaac8b7d"
+en.setup.btn-nodes-gui:
+  - "6dbb0ff6d2228bde"
+en.setup.btn-open-gui:
+  - "9e72f3328f84fcfb"
+en.setup.btn-open-mobspawn-gui:
+  - "6115a79c3b5ef8d1"
+en.setup.btn-open-overview:
+  - "8ff626e651ffcc18"
+en.setup.btn-particles-lore-mobspawn:
+  - "7dbe82b8af6989a6"
+en.setup.btn-particles-lore-villager:
+  - "5f007b5655d75408"
+en.setup.btn-prev-page:
+  - "3fd6a43eb170ae27"
+en.setup.btn-rescan:
+  - "bf9c3ad958710e64"
+en.setup.btn-reset:
+  - "028df60434067aae"
+en.setup.btn-reset-lore:
+  - "26b5d996a83c59ee"
+en.setup.btn-save-exit:
+  - "1fe721dc45a6dce7"
+en.setup.btn-set-shop:
+  - "1743a1435f2bb6c7"
+en.setup.btn-show-particles:
+  - "ad1f8613fab04fe8"
+en.setup.btn-show-particles-lore:
+  - "2c2394d2d29e0e35"
+  - "7bb77b0ad9712ade"
+en.setup.btn-skip-shop:
+  - "57eae7d38878373c"
+en.setup.btn-villagers-done:
+  - "e649568b36807f79"
+en.setup.btn-villagers-gui:
+  - "cf5761b0f6f1dbb3"
+  - "dd3efdfdb76cc0c9"
+en.setup.done:
+  - "d1a234327ca1eeea"
+en.setup.done-start:
+  - "2ea88f911d0c238b"
+en.setup.enable-done-auto:
+  - "3bcb8b0d7c242777"
+en.setup.enable-done-manual:
+  - "ad7e836eb7836ecf"
+en.setup.enable-hint:
+  - "495cf08d4f51de2a"
+  - "877f367e750f5208"
+en.setup.goto-invalid-number:
+  - "010a0f859c2be9a0"
+en.setup.goto-invalid-step:
+  - "ff859bcfe5d78217"
+en.setup.goto-usage:
+  - "d7ec6c6bd24d8acc"
+en.setup.gui-mobspawns-title:
+  - "4cdd364a809c1366"
+en.setup.gui-nodes-title:
+  - "8341782656a22dfa"
+en.setup.gui-preview-title:
+  - "a9e1811fe06887d5"
+en.setup.gui-spawns-overview-title:
+  - "894371fb6fa0e4f2"
+en.setup.gui-spawns-title:
+  - "62a7db78262eba1f"
+en.setup.gui-villagers-title:
+  - "8b9958a27bc6c538"
+en.setup.kit-received:
+  - "3e24b5c4a565966a"
+  - "dd4a2605a7f957b4"
+en.setup.mobspawn-added:
+  - "9de48e9f1569781e"
+en.setup.mobspawn-entry:
+  - "f49660169ac1b86e"
+en.setup.mobspawn-removed:
+  - "cced0aa9a6864189"
+en.setup.mobspawns-required:
+  - "382d5e597ac2452d"
+en.setup.must-be-in-arena-world:
+  - "163d6feb7f30afd6"
+en.setup.no-arena-here:
+  - "74d9e85841ba745f"
+en.setup.node-add-hint:
+  - "72816b0ff193df25"
+en.setup.node-added:
+  - "63c88f99a9cfb537"
+en.setup.node-already-exists:
+  - "e4f69bff531f0a2f"
+en.setup.node-count:
+  - "7ecfd2fc4809407f"
+en.setup.node-deleted:
+  - "aaae3f1f0a1baec3"
+en.setup.node-entry:
+  - "1d59b21a5656df41"
+en.setup.node-entry-lore-coord:
+  - "88e541a59ad6dcd3"
+en.setup.node-entry-lore-delete:
+  - "f4a9c0a05d8708e4"
+en.setup.node-entry-lore-world:
+  - "a4bc17156ef2bb9d"
+en.setup.node-not-valid-block:
+  - "2dea40b595557a1d"
+en.setup.nodes-done:
+  - "5073c10419071943"
+en.setup.nodes-info-lore:
+  - "08eea1616e97bec6"
+en.setup.nodes-required:
+  - "666ed627df267ca6"
+en.setup.not-in-progress:
+  - "ab76ffab4632afd4"
+en.setup.overview-done-locked-lore:
+  - "27d0f364cd105e03"
+en.setup.overview-mobspawn-status:
+  - "ded6d7e63119aafc"
+en.setup.overview-open-gui-lore:
+  - "5300c9167db2ba3d"
+en.setup.overview-open-mobspawn-gui-lore:
+  - "96b20acfe11788e6"
+en.setup.overview-spawn-status:
+  - "fc84f958769a5458"
+en.setup.overview-status-missing:
+  - "a6f9fd3ee2043356"
+en.setup.overview-status-ok:
+  - "7bee1bbe81205669"
+en.setup.particles-started:
+  - "7f9fa3732a62053a"
+en.setup.preview-core:
+  - "a457498560f9d317"
+en.setup.preview-core-not-set:
+  - "2b1d3307bc7b89ae"
+en.setup.preview-mobspawns:
+  - "ded6d7e63119aafc"
+en.setup.preview-nodes:
+  - "b27b7745b78fda5f"
+en.setup.preview-players:
+  - "400f42123daf74e0"
+en.setup.preview-spawns:
+  - "33ebb246954f7367"
+en.setup.preview-villagers:
+  - "ea143b7d9c770d41"
+en.setup.preview-waves:
+  - "7bcbd86c823b3511"
+en.setup.preview-world:
+  - "39e319d9da085abf"
+en.setup.rescan-deprecated:
+  - "088ab5cba506c8c0"
+en.setup.resumed-arena-mismatch:
+  - "f53100e6a35f9568"
+en.setup.resuming:
+  - "8cbcab7213f895f9"
+  - "a8756651231af292"
+en.setup.save-failed:
+  - "7a91f285049a932d"
+en.setup.saved:
+  - "6cfd65b2d0acd2fe"
+en.setup.saved-exit:
+  - "23bcbf5bf7062d44"
+  - "8df9e4f15ef8a865"
+en.setup.shop-blocked-other-arena:
+  - "0e447c8b1999e701"
+en.setup.shop-clear-in-game:
+  - "8e154e99475621f0"
+en.setup.shop-clear-none:
+  - "a817ac8b14d19d11"
+en.setup.shop-cleared:
+  - "1bf6ebbf65504c7a"
+en.setup.shop-required:
+  - "f78290ef5bd6f319"
+en.setup.shop-set:
+  - "0b5e19a75fab6769"
+en.setup.shop-set-in-game:
+  - "2aca8f9060bf5d08"
+en.setup.shop-status:
+  - "e7d4711dff7e8139"
+en.setup.shop-status-unset:
+  - "a8aa5427bb50728e"
+en.setup.spawn-added:
+  - "5a0787534d6d3b41"
+en.setup.spawn-entry:
+  - "691b6f688dd84211"
+en.setup.spawn-entry-lore:
+  - "cde54427283db165"
+en.setup.spawn-removed:
+  - "5bbce6b4ead5f684"
+en.setup.spawns-required:
+  - "283be75df9c18525"
+  - "a0a6898456fd2b2f"
+en.setup.step1:
+  - "0b95f6b61ac45e66"
+  - "363e63e753bc2041"
+en.setup.step2:
+  - "15cb45adcc86e078"
+en.setup.step3:
+  - "998b7b5be902b66c"
+  - "cbd4581a43a52f3e"
+en.setup.step3-mobspawns:
+  - "1d401c5966aea3fc"
+  - "491091d786b08b78"
+en.setup.step4-nodes:
+  - "132814488e25d60a"
+  - "40de0783329fdfac"
+en.setup.step5-shop:
+  - "41f796aa403c97be"
+  - "d9b73b978b2fd045"
+en.setup.step5-villagers:
+  - "0a3d38e3a2409859"
+en.setup.unknown:
+  - "76e6641b25b4bd53"
+en.setup.villager-added:
+  - "9e138eef83955dac"
+en.setup.villager-entry:
+  - "34e7a74f6ad9b47a"
+en.setup.villager-entry-lore:
+  - "f4a9c0a05d8708e4"
+en.setup.villager-removed:
+  - "e78a08c536c718aa"
+en.setup.villagers-empty:
+  - "fef94d727876a545"
+en.setup.villagers-required:
+  - "f4246f8cbc304fa5"
+en.shop-reloaded:
+  - "1bf0fef18aab05e5"
+en.shop.currency-balance:
+  - "033cb9eb577d7898"
+en.shop.currency.name:
+  - "bdaed325595bea27"
+en.shop.give-invalid-amount:
+  - "216ba3b4b0e32d78"
+en.shop.give-player-not-found:
+  - "c2703ec8fab98851"
+en.shop.give-received:
+  - "1bc457d199238853"
+en.shop.give-success:
+  - "21ea38b148987017"
+  - "e7f7f90f8f6af68e"
+en.shop.give-too-many:
+  - "8db8b5be19f49e0f"
+en.shop.give-unavailable:
+  - "f4af01571bdaea46"
+en.shop.give-usage:
+  - "7be5d7277df159aa"
+  - "b4fd5866c29d4ce0"
+en.shop.gui.title:
+  - "7476d0fc46058d01"
+en.shop.inventory-full:
+  - "799a3080e0c1d601"
+en.shop.not-enough:
+  - "7705c96ce105bfaa"
+en.shop.npc.name:
+  - "1d324c45e3cfb46a"
+en.shop.price-line:
+  - "c51710c0a4babd6f"
+en.shop.purchase-success:
+  - "a67aea7b8d184fb2"
+en.shop.reloaded:
+  - "b706070df324a66e"
+en.shop.usage:
+  - "2c0c4ec16f72eab0"
+en.state.defeat:
+  - "e79ddaad8a92bc93"
+en.state.ending:
+  - "6f887dbcaef9280a"
+en.state.running:
+  - "dede383b756512cf"
+en.state.starting:
+  - "6569d63922e3c2ba"
+en.state.victory:
+  - "52f6940dae5b1ace"
+en.state.waiting:
+  - "7a9ca5bcf67fb231"
+en.state.wave-intermission:
+  - "b66c936ccbabd57b"
+en.stats.crystals:
+  - "efe2e148c7fedb0b"
+en.stats.disabled:
+  - "d70cea4a19b27753"
+en.stats.games:
+  - "f84ab711ec54a854"
+en.stats.header:
+  - "af8efe47b61956cb"
+en.stats.kills-deaths:
+  - "0d880c05626f05d1"
+en.stats.nodes:
+  - "561953b195dc8d23"
+en.stats.player-not-found:
+  - "87014d7dbf43ebde"
+en.stats.self-hint:
+  - "dd118434ab7d12be"
+en.stats.usage:
+  - "fc4ae9c3295f4f2d"
+en.stats.waves:
+  - "36220041a7f983bb"
+en.stats.win-loss:
+  - "ac78a228e48a7a94"
+en.status-header:
+  - "d938d21164164854"
+en.status-mobs:
+  - "e3d9ef7f5681cf34"
+en.status-nodes:
+  - "8005d4ea7b43ccd6"
+en.status-players:
+  - "4d1a4de928335bbd"
+en.status-spectators:
+  - "5af42f3e4504f195"
+en.status-state:
+  - "d8ece307566174e3"
+en.status-wave:
+  - "d45a77fd3e9d1a2e"
+en.top.empty:
+  - "989798d29cc4a354"
+en.top.entry:
+  - "fad12573b9c5fbdd"
+en.top.header:
+  - "4e1feed9ee5e024c"
+en.top.types:
+  - "d53d9ad89a7f0a7d"
+en.top.usage:
+  - "6cb0907809bd15c9"
+en.tps.cleanup-queue:
+  - "fea40f976779cad1"
+en.tps.game-players:
+  - "4b6b0e8a2ea666ae"
+en.tps.header:
+  - "66fc0ad5c976d657"
+en.tps.memory:
+  - "cc11346838d8cbd2"
+en.tps.mobs:
+  - "8ae0a1452dd960e3"
+en.tps.mspt:
+  - "4eb0dc5544443d9d"
+en.tps.nodes:
+  - "1c0fd1a94ab7d241"
+en.tps.online-players:
+  - "b4905fc38b04ee80"
+en.tps.server-header:
+  - "9bb1216d287a84d4"
+en.tps.state:
+  - "879402aa6a51f6dc"
+en.tps.values:
+  - "73a63cf140f089d7"
+en.tps.warning-high-mspt:
+  - "05fa0d718f08b184"
+en.tps.warning-spark:
+  - "5228a55339edc390"
+en.tps.warning-suggestion:
+  - "6b46b43a38b86572"
+en.tps.wave:
+  - "ca26bbf562708bf7"
+en.tps.world-line:
+  - "3a0f78b84107a771"
+en.usage-admin-header:
+  - "de9a8f6d10fbfbf5"
+en.usage-arenas:
+  - "dbcdd98084dcd6b0"
+en.usage-build:
+  - "0e8196f30b75defc"
+en.usage-click-to-copy:
+  - "fe8a17a77bb9dfcc"
+en.usage-config:
+  - "aaa270236cc9a989"
+  - "d8b0e55105ae3f74"
+en.usage-deploy:
+  - "696296ffd5c09d1e"
+  - "87a1f16f50cbbf10"
+en.usage-disable:
+  - "41e9416f832b38d2"
+en.usage-enable:
+  - "f71a428d5a2538a4"
+en.usage-fireball:
+  - "2e8b49c1c845a8bf"
+en.usage-gui:
+  - "f17bf3d040318b45"
+en.usage-hammer:
+  - "0db34a6a84ce3697"
+en.usage-header:
+  - "a97e8bea978e7a1d"
+en.usage-join:
+  - "1c7f0023279bee06"
+  - "f02ab943ffd915ae"
+en.usage-lang:
+  - "de3add51fd1e0404"
+en.usage-leave:
+  - "ae4747345cfa3dd2"
+  - "bf8a952654d4deb3"
+en.usage-list:
+  - "ee3ef8aa06525d36"
+en.usage-lobby:
+  - "84f0ab43ca4d5263"
+en.usage-lobby-setspawn:
+  - "dee0b57fde92167f"
+en.usage-manage:
+  - "05f7260ecb70e506"
+en.usage-player-header:
+  - "068d2f29d3e75ab9"
+en.usage-reloadconfig:
+  - "f2a0e21207d319c1"
+en.usage-setup:
+  - "22735d2b2c204047"
+en.usage-shop-give:
+  - "397db9de5107e19c"
+  - "cce342de68710f24"
+en.usage-shop-reload:
+  - "d9a6a8fcbc12acee"
+en.usage-start:
+  - "3f89a86afc202871"
+  - "fa86e47f5ac81778"
+en.usage-stats:
+  - "9997e522349c9aeb"
+en.usage-status:
+  - "4dd7efbd87ea97ff"
+  - "bf6fc15af6711a8c"
+en.usage-stop:
+  - "ca954e36129a1e44"
+  - "f1b813775df971f8"
+en.usage-top:
+  - "853ab55f27c04d89"
+  - "897b8d738052fdad"
+en.usage-tps:
+  - "ca6894984ab5f601"
+en.usage-wave-clear:
+  - "b76e39ddb5c27fad"
+en.usage-wave-skip:
+  - "da381683ca16c521"
+en.villager-died:
+  - "3cfa2d7d2740b6a8"
+en.villager.display-name:
+  - "9c21685f9a2c46f6"
+en.wave-clear-broadcast:
+  - "12c607ed743c4d02"
+en.wave-clear-done:
+  - "00a3b7635a987210"
+en.wave-clear-intermission:
+  - "dd27678cba9a6a99"
+en.wave-complete:
+  - "89d218479a6469cf"
+en.wave-not-running:
+  - "419523c7004a5e50"
+en.wave-skip-broadcast:
+  - "a454cca2897a769e"
+en.wave-skip-done:
+  - "c081a8cfde9072ea"
+en.wave-skip-not-enough-players:
+  - "8f4a8d53a9227204"
+en.wave-start:
+  - "b2db5579499f7f17"
+en.wave-stuck-purge:
+  - "60b85ff9ccad0fac"
+en.wave-stuck-relocate:
+  - "bd42cf4480f36fde"
+zh.already-in-arena:
+  - "c6a8de6cdf24e770"
+zh.arena-already-disabled:
+  - "4cfa275df51f4606"
+zh.arena-auto-left:
+  - "150c0220ad8fa6f0"
+zh.arena-detail-players:
+  - "59f047af3c7953c3"
+zh.arena-detail-status:
+  - "c419107e52409327"
+zh.arena-detail-status-unknown:
+  - "a801a9a895f3c0fe"
+zh.arena-detail-title:
+  - "321767df26c96699"
+zh.arena-detail-wave:
+  - "b5586d59e7a456cd"
+zh.arena-detail-world:
+  - "242090fa728ff33c"
+zh.arena-detail-world-unloaded:
+  - "f8544307e1cb6d2a"
+zh.arena-disable-in-progress:
+  - "c9eedccd41aacbe0"
+zh.arena-disabled:
+  - "c8bf00350ac7632a"
+zh.arena-disabled-ok:
+  - "8b6b1fe9f25e434b"
+zh.arena-enable-already-queued:
+  - "f779fb1de59e84a0"
+zh.arena-enable-already-ready:
+  - "62fe09e4fd1fa0cf"
+zh.arena-enable-failed:
+  - "1cfbce089ae191b5"
+  - "6822bc67ad81c549"
+zh.arena-enable-queued:
+  - "81bf0093b88d5df5"
+zh.arena-full:
+  - "8f34a581294f8573"
+zh.arena-issue-disabled:
+  - "588f1c9a0b302bee"
+zh.arena-issue-flag-disabled:
+  - "54f23a839e8f64a0"
+  - "a4c744b899561536"
+zh.arena-issue-undeployed:
+  - "f40a2fcb2e982883"
+zh.arena-issue-world:
+  - "c24841d2f2d090b5"
+zh.arena-left:
+  - "b919f2bf806de01e"
+zh.arena-list-entry:
+  - "6c3a6115b2fd83e3"
+zh.arena-list-footer:
+  - "5307ba98e6d12730"
+zh.arena-list-header:
+  - "b5760c7d8563d4c4"
+zh.arena-list-help-admin:
+  - "74afb6f7d89452d5"
+zh.arena-list-help-title:
+  - "2a5263490e2c8041"
+zh.arena-map-missing:
+  - "ed51bdc81c9b4652"
+zh.arena-no-mob-spawns:
+  - "5364b7e009a95093"
+zh.arena-no-spawn-points:
+  - "1c06cad73187aebc"
+zh.arena-not-deployed:
+  - "6cc0bc307e6f430d"
+  - "84ff922dd7e79d95"
+zh.arena-not-deployed-hint:
+  - "00e4f4ade98b093f"
+  - "3c420dc0488955cc"
+  - "642c440366ea95b0"
+zh.arena-not-found:
+  - "2fe852cf665fb091"
+zh.arena-started:
+  - "9a28490fe5082c6e"
+zh.arena-status-disabled:
+  - "888d90087c2954fc"
+zh.arena-status-ending:
+  - "61e38f740920b4d5"
+zh.arena-status-header:
+  - "ee8bb21bb202b81d"
+zh.arena-status-loading:
+  - "bdc5912d470d7dd8"
+zh.arena-status-map-missing:
+  - "4fe7d399b2113e0f"
+zh.arena-status-queued:
+  - "69c73a1382b650d3"
+zh.arena-status-running:
+  - "2d4b29eb3bd9fd20"
+zh.arena-status-starting:
+  - "8977c81e1af50296"
+zh.arena-status-statistics:
+  - "f2978eba760d4feb"
+zh.arena-status-undeployed:
+  - "190a1af5dde6e904"
+zh.arena-status-waiting:
+  - "9fefccea72c7ebf5"
+zh.arena.access-denied:
+  - "565423be225034b9"
+zh.btn.return-lobby:
+  - "13c9caeff30d3c48"
+zh.build-mode-off:
+  - "ebe9d0f619e28356"
+zh.build-mode-on:
+  - "46e7fedc1c372b19"
+zh.config-reloaded:
+  - "fc66ff7b9f7c47e8"
+zh.config.invalid-material:
+  - "5539ad954adefc95"
+zh.config.invalid-material-not-item:
+  - "ca6c4b45678ae66c"
+zh.config.menu.common.back:
+  - "b928e3d39cd8dc33"
+zh.config.menu.common.back-lore:
+  - "356abe4f01d37fa3"
+zh.config.menu.common.click-cycle:
+  - "54661e121025bc44"
+zh.config.menu.common.click-edit:
+  - "dd7ffb2def7c886e"
+zh.config.menu.common.click-toggle-custom:
+  - "c62b12589b0d161f"
+zh.config.menu.common.current:
+  - "93778a21b070d7ad"
+zh.config.menu.common.current-value:
+  - "0cf90646eeb72f07"
+zh.config.menu.common.empty-hand:
+  - "304451fe5a34b61e"
+zh.config.menu.common.leave-blank-clear:
+  - "0fccb6cbabd23cce"
+zh.config.menu.common.left-click:
+  - "26341c61f950ec05"
+zh.config.menu.common.none:
+  - "484d55613910eb8c"
+zh.config.menu.common.right-click:
+  - "c69ff978a658c2b7"
+zh.config.menu.common.setting-prefix:
+  - "df3d58c7d84b85f2"
+zh.config.menu.common.shift-custom:
+  - "20228ba797c9ff76"
+zh.config.menu.common.shift-edit:
+  - "0e93c091dc59d46e"
+zh.config.menu.common.unset:
+  - "2f5f1d6fbfb061ed"
+zh.config.menu.input.cancel-hint:
+  - "2231ec9a8a427037"
+zh.config.menu.input.cancelled:
+  - "a2b5a767041ec9d1"
+zh.config.menu.input.invalid-number:
+  - "ccdecb6727d8de73"
+zh.config.menu.input.number-prompt:
+  - "0e4e2e17fe40b032"
+zh.config.menu.input.text-prompt:
+  - "ec19262b8be393fe"
+zh.config.menu.input.timeout:
+  - "0806b627f76bfb4e"
+zh.config.menu.items.editing-fireball:
+  - "c96aa20e004035eb"
+zh.config.menu.items.editing-hammer:
+  - "5866b2e18996779e"
+zh.config.menu.items.enter-model-id:
+  - "0a490012e2a64a4b"
+zh.config.menu.items.fireball-tab:
+  - "edf490f3a9cc989c"
+zh.config.menu.items.fireball-tab-desc:
+  - "7d267a40c71b5552"
+zh.config.menu.items.fireball.cooldown:
+  - "f9d6e2483d4f591d"
+zh.config.menu.items.fireball.cooldown-desc:
+  - "da44e7c69b1b933a"
+zh.config.menu.items.fireball.damage:
+  - "7deab6c6f9bc0dc7"
+zh.config.menu.items.fireball.damage-desc:
+  - "afb7bd89aab3a2f6"
+zh.config.menu.items.fireball.knockback:
+  - "3af8f8d5b6b290e0"
+zh.config.menu.items.fireball.knockback-desc:
+  - "8b58a3a3521cae0d"
+zh.config.menu.items.fireball.mat:
+  - "b7f74ab17ee9c049"
+zh.config.menu.items.fireball.mat-desc:
+  - "1517781ea07ceafe"
+zh.config.menu.items.fireball.mat-section:
+  - "745b9e469f1aaef6"
+zh.config.menu.items.fireball.max-travel:
+  - "b90651485055f1ec"
+zh.config.menu.items.fireball.max-travel-desc:
+  - "77b78c3791e2be31"
+zh.config.menu.items.fireball.proximity-fuse:
+  - "ece3d002b4ef136e"
+zh.config.menu.items.fireball.proximity-fuse-desc:
+  - "14ae1f17a98c9aa2"
+zh.config.menu.items.fireball.radius:
+  - "cbac5caa24130081"
+zh.config.menu.items.fireball.radius-desc:
+  - "4fa97c45b4f321d3"
+zh.config.menu.items.fireball.speed:
+  - "b824fb6c8cc7dc52"
+zh.config.menu.items.fireball.speed-desc:
+  - "2cc19d3fbcb39c40"
+zh.config.menu.items.hammer-tab:
+  - "6c857e3cdfdfbc30"
+zh.config.menu.items.hammer-tab-desc:
+  - "b60013e60113a102"
+zh.config.menu.items.hammer.aftershock:
+  - "2a6578bf46da3cfa"
+zh.config.menu.items.hammer.aftershock-desc:
+  - "f4fa1767ff4b06ed"
+zh.config.menu.items.hammer.cooldown:
+  - "9eae343d3c07acee"
+zh.config.menu.items.hammer.cooldown-desc:
+  - "6426a5bd99ab3b42"
+zh.config.menu.items.hammer.custom-model:
+  - "6e7c4709c71629dc"
+zh.config.menu.items.hammer.custom-model-desc:
+  - "9717d71ea9bb492a"
+zh.config.menu.items.hammer.high-charge:
+  - "f70f43141b6d3fde"
+zh.config.menu.items.hammer.high-charge-desc:
+  - "2ed5f7586f44b51f"
+zh.config.menu.items.hammer.high-damage:
+  - "30e1196888bd941f"
+zh.config.menu.items.hammer.high-damage-desc:
+  - "2f836ad9ff805bde"
+zh.config.menu.items.hammer.high-radius:
+  - "2ca8839f2a80938b"
+zh.config.menu.items.hammer.high-radius-desc:
+  - "c36c121a0f5a797f"
+zh.config.menu.items.hammer.high-tier:
+  - "0119ef698d5278dc"
+zh.config.menu.items.hammer.ia-model:
+  - "c8ec7927c5b6cfc0"
+zh.config.menu.items.hammer.low-damage:
+  - "30e1196888bd941f"
+zh.config.menu.items.hammer.low-damage-desc:
+  - "350019323c5541bb"
+zh.config.menu.items.hammer.low-radius:
+  - "2ca8839f2a80938b"
+zh.config.menu.items.hammer.low-radius-desc:
+  - "c00adcb490f64147"
+zh.config.menu.items.hammer.low-tier:
+  - "464d8f221a6bad1b"
+zh.config.menu.items.hammer.mat:
+  - "96d2fb8c76caff54"
+zh.config.menu.items.hammer.mat-desc:
+  - "1517781ea07ceafe"
+zh.config.menu.items.hammer.max-uses:
+  - "daff30ca704af620"
+zh.config.menu.items.hammer.max-uses-desc:
+  - "3f9fb6ec7021ff30"
+zh.config.menu.items.hammer.med-charge:
+  - "f70f43141b6d3fde"
+zh.config.menu.items.hammer.med-charge-desc:
+  - "e9339dde99150384"
+zh.config.menu.items.hammer.med-damage:
+  - "30e1196888bd941f"
+zh.config.menu.items.hammer.med-damage-desc:
+  - "c9c9115b2b012aa2"
+zh.config.menu.items.hammer.med-radius:
+  - "2ca8839f2a80938b"
+zh.config.menu.items.hammer.med-radius-desc:
+  - "9734c3ebb9455a4f"
+zh.config.menu.items.hammer.med-tier:
+  - "4bda29df3f51cbd6"
+zh.config.menu.items.hammer.model:
+  - "7830a83df1c9e73e"
+zh.config.menu.items.hammer.smash-timeout:
+  - "b8b1a0dca47b0469"
+zh.config.menu.items.hammer.smash-timeout-desc:
+  - "0b1bb0f0b84fd16f"
+zh.config.menu.items.header:
+  - "2bce0ad8be71b12a"
+zh.config.menu.items.title:
+  - "98f621dadb98ae17"
+zh.config.menu.main.header:
+  - "9f3eed62e39001b4"
+zh.config.menu.main.header-lore1:
+  - "338957292d15cded"
+zh.config.menu.main.header-lore3:
+  - "e4b109933cd9fe91"
+zh.config.menu.main.items:
+  - "cf18bc017db376d4"
+zh.config.menu.main.items-lore1:
+  - "59d6dfdf5fb6aebd"
+zh.config.menu.main.items-lore2:
+  - "b23697e3d158e31c"
+zh.config.menu.main.items-lore3:
+  - "81ebd8f18ef718b1"
+zh.config.menu.main.items-noperm:
+  - "c0d7bfaf98a60b69"
+zh.config.menu.main.monsters:
+  - "55f2f78793cbfd0e"
+zh.config.menu.main.monsters-lore1:
+  - "c71247f461499486"
+zh.config.menu.main.monsters-lore2:
+  - "b3353a7d0c2ec63e"
+zh.config.menu.main.monsters-lore3:
+  - "d019a5c8e3c74f8d"
+zh.config.menu.main.monsters-noperm:
+  - "758826bc3484ad7b"
+zh.config.menu.main.no-changes-msg:
+  - "bdaee62a9927facf"
+zh.config.menu.main.nodes:
+  - "e526b95d5ba03533"
+zh.config.menu.main.nodes-lore1:
+  - "289edb758ac286bc"
+zh.config.menu.main.nodes-lore2:
+  - "6eb329e2b8efb39a"
+zh.config.menu.main.nodes-lore3:
+  - "bbdc4a56c200efc5"
+zh.config.menu.main.nodes-noperm:
+  - "2107622e0ba09661"
+zh.config.menu.main.perm-separator:
+  - "3b2e8119b6fcc97d"
+zh.config.menu.main.permission-admin-desc:
+  - "e9438b40db3eb5d5"
+zh.config.menu.main.permission-info:
+  - "50f24262ac761307"
+zh.config.menu.main.reload:
+  - "b96d89bc60ffabbb"
+zh.config.menu.main.reload-lore1:
+  - "339cd4ec5e39022d"
+zh.config.menu.main.reload-lore2:
+  - "e001bb37a9cc7107"
+zh.config.menu.main.reloaded-msg:
+  - "ffca00046c860ca5"
+zh.config.menu.main.revert:
+  - "c1490d7bb2a59305"
+zh.config.menu.main.revert-lore:
+  - "7ffb97cd04ebca45"
+zh.config.menu.main.reverted-msg:
+  - "693dcff99719f4ae"
+zh.config.menu.main.rules:
+  - "f09e5896d3f99aa1"
+zh.config.menu.main.rules-lore1:
+  - "9d8519aa2b778cf4"
+zh.config.menu.main.rules-lore2:
+  - "ca12ab45df8e1473"
+zh.config.menu.main.rules-lore3:
+  - "4a40625a22f86f98"
+zh.config.menu.main.rules-lore4:
+  - "eab69af30d551624"
+zh.config.menu.main.rules-noperm:
+  - "d09dc2d3b179c1de"
+zh.config.menu.main.save:
+  - "9d40ce6555cd6cd6"
+zh.config.menu.main.save-lore1:
+  - "0fbb47ed5d0f26a0"
+zh.config.menu.main.save-lore2:
+  - "47011f6618c4d347"
+zh.config.menu.main.saved-hint:
+  - "1fa7a4290512b98d"
+zh.config.menu.main.saved-msg:
+  - "f0c394d36d0f3428"
+zh.config.menu.main.title:
+  - "6e5f6bf33848c1ce"
+zh.config.menu.main.uptodate:
+  - "9933e32098e01b8e"
+zh.config.menu.main.uptodate-lore:
+  - "b2f6b09e83e5c26c"
+zh.config.menu.main.waves:
+  - "cdedd0af5b39a732"
+zh.config.menu.main.waves-lore1:
+  - "ca97a1da8ff36784"
+zh.config.menu.main.waves-lore2:
+  - "66e43ed0c650b24d"
+zh.config.menu.main.waves-lore3:
+  - "55df2592798437b4"
+zh.config.menu.main.waves-noperm:
+  - "02310af0b2284c6a"
+zh.config.menu.mat.blaze-powder:
+  - "e1fefa835dc1fc26"
+zh.config.menu.mat.bow:
+  - "d97da89d3d0532b2"
+zh.config.menu.mat.chainmail-boots:
+  - "f544fb1807c9e78c"
+zh.config.menu.mat.chainmail-chestplate:
+  - "8600f79fbb8af89a"
+zh.config.menu.mat.chainmail-helmet:
+  - "27711d0e2afcfae3"
+zh.config.menu.mat.chainmail-leggings:
+  - "0d95962b0ddc220c"
+zh.config.menu.mat.crossbow:
+  - "e86ef966639cc885"
+zh.config.menu.mat.diamond-axe:
+  - "830bfc6624e65849"
+zh.config.menu.mat.diamond-boots:
+  - "65edb75b81f63859"
+zh.config.menu.mat.diamond-chestplate:
+  - "dac31a8efb1426fe"
+zh.config.menu.mat.diamond-helmet:
+  - "eda4fb280938b70e"
+zh.config.menu.mat.diamond-leggings:
+  - "707d21dfcabdb6c8"
+zh.config.menu.mat.diamond-sword:
+  - "fa4bea52320d3a0a"
+zh.config.menu.mat.fire-charge:
+  - "1ef10b509e918a86"
+zh.config.menu.mat.firework-rocket:
+  - "23f9a84909b4dc64"
+zh.config.menu.mat.golden-axe:
+  - "1cb7b134e9e13ab3"
+zh.config.menu.mat.golden-boots:
+  - "9483f2fe3860ff34"
+zh.config.menu.mat.golden-chestplate:
+  - "d6d4e13409f82d22"
+zh.config.menu.mat.golden-helmet:
+  - "fe161a4da21c6658"
+zh.config.menu.mat.golden-leggings:
+  - "354817d0b023a939"
+zh.config.menu.mat.golden-sword:
+  - "2a725767ed0e2b0c"
+zh.config.menu.mat.gunpowder:
+  - "e302e8799f8264e5"
+zh.config.menu.mat.iron-axe:
+  - "179822694cb8e402"
+zh.config.menu.mat.iron-boots:
+  - "fab347a98b3da3a1"
+zh.config.menu.mat.iron-chestplate:
+  - "bc3a3e51e10c0ccd"
+zh.config.menu.mat.iron-helmet:
+  - "e10a80837e297115"
+zh.config.menu.mat.iron-leggings:
+  - "cea257fadea02c98"
+zh.config.menu.mat.iron-sword:
+  - "bfd8715592e3d099"
+zh.config.menu.mat.leather-boots:
+  - "1b027cf260d508cb"
+zh.config.menu.mat.leather-chestplate:
+  - "84432745ff0d4dba"
+zh.config.menu.mat.leather-helmet:
+  - "bdfbf99e835efa1b"
+zh.config.menu.mat.leather-leggings:
+  - "bc1cedaf3c0cc692"
+zh.config.menu.mat.magma-cream:
+  - "d6456d92f3442367"
+zh.config.menu.mat.netherite-axe:
+  - "f32017c5b1a25a82"
+zh.config.menu.mat.netherite-boots:
+  - "5e3c9d151cbc11a0"
+zh.config.menu.mat.netherite-chestplate:
+  - "6f9c942f81ab31e5"
+zh.config.menu.mat.netherite-helmet:
+  - "4969680588c97aac"
+zh.config.menu.mat.netherite-leggings:
+  - "f474be1e533adb97"
+zh.config.menu.mat.netherite-sword:
+  - "5896ad29b0594417"
+zh.config.menu.mat.shield:
+  - "589c31669663690a"
+zh.config.menu.mat.stone-axe:
+  - "52698ee7d8f06d5d"
+zh.config.menu.mat.stone-sword:
+  - "39df0b9061a3c480"
+zh.config.menu.mat.totem-of-undying:
+  - "ebb2d36ad06471aa"
+zh.config.menu.mat.trident:
+  - "26394d092838b462"
+zh.config.menu.mat.wooden-axe:
+  - "ff4611499d7cf2c7"
+zh.config.menu.mat.wooden-sword:
+  - "82636569eb5f409b"
+zh.config.menu.monsters.airdrop-cooldown:
+  - "367963379549bbfb"
+zh.config.menu.monsters.airdrop-cooldown-desc:
+  - "ef1b8c886c38be9a"
+zh.config.menu.monsters.airdrop-count:
+  - "607eaa3523206365"
+zh.config.menu.monsters.airdrop-count-desc:
+  - "17360753192893fd"
+zh.config.menu.monsters.airdrop-logic:
+  - "24f1f6919f72e2e4"
+zh.config.menu.monsters.airdrop-lore1:
+  - "59a954a94aa21f38"
+zh.config.menu.monsters.airdrop-lore2:
+  - "130a45d1ae36f127"
+zh.config.menu.monsters.airdrop-lore3:
+  - "883aef2ec500b681"
+zh.config.menu.monsters.airdrop-lore4:
+  - "e00a888d39d576b4"
+zh.config.menu.monsters.armor-prompt:
+  - "b24940ffa972ca5e"
+zh.config.menu.monsters.armor-wear:
+  - "c25327fb7f5ff875"
+zh.config.menu.monsters.armor-wear-desc:
+  - "78d530b4653e0c1b"
+zh.config.menu.monsters.base-damage:
+  - "d7c50cf70d63e100"
+zh.config.menu.monsters.base-damage-desc:
+  - "e6c431fc214027ec"
+zh.config.menu.monsters.boots:
+  - "ee5d39049671289c"
+zh.config.menu.monsters.chestplate:
+  - "edddeddef77323aa"
+zh.config.menu.monsters.cooldown-ticks:
+  - "75704f12f2c4847f"
+zh.config.menu.monsters.cooldown-ticks-desc:
+  - "cb3dc2df64bc358b"
+zh.config.menu.monsters.custom-model-data:
+  - "6e7c4709c71629dc"
+zh.config.menu.monsters.custom-model-data-desc:
+  - "9717d71ea9bb492a"
+zh.config.menu.monsters.cycle-boots:
+  - "e1d13a0dc559fb4c"
+zh.config.menu.monsters.cycle-chestplate:
+  - "da067c8b02fa6b58"
+zh.config.menu.monsters.cycle-helmet:
+  - "3c9c90d6f6b2bf1e"
+zh.config.menu.monsters.cycle-leggings:
+  - "54fcbc35120cf170"
+zh.config.menu.monsters.cycle-offhand:
+  - "eb67a88871e0132d"
+zh.config.menu.monsters.cycle-weapons:
+  - "aa1bb90af6086b79"
+zh.config.menu.monsters.editing:
+  - "931cb1069f09a39e"
+zh.config.menu.monsters.entity-explosion:
+  - "f21566bbda0cbcd9"
+zh.config.menu.monsters.entity-explosion-desc:
+  - "23548951f7e2603c"
+zh.config.menu.monsters.entity-explosion-off:
+  - "9175467c6f01dd7c"
+zh.config.menu.monsters.entity-explosion-on:
+  - "2ef2b9f5f57305f8"
+zh.config.menu.monsters.explode-beetle:
+  - "99b5c328f08b9e8d"
+zh.config.menu.monsters.explode-beetle-desc:
+  - "ed015111fa4ed050"
+zh.config.menu.monsters.explode-logic:
+  - "fd0029a4caa83b54"
+zh.config.menu.monsters.explode-lore1:
+  - "6242f9b0464d43a5"
+zh.config.menu.monsters.explode-lore2:
+  - "f890d73fb1dcee5d"
+zh.config.menu.monsters.explode-lore3:
+  - "6ce4f55b7e255405"
+zh.config.menu.monsters.explode-lore4:
+  - "04041a5f916a9d98"
+zh.config.menu.monsters.explode-lore5:
+  - "f7e1bdf430695e70"
+zh.config.menu.monsters.explode-multiplier:
+  - "4db567689167ec9b"
+zh.config.menu.monsters.explode-multiplier-desc:
+  - "04585f1bdc0123fe"
+zh.config.menu.monsters.flying-dropper:
+  - "d6d6cc584a824168"
+zh.config.menu.monsters.flying-dropper-desc:
+  - "3e68644438805f0c"
+zh.config.menu.monsters.header:
+  - "743505675af173be"
+zh.config.menu.monsters.health:
+  - "1a256e637621a70a"
+zh.config.menu.monsters.helmet:
+  - "730da70298b5adff"
+zh.config.menu.monsters.hook-claw-hunter:
+  - "1b94f1a25adc5d26"
+zh.config.menu.monsters.hook-claw-hunter-desc:
+  - "7853bf773638a5cd"
+zh.config.menu.monsters.hook-velocity:
+  - "7b0757537e663c36"
+zh.config.menu.monsters.hook-velocity-desc:
+  - "e027a24911b0e3f1"
+zh.config.menu.monsters.ia-model:
+  - "98f2be05cae9bf3f"
+zh.config.menu.monsters.ia-model-prompt:
+  - "f259da49df0496bb"
+zh.config.menu.monsters.leggings:
+  - "0db4f5a0fe2adfb5"
+zh.config.menu.monsters.main-hand:
+  - "f73814f10c45e509"
+zh.config.menu.monsters.model-appearance:
+  - "110162687cd69119"
+zh.config.menu.monsters.model-appearance-desc:
+  - "03f456fec0bd475c"
+zh.config.menu.monsters.off-hand:
+  - "47ade43482afd914"
+zh.config.menu.monsters.offhand-prompt:
+  - "59c3a8296131d027"
+zh.config.menu.monsters.speed:
+  - "0129f25ebe727862"
+zh.config.menu.monsters.stun-duration:
+  - "878f45f806630f43"
+zh.config.menu.monsters.stun-duration-desc:
+  - "a67108ba8643e5f8"
+zh.config.menu.monsters.target-info:
+  - "7edacbd0740e334c"
+zh.config.menu.monsters.target-lore1:
+  - "0434742dd00d10f9"
+zh.config.menu.monsters.target-lore2:
+  - "f86d85fe929d8c6c"
+zh.config.menu.monsters.target-lore3:
+  - "76be1f22f51e7f4b"
+zh.config.menu.monsters.target-lore4:
+  - "0f5469e869e0170d"
+zh.config.menu.monsters.title:
+  - "35c1295dcd3d63bc"
+zh.config.menu.nodes.base-health:
+  - "f4ef2f0bf8ab7841"
+zh.config.menu.nodes.base-health-desc:
+  - "21f9a98c168ab12b"
+zh.config.menu.nodes.block-types-fixed:
+  - "defe01a6d42b4c5c"
+zh.config.menu.nodes.block-types-header:
+  - "a5dd8c40cbae407f"
+zh.config.menu.nodes.buff-radius:
+  - "c31971f485f0176e"
+zh.config.menu.nodes.buff-radius-desc:
+  - "a0078b8e77b28813"
+zh.config.menu.nodes.header:
+  - "80fb141f33f6efee"
+zh.config.menu.nodes.repair-amount:
+  - "a41227b44827cf31"
+zh.config.menu.nodes.repair-amount-desc:
+  - "3fab558892298e05"
+zh.config.menu.nodes.repair-item:
+  - "dde0533b7b906650"
+zh.config.menu.nodes.repair-item-cmd1:
+  - "83bc730e1b108040"
+zh.config.menu.nodes.repair-item-cmd2:
+  - "e894f4cf95862487"
+zh.config.menu.nodes.repair-item-current:
+  - "93778a21b070d7ad"
+zh.config.menu.nodes.repair-item-hint:
+  - "1dda977ca668dcb7"
+zh.config.menu.nodes.self-destruct:
+  - "4db567689167ec9b"
+zh.config.menu.nodes.self-destruct-desc:
+  - "c2f994ce37c426af"
+zh.config.menu.nodes.title:
+  - "880506508d12bd99"
+zh.config.menu.rules.global-mob-cap:
+  - "aca9134d2b0babb4"
+zh.config.menu.rules.global-mob-cap-desc:
+  - "570c22a92faac3b3"
+zh.config.menu.rules.header:
+  - "2d8f4417795d394c"
+zh.config.menu.rules.max-players:
+  - "0e10034275dab66f"
+zh.config.menu.rules.max-players-desc:
+  - "52017b40b057730c"
+zh.config.menu.rules.min-players:
+  - "acb04002d77806be"
+zh.config.menu.rules.min-players-desc:
+  - "c08ac334b0ba667b"
+zh.config.menu.rules.mob-cap-per-player:
+  - "9a3a063207d1cef9"
+zh.config.menu.rules.mob-cap-per-player-desc:
+  - "686efd17bb3fa787"
+zh.config.menu.rules.spawn-max-radius:
+  - "18d2f61a79299371"
+zh.config.menu.rules.spawn-max-radius-desc:
+  - "da00cee9a283557d"
+zh.config.menu.rules.spawn-min-radius:
+  - "a69ad0c8d9a778a7"
+zh.config.menu.rules.spawn-min-radius-desc:
+  - "7f5fa7323fe7b0d1"
+zh.config.menu.rules.title:
+  - "8e7e41f18473bf6e"
+zh.config.menu.rules.victory-waves:
+  - "101136c503e88acd"
+zh.config.menu.rules.victory-waves-desc:
+  - "e97d2f9bf7b5215d"
+zh.config.menu.rules.wave-interval:
+  - "517c844d7db3e7f6"
+zh.config.menu.rules.wave-interval-desc:
+  - "9829624258a0b805"
+zh.config.menu.waves.add-monster-added:
+  - "d9ad6109c111538a"
+zh.config.menu.waves.add-monster-all-added:
+  - "cb9036e02c19e9eb"
+zh.config.menu.waves.add-monster-all-added-desc:
+  - "9dc1570b2b14051f"
+zh.config.menu.waves.add-monster-click:
+  - "c0150037968dc42e"
+zh.config.menu.waves.add-monster-damage:
+  - "32b7d72f36100145"
+zh.config.menu.waves.add-monster-default:
+  - "31fad231f684240a"
+zh.config.menu.waves.add-monster-header:
+  - "8f6ae88ab03d89e4"
+zh.config.menu.waves.add-monster-hp-speed:
+  - "ddcd812eb92c3cb9"
+zh.config.menu.waves.add-monster-title:
+  - "572376d28cd77af8"
+zh.config.menu.waves.add-wave:
+  - "68362b4187c3081f"
+zh.config.menu.waves.add-wave-desc1:
+  - "986aaae6008a3b24"
+zh.config.menu.waves.add-wave-desc2:
+  - "c9766f8f3b2acd93"
+zh.config.menu.waves.click-edit:
+  - "dab75c02859266a3"
+zh.config.menu.waves.count-per-player-hint:
+  - "90d9ab3c9854256e"
+zh.config.menu.waves.default-hint:
+  - "9478e9bdf7c857bd"
+zh.config.menu.waves.default-template:
+  - "55df2592798437b4"
+zh.config.menu.waves.default-total:
+  - "69350164fb971b34"
+zh.config.menu.waves.deleted:
+  - "afe0739ffa9367bb"
+zh.config.menu.waves.detail-add-monster:
+  - "360cc36ccd9dec66"
+zh.config.menu.waves.detail-add-monster-btn:
+  - "54bd4aaeb326c063"
+zh.config.menu.waves.detail-add-monster-desc1:
+  - "1ffff36a8f80ce93"
+zh.config.menu.waves.detail-add-monster-desc2:
+  - "0d05308aef717c55"
+zh.config.menu.waves.detail-click-mob:
+  - "f816d3e79da45e75"
+zh.config.menu.waves.detail-count-semantics:
+  - "53136f864c9e2473"
+zh.config.menu.waves.detail-header:
+  - "bf7a7ef04df8bc54"
+zh.config.menu.waves.detail-instructions:
+  - "060b25a9dd85c715"
+zh.config.menu.waves.detail-shift-props:
+  - "4ba0d738d2a00085"
+zh.config.menu.waves.detail-shift-weight:
+  - "4020ed73998a4e8d"
+zh.config.menu.waves.detail-title:
+  - "6dc38ab07d949f98"
+zh.config.menu.waves.detail-total:
+  - "ec449d2fa0edf491"
+zh.config.menu.waves.header:
+  - "4c7a89fb6909c10b"
+zh.config.menu.waves.mob-count-weight:
+  - "6549ebb2148a5b49"
+zh.config.menu.waves.mob-left-count:
+  - "8f0fb5ee94c2be4f"
+zh.config.menu.waves.mob-not-found:
+  - "cba7d312489fbf3a"
+zh.config.menu.waves.mob-shift-props:
+  - "e38aa29288becd84"
+zh.config.menu.waves.mob-shift-weight:
+  - "cc7fa3542bc9feb6"
+zh.config.menu.waves.mob-stats:
+  - "3ffc3582594b72d4"
+zh.config.menu.waves.mob-weight-label:
+  - "d127dcd615dd582e"
+zh.config.menu.waves.must-keep-one:
+  - "6d2b4f81d56f3c6c"
+zh.config.menu.waves.next:
+  - "9a0ee3beaee55e73"
+zh.config.menu.waves.previous:
+  - "da4b013ba63a416c"
+zh.config.menu.waves.prompt-new-wave:
+  - "4ac106b8907b80b6"
+zh.config.menu.waves.prompt-weight:
+  - "5ec9bd9f688e8a96"
+zh.config.menu.waves.prop-airdrop-cooldown:
+  - "9b3b27e2209c7c92"
+zh.config.menu.waves.prop-airdrop-count:
+  - "603153c3f0b620e5"
+zh.config.menu.waves.prop-armor-cycle-hint:
+  - "c0ecad6c4bc385e8"
+zh.config.menu.waves.prop-cooldown:
+  - "e1ec089bcd174bc8"
+zh.config.menu.waves.prop-header:
+  - "4ebda91aa64198f3"
+zh.config.menu.waves.prop-hook-speed:
+  - "b94cadcf6b351916"
+zh.config.menu.waves.prop-ia-prompt:
+  - "aa649b0cfdb423ce"
+zh.config.menu.waves.prop-offhand-cycle-hint:
+  - "9e8f6f4492926bef"
+zh.config.menu.waves.prop-stun:
+  - "c7aaa6129f201b5e"
+zh.config.menu.waves.prop-title:
+  - "6cd959eb51f2d3d8"
+zh.config.menu.waves.prop-weapon-cycle-hint:
+  - "6da9513f2c6f75f0"
+zh.config.menu.waves.shift-delete:
+  - "f830434f57672070"
+zh.config.menu.waves.title:
+  - "ed85330098cd49f2"
+zh.config.menu.waves.total-cap-hint:
+  - "65a59eeea7323bcd"
+zh.config.menu.waves.total-mobs:
+  - "69350164fb971b34"
+zh.config.menu.waves.wave-created:
+  - "20c40d3431b15750"
+zh.config.menu.waves.wave-exists:
+  - "c77c543007cf0634"
+zh.config.menu.waves.wave-label:
+  - "1c24dc981170252f"
+zh.config.menu.waves.wave-not-found:
+  - "858611e074b9e6fd"
+zh.config.node-added:
+  - "d84dff6c42e889dd"
+zh.config.node-exists:
+  - "90222a687a68bd42"
+zh.config.node-removed:
+  - "a4956e411f291c5f"
+zh.config.reload-arena-notice:
+  - "13029044ab12e110"
+zh.config.repairitem-set:
+  - "5cd3697590e0730e"
+zh.config.unknown-sub:
+  - "5602d687a5bed69f"
+zh.countdown-cancelled:
+  - "1dfc5d96f72b74df"
+zh.countdown-message:
+  - "ce0e7b68ecab9de1"
+zh.defeat-all-down:
+  - "b7207bcdbaacfdfa"
+zh.defeat-countdown:
+  - "0de009647282294e"
+zh.defeat-not-enough-players:
+  - "b87c97e376f4e3ec"
+zh.defeat-stats-header:
+  - "db98a063427d597e"
+zh.defeat-stats-line:
+  - "601135669d4e7966"
+  - "b110b4fbde4e69d3"
+zh.defeat-villagers-dead:
+  - "0250b75802957607"
+zh.deploy.addspawn-added:
+  - "d554666d9bc0032a"
+  - "ea59ca8d3e4a10bb"
+zh.deploy.addspawn-coords:
+  - "a92ed88865c16753"
+zh.deploy.addvillager-added:
+  - "6da918e922186b68"
+zh.deploy.addvillager-coords:
+  - "a92ed88865c16753"
+zh.deploy.clearmobspawns-already:
+  - "c174c76dfa1327e6"
+zh.deploy.clearmobspawns-confirm:
+  - "4313d93ae72880e9"
+zh.deploy.clearmobspawns-warning:
+  - "56343b5fdcf36bea"
+zh.deploy.clearshop-done:
+  - "a91ff8ee3ac67228"
+zh.deploy.clearshop-in-game:
+  - "e49bbc4a9e2c8ae8"
+zh.deploy.clearshop-none:
+  - "e5e56d2dac4d3a2f"
+zh.deploy.clearshop-write-failed:
+  - "4179c71c04574b35"
+zh.deploy.clearspawns-already:
+  - "43ceb7b3d33797f4"
+zh.deploy.clearspawns-confirm:
+  - "c60c15fb6a1e8f01"
+zh.deploy.clearspawns-expired:
+  - "9680393fbf55505a"
+zh.deploy.clearspawns-warning:
+  - "0cb6f80e6a346e1a"
+zh.deploy.clearvillagers-already:
+  - "9342acc678a34a47"
+zh.deploy.clearvillagers-confirm:
+  - "00c00a5ecf7f9030"
+zh.deploy.clearvillagers-done:
+  - "beb384a97fc6bbd1"
+zh.deploy.clearvillagers-warning:
+  - "e8643343b3120d00"
+zh.deploy.cmd-addmobspawn:
+  - "3263e94bad58f4b8"
+zh.deploy.cmd-addspawn:
+  - "13d89a9fec7e0679"
+  - "7dbbb3f83686ee91"
+zh.deploy.cmd-addvillager:
+  - "5adfe156409f85bf"
+zh.deploy.cmd-clearmobspawns:
+  - "1b41f67117e84477"
+zh.deploy.cmd-clearshop:
+  - "00b0d533317e6628"
+zh.deploy.cmd-clearspawns:
+  - "34a312e1f6b25995"
+zh.deploy.cmd-clearvillagers:
+  - "9c51d641d4dee5bc"
+zh.deploy.cmd-confirmclear:
+  - "5fe21eae9e4bc5a4"
+zh.deploy.cmd-confirmclearmob:
+  - "56e66504b6e317c5"
+zh.deploy.cmd-confirmclearvillagers:
+  - "bb0674bb61c1989f"
+zh.deploy.cmd-delmobspawn:
+  - "7b7a3a5847e56616"
+zh.deploy.cmd-delspawn:
+  - "3bee384a2e91f707"
+zh.deploy.cmd-delvillager:
+  - "b212e11560007d15"
+zh.deploy.cmd-listmobspawns:
+  - "00fbbde44c214bda"
+zh.deploy.cmd-listspawns:
+  - "69057718df0b3dd6"
+zh.deploy.cmd-listvillagers:
+  - "4eee232dfd85de37"
+zh.deploy.cmd-node-hint:
+  - "6aa54749ae629064"
+zh.deploy.cmd-reloadnodes:
+  - "dcac7e707da8009a"
+zh.deploy.cmd-setcore:
+  - "ab2adbc472c84a58"
+zh.deploy.cmd-setshop:
+  - "ba76d1ce0671c32f"
+zh.deploy.cmd-setup:
+  - "5d9ae4b198c614a6"
+zh.deploy.cmd-showparticles:
+  - "0d1d7659fa73448b"
+zh.deploy.confirmclear-done:
+  - "2548839a04c3f70a"
+  - "2b3c8347381fe46d"
+zh.deploy.confirmclear-no-pending:
+  - "aa74df142e2191b1"
+zh.deploy.confirmclearmob-done:
+  - "7359b5e64a46a89f"
+zh.deploy.confirmclearmob-no-pending:
+  - "4981c7938a7073d5"
+zh.deploy.confirmclearvillagers-no-pending:
+  - "6537ab8bbce2cd06"
+zh.deploy.delmobspawn-deleted:
+  - "97974b2a39d9b1a8"
+zh.deploy.delmobspawn-not-found:
+  - "9c78fdb44990ca06"
+zh.deploy.delmobspawn-usage:
+  - "cc0fdb942c55fc26"
+  - "dfff124f0e8e1b74"
+zh.deploy.delspawn-deleted:
+  - "52ceacb534a71974"
+zh.deploy.delspawn-invalid-number:
+  - "615dcef08543e515"
+zh.deploy.delspawn-not-found:
+  - "d484afe193ee59c7"
+zh.deploy.delspawn-usage:
+  - "51de49c1d705b219"
+  - "9c64ab29d0ca40d7"
+zh.deploy.delvillager-deleted:
+  - "5194c7d78aa9b7d8"
+zh.deploy.delvillager-not-found:
+  - "0787fd9d93069c73"
+zh.deploy.delvillager-usage:
+  - "59c56e3ee28268d4"
+  - "e36eb93b0bf67487"
+zh.deploy.desc-addmobspawn:
+  - "2a4c2e8394693e5e"
+zh.deploy.desc-addspawn:
+  - "2fa5a9566e97ede9"
+  - "99a116184f96f662"
+zh.deploy.desc-addvillager:
+  - "a8a806df4fc44992"
+zh.deploy.desc-clearmobspawns:
+  - "362491020fa0ee01"
+zh.deploy.desc-clearshop:
+  - "4479f6b57f6ec9f7"
+zh.deploy.desc-clearspawns:
+  - "fd09f341132e97ca"
+zh.deploy.desc-clearvillagers:
+  - "66d925c52e307374"
+zh.deploy.desc-confirmclear:
+  - "8daa7619bfa14112"
+zh.deploy.desc-confirmclearmob:
+  - "739aa90e2dc4bf99"
+zh.deploy.desc-confirmclearvillagers:
+  - "3c9fa5de6a20c97b"
+zh.deploy.desc-delmobspawn:
+  - "5f1bb685ccb42e1a"
+zh.deploy.desc-delspawn:
+  - "57d963249ca62eef"
+zh.deploy.desc-delvillager:
+  - "10ebe7b26113a51b"
+zh.deploy.desc-listmobspawns:
+  - "b92abee3cb3f09b1"
+zh.deploy.desc-listspawns:
+  - "b4713a9dcf79500d"
+zh.deploy.desc-listvillagers:
+  - "a2cac34e4be15f1e"
+zh.deploy.desc-node-hint:
+  - "41fc5320a8b41faf"
+zh.deploy.desc-reloadnodes:
+  - "56de429d8dc4bd7f"
+  - "9baf42275994d55a"
+zh.deploy.desc-setcore:
+  - "69d2a8863450ccb2"
+zh.deploy.desc-setshop:
+  - "301456f35417f63d"
+zh.deploy.desc-setup:
+  - "357858e3bfb2c274"
+zh.deploy.desc-showparticles:
+  - "e9fc79edab399c97"
+zh.deploy.listmobspawns-empty:
+  - "c3da9dedbcc62f17"
+zh.deploy.listmobspawns-entry:
+  - "78fea9785ddc0242"
+zh.deploy.listmobspawns-header:
+  - "135f79da30da06d5"
+zh.deploy.listmobspawns-hint:
+  - "1c528ba067f196e1"
+zh.deploy.listspawns-empty:
+  - "11dc2eeea3e9863b"
+  - "5d8c9a752f81c8b2"
+zh.deploy.listspawns-entry:
+  - "78fea9785ddc0242"
+zh.deploy.listspawns-header:
+  - "582c50b4c7896d73"
+zh.deploy.listspawns-hint:
+  - "d6d643790ae44384"
+zh.deploy.listvillagers-empty:
+  - "fdeb07a50fe02790"
+zh.deploy.listvillagers-entry:
+  - "78fea9785ddc0242"
+zh.deploy.listvillagers-header:
+  - "6ceca9e3482c6b42"
+zh.deploy.menu-core-coords:
+  - "862c15815c616656"
+zh.deploy.menu-core-unset:
+  - "7ae69cf2188d2a91"
+zh.deploy.menu-game-control-label:
+  - "15eaf9e8bbbf8969"
+zh.deploy.menu-hint-addmobspawn:
+  - "ec1b74a2f61c3ead"
+zh.deploy.menu-hint-addspawn:
+  - "5a55f55ec2e5792a"
+  - "b4b811144d6de069"
+zh.deploy.menu-hint-addvillager:
+  - "8b6a9a90a1617d68"
+zh.deploy.menu-hint-clearmobspawns:
+  - "0a75d322b93d3bcb"
+zh.deploy.menu-hint-clearshop:
+  - "2e013fa6d62eea85"
+zh.deploy.menu-hint-clearspawns:
+  - "c3b9ba456885a8ea"
+zh.deploy.menu-hint-confirmclear:
+  - "060e863795195339"
+zh.deploy.menu-hint-delmobspawn:
+  - "432538065ede5e83"
+zh.deploy.menu-hint-delspawn:
+  - "c96b3d0cd413c44f"
+zh.deploy.menu-hint-delvillager:
+  - "9bd3b6476d9117c9"
+zh.deploy.menu-hint-listmobspawns:
+  - "96db59348a3d9e40"
+zh.deploy.menu-hint-listspawns:
+  - "6b29aedb1e7a00aa"
+zh.deploy.menu-hint-listvillagers:
+  - "1e70352a3ec84b1e"
+zh.deploy.menu-hint-reloadnodes:
+  - "70880acf9e39123f"
+zh.deploy.menu-hint-setcore:
+  - "ff7cdea0986f7358"
+zh.deploy.menu-hint-setshop:
+  - "78cb0a04d337bf80"
+zh.deploy.menu-hint-showparticles:
+  - "e6ea5603ca2c0c16"
+zh.deploy.menu-hint-start:
+  - "b7f29bdcd1e4bb9f"
+zh.deploy.menu-hint-status:
+  - "1b55a9f362942fad"
+zh.deploy.menu-hint-stop:
+  - "d0b10ff055093b40"
+zh.deploy.menu-hover:
+  - "ea36d71f6c8e2cce"
+zh.deploy.menu-mobspawn-count:
+  - "81b6a0c589776693"
+zh.deploy.menu-no-permission:
+  - "a1c6a47ed9c9359f"
+zh.deploy.menu-nodes:
+  - "ca076bac351435c5"
+zh.deploy.menu-operations-label:
+  - "1c461de70d6857d9"
+zh.deploy.menu-random-no:
+  - "5e1dc6f0799af3b3"
+zh.deploy.menu-random-yes:
+  - "613f1059b0fea1df"
+zh.deploy.menu-shop-label:
+  - "1291ffbf79a2ca6b"
+zh.deploy.menu-spawn-count:
+  - "874ef248a5baf8c2"
+zh.deploy.menu-state:
+  - "2221e57f0ed4541b"
+zh.deploy.menu-status-label:
+  - "2dddac8e25d113c1"
+zh.deploy.menu-tip:
+  - "2a93c86724148d6b"
+zh.deploy.menu-title:
+  - "512e377c70b67226"
+zh.deploy.menu-title-line1:
+  - "079bb7ad27fb90c1"
+zh.deploy.menu-villager-label:
+  - "91ac3d3f21327c38"
+zh.deploy.menu-villagers:
+  - "0471741f4fda58c1"
+zh.deploy.mobspawn-added:
+  - "20ad978375588069"
+zh.deploy.mobspawn-coords:
+  - "a92ed88865c16753"
+zh.deploy.must-be-in-arena-world:
+  - "12ef9c81c1f37780"
+zh.deploy.reloadnodes-done:
+  - "97fbf096ffe58062"
+zh.deploy.reloadnodes-scanning:
+  - "634a5bc2448fdd02"
+zh.deploy.save-failed:
+  - "16b67ce8bea8da65"
+zh.deploy.setcore-coords:
+  - "9903f5e7e951e722"
+zh.deploy.setcore-set:
+  - "73184a7d0863a848"
+zh.deploy.setshop-coords:
+  - "9903f5e7e951e722"
+zh.deploy.setshop-in-game:
+  - "42e718a1ed176775"
+zh.deploy.setshop-set:
+  - "76a8bfe58bded555"
+zh.deploy.unknown-sub:
+  - "8aff3bcb8b29248b"
+zh.deploy.unknown-sub-hint:
+  - "281208a562d4f12f"
+zh.fireball.cooldown-message:
+  - "80fbb5dd12fb2bcb"
+zh.fireball.lore-cooldown:
+  - "bbe55dec1888429e"
+zh.fireball.lore-cooldown-none:
+  - "f8d5be7229841658"
+zh.fireball.lore-damage:
+  - "e2da5ecd91123d77"
+zh.fireball.lore-use:
+  - "13395ffbfd301b51"
+zh.game-defeat:
+  - "0821f76882ce2142"
+zh.game-ended:
+  - "c5329e70ec527659"
+zh.game-ended-no-players:
+  - "f115425ec578841b"
+zh.game-force-stopped:
+  - "b9eef8b4fe8ed420"
+zh.game-in-progress:
+  - "4f89395bdb5ffc1f"
+zh.game-start:
+  - "47d9d4d1650ab662"
+zh.game-start-already-running:
+  - "c1f9a075360ce1d6"
+zh.game-start-need-players:
+  - "efc10727835bd3d4"
+zh.game-start-restoring:
+  - "1d91da1ec289df39"
+zh.game-started:
+  - "1123dee2b0544e2b"
+zh.game-starting:
+  - "252845e5d671be42"
+zh.game-stopped:
+  - "25ec3aa90e54a784"
+zh.game-victory:
+  - "e2f6ae1e5e336d08"
+zh.goods-restored:
+  - "283af11b2800091b"
+zh.gui-arena-admin-hint:
+  - "5ced7329a855daaa"
+zh.gui-arena-lore-cannot-join:
+  - "40d891f5aaf87f34"
+zh.gui-arena-lore-click-join:
+  - "8227820d7577fb17"
+zh.gui-arena-lore-map:
+  - "710573622b92026f"
+zh.gui-arena-lore-players:
+  - "0f5948e0154356ef"
+zh.gui-arena-lore-status:
+  - "ebabab1648043bd2"
+zh.gui-arena-select-title:
+  - "e37ff31482d71b78"
+zh.gui-help-lore-gray:
+  - "1bfb9b6c62b6713d"
+  - "4ca36628183aa182"
+zh.gui-help-lore-green:
+  - "7c87a152f02873ff"
+  - "813eb6b1ac25b76b"
+zh.gui-help-lore-red:
+  - "55c1327a27909f1b"
+  - "81a42912d738e968"
+zh.gui-help-lore-yellow:
+  - "4f14f815b82bcf79"
+  - "57f90b8a6470f26a"
+zh.gui-help-title:
+  - "f801e8ff7f16dac8"
+zh.gui-no-arenas:
+  - "6504c55708473aa0"
+zh.gui-no-arenas-lore:
+  - "92583e703c8378e3"
+zh.hammer.bossbar.charging:
+  - "2a1ddb910f33e1e2"
+zh.hammer.bossbar.ready:
+  - "5263fd38ffcf36f1"
+zh.hammer.bossbar.smashing:
+  - "67fb834121323614"
+zh.hammer.broken:
+  - "fa93d4bbd7105f58"
+zh.hammer.cooldown:
+  - "fb8aab77878bb3d0"
+zh.hammer.lore-uses:
+  - "5d27bef4a6ec0ecc"
+zh.hammer.lore1:
+  - "aa971be176d67467"
+zh.hammer.lore2:
+  - "4704476131cccc5f"
+zh.hammer.lore3:
+  - "88d384f65044e71d"
+zh.hammer.not-running:
+  - "0cdeda6a1153c57d"
+zh.hammer.smash.high:
+  - "3d4fa1a4e0b2aa4f"
+zh.hammer.smash.low:
+  - "9dcf6ecd67e13ee2"
+zh.hammer.smash.medium:
+  - "9dcf6ecd67e13ee2"
+zh.hammer.tier.high:
+  - "49801018fee647e7"
+zh.hammer.tier.low:
+  - "1cb7d20fb0a3f4e6"
+zh.hammer.tier.medium:
+  - "e375d9ec7ca9f834"
+zh.hint.leave-command:
+  - "b1134680a1927c2f"
+zh.hint.spectate-leave:
+  - "890db78cbc26f2ca"
+  - "f036eb3585988538"
+zh.item.fireball-name:
+  - "0426ba6f8af53652"
+zh.item.hammer-name:
+  - "36266581ab926243"
+zh.item.repair-cost-name:
+  - "30003336c4cbec57"
+zh.join-failed:
+  - "4c5f1417a06a6bc9"
+zh.join-queue:
+  - "36f01d123887b968"
+zh.joined-game:
+  - "a2a4983719b9bc27"
+zh.lang.invalid:
+  - "9f7c71f174e8db77"
+zh.lang.switched:
+  - "ae19dd6e9a61092a"
+zh.lang.usage:
+  - "88d17c5984b86034"
+zh.left-game:
+  - "e1364ebd1f497819"
+zh.lobby-protected:
+  - "71a54e15a37ee1c1"
+zh.lobby-teleported:
+  - "f40d89e92f83a55d"
+zh.lobby.setspawn-done:
+  - "51f24e4502ee9614"
+zh.lobby.setspawn-effect:
+  - "312c50309b59ef76"
+zh.lobby.setspawn-failed:
+  - "799800ba74d71c2c"
+zh.lobby.setspawn-not-lobby-world:
+  - "3606b339f78de6f2"
+zh.manage.back:
+  - "ed06b4c82289be2e"
+zh.manage.detail.back:
+  - "0453010a3fffc91b"
+zh.manage.detail.disable:
+  - "0cd310ed05f41bd5"
+zh.manage.detail.enable:
+  - "318b05b365640eb8"
+zh.manage.detail.enable-not-deployed:
+  - "faf745f89df11125"
+zh.manage.detail.enable-setup-hint:
+  - "5b2633a2074f5ba5"
+zh.manage.detail.mobspawns:
+  - "1e19cbbdfe5fedc2"
+zh.manage.detail.mobspawns-lore:
+  - "e0600e1d191fb84d"
+zh.manage.detail.nodes:
+  - "1e50d7f1dcc7f7ea"
+zh.manage.detail.nodes-lore:
+  - "402e1e12157ecf85"
+zh.manage.detail.params:
+  - "887844c87973ba4a"
+zh.manage.detail.params-inert:
+  - "842d0f8075256888"
+zh.manage.detail.params-lore:
+  - "37ac0746e2661e70"
+zh.manage.detail.reset:
+  - "6e23d69547cf867b"
+zh.manage.detail.reset-lore1:
+  - "8419c50abcdfe913"
+zh.manage.detail.reset-lore2:
+  - "670a2b71b016b531"
+zh.manage.detail.reset-lore3:
+  - "6d636a4c68cb6c6d"
+zh.manage.detail.reset-lore4:
+  - "d17d2903d984c210"
+zh.manage.detail.shop:
+  - "8b4e5dc58d7c1448"
+zh.manage.detail.shop-clear-in-game:
+  - "8b2b010e3c076ad0"
+zh.manage.detail.shop-clear-lore:
+  - "ce82e49149b895a5"
+zh.manage.detail.shop-clear-none:
+  - "940af2318ef67db6"
+zh.manage.detail.shop-cleared:
+  - "0db73d90babc6395"
+zh.manage.detail.shop-lore:
+  - "b958e91e6e582c44"
+zh.manage.detail.shop-none:
+  - "d3f3afaaaec485ea"
+zh.manage.detail.spawns:
+  - "3754ff36af337720"
+zh.manage.detail.spawns-lore:
+  - "7da6cbb99cde5aaa"
+zh.manage.detail.teleport-core:
+  - "4f9d3467301eec37"
+zh.manage.detail.teleport-core-lore:
+  - "b69421b2e6f3d6db"
+zh.manage.detail.villagers:
+  - "1003058c628b1a6a"
+zh.manage.detail.villagers-lore:
+  - "267c0c897fd13bb3"
+zh.manage.entry.delete:
+  - "0f829c800c214713"
+zh.manage.entry.delete-failed:
+  - "e0fc0b25400e6aa6"
+zh.manage.entry.deleted:
+  - "c1ef9981a89982fc"
+zh.manage.entry.lore-world:
+  - "f7564e25eb22688b"
+zh.manage.entry.name:
+  - "ffc79a47123aa9d4"
+zh.manage.entry.particles:
+  - "ad53daa286c3ac69"
+zh.manage.entry.particles-empty:
+  - "f8965592b992c1b1"
+zh.manage.entry.teleport:
+  - "819e7da43d8283e9"
+zh.manage.entry.teleported:
+  - "538b5272e068d97c"
+zh.manage.list.empty:
+  - "eec12a00d9251f97"
+zh.manage.list.entry-click:
+  - "cccfdb98c7146ab9"
+zh.manage.list.entry-counts:
+  - "d8f632a2b17d06c0"
+zh.manage.list.entry-deployed:
+  - "017f2cd65d81760c"
+zh.manage.list.entry-disabled:
+  - "ea5549a3dae57333"
+zh.manage.list.entry-enabled:
+  - "47c72067943a9fb7"
+zh.manage.list.entry-id:
+  - "c6f6ccf9bffc7b83"
+zh.manage.list.entry-no-core:
+  - "5a4d23f61f0e39ad"
+zh.manage.list.entry-params:
+  - "2e06a61f88610380"
+zh.manage.list.entry-players:
+  - "f77db805c156eaa5"
+zh.manage.list.entry-shop:
+  - "4863f67817d84d7d"
+zh.manage.list.entry-shop-none:
+  - "e9f0e2f4d4a8b65b"
+zh.manage.list.entry-status:
+  - "ebabab1648043bd2"
+zh.manage.list.entry-undeployed:
+  - "eba4f6464525380b"
+zh.manage.list.entry-world:
+  - "f7564e25eb22688b"
+zh.manage.list.entry-world-missing:
+  - "e6ab725b4918b0cd"
+zh.manage.list.header:
+  - "98d72a17d753abb9"
+zh.manage.list.page:
+  - "b4ee88fe7fc3de89"
+zh.manage.list.source-yaml:
+  - "9043ca62dc572830"
+zh.manage.page.empty:
+  - "3a38c8203ca2e314"
+zh.manage.page.next:
+  - "0b1ad35b06efca6a"
+zh.manage.page.prev:
+  - "b5d0f4a116e0c77d"
+zh.manage.params.auto-started:
+  - "d63ba070067d0abc"
+zh.manage.params.blocked-countdown:
+  - "6664a2d6da47bbb5"
+zh.manage.params.blocked-hint:
+  - "6354294d99e7cd62"
+zh.manage.params.blocked-in-game:
+  - "2bd31449c95fca26"
+zh.manage.params.click-hint:
+  - "d47d6757eb11e9b5"
+zh.manage.params.edit-hint:
+  - "0506c9dbfa84e80e"
+zh.manage.params.invalid:
+  - "bfbecd39a4ce7eb8"
+zh.manage.params.range:
+  - "aab8648532b14f15"
+zh.manage.params.saved:
+  - "4fe14510e59cbb57"
+zh.manage.params.write-failed:
+  - "4179c71c04574b35"
+zh.manage.preview.header:
+  - "9d5913241e452483"
+zh.manage.reset.blocked-already:
+  - "afe0ed94c8b67e23"
+zh.manage.reset.blocked-game-progress:
+  - "2bd31449c95fca26"
+zh.manage.reset.blocked-missing-core:
+  - "f5665f251c045208"
+zh.manage.reset.blocked-not-found:
+  - "ed80522aeb0536f8"
+zh.manage.reset.blocked-pending:
+  - "d0daed24d1bc445b"
+zh.manage.reset.blocked-reset-progress:
+  - "976049b174d9217a"
+zh.manage.reset.cancel-btn:
+  - "6c42f7a7d0277fed"
+zh.manage.reset.cancel-btn-lore:
+  - "0895434028a0beae"
+zh.manage.reset.cancelled:
+  - "4313b3171331f795"
+zh.manage.reset.confirm-btn:
+  - "7bb8be3d763d96dd"
+zh.manage.reset.confirm-btn-lore:
+  - "aedd2b5f749cab00"
+zh.manage.reset.confirm-item:
+  - "57ee66180f31fda9"
+zh.manage.reset.done:
+  - "866688a61ca2b8be"
+zh.manage.reset.done-data:
+  - "5e4bbc573411d889"
+zh.manage.reset.done-enable-rejected:
+  - "f8161beb255d82bc"
+zh.manage.reset.done-missing-core:
+  - "fd142cee0741122e"
+zh.manage.reset.done-nodes:
+  - "7478b62863728b52"
+zh.manage.reset.done-not-ready-before:
+  - "472297e686a74e7d"
+zh.manage.reset.done-not-reinstated:
+  - "11e65495b4ef5a0d"
+zh.manage.reset.done-reinstated:
+  - "50f9fb34a598c34d"
+zh.manage.reset.done-shop:
+  - "23219b07163652f8"
+zh.manage.reset.fail-restore:
+  - "a64989b07a14b0b4"
+zh.manage.reset.fail-skipped-world:
+  - "eb6f7d69c3c5ef1d"
+zh.manage.reset.fail-step-data:
+  - "454407f97b3a43c3"
+zh.manage.reset.fail-step-nodes:
+  - "d7f5c2759ecc6653"
+zh.manage.reset.fail-step-shop:
+  - "641810c58e0f95cc"
+zh.manage.reset.partial:
+  - "c8714f4a4d94ccfc"
+zh.manage.reset.started:
+  - "aa0a1c0a8dc93b6a"
+zh.manage.reset.warn-core:
+  - "d592d7969e9d6d29"
+zh.manage.reset.warn-keep:
+  - "a91dcebbd63ae711"
+zh.manage.reset.warn-map:
+  - "0e199c4bbba1caa8"
+zh.manage.reset.warn-nodes:
+  - "2af2d28ee1587c5d"
+zh.manage.reset.warn-params:
+  - "2f7728193e89d13f"
+zh.manage.reset.warn-players:
+  - "18a81b955d9ab547"
+zh.manage.reset.warn-shop:
+  - "fe8edbd4a617317d"
+zh.manage.reset.warn-spawns:
+  - "d35e085d2fc3c0bb"
+zh.manage.reset.warn-title:
+  - "583e16fed05323d1"
+zh.manage.reset.warn-villagers:
+  - "e3fd38c6f8f18c7e"
+zh.manage.title.detail:
+  - "5dc940e2cbb5f6bc"
+zh.manage.title.list:
+  - "f54c5fb78aa6eaff"
+zh.manage.title.mobspawns:
+  - "b0c67af94d9dce3a"
+zh.manage.title.nodes:
+  - "63f7949a7ac2f772"
+zh.manage.title.params:
+  - "0c31e3ca9bd81488"
+zh.manage.title.reset-confirm:
+  - "65470b2ad48603bf"
+zh.manage.title.spawns:
+  - "e30a1ab2310cb62d"
+zh.manage.title.villagers:
+  - "6cc195da0ea0bd23"
+zh.messages-reloaded:
+  - "49bac22c6307bb27"
+zh.mob.airdrop-dropper:
+  - "3addacb350c96841"
+zh.mob.explode-beetle:
+  - "6467cbaf02a02427"
+zh.mob.hook-claw-hunter:
+  - "3f794616782b9503"
+zh.no-active-arenas:
+  - "223043f0d8a72d46"
+zh.no-arenas-available:
+  - "d11531896c612d3d"
+zh.no-permission:
+  - "7ba4ca9bff209aca"
+zh.node.block-protected:
+  - "774e8c6be6409900"
+zh.node.destroyed:
+  - "93d40dd846ecda67"
+zh.node.repair-full:
+  - "e66339c8a9cce5d1"
+zh.node.repair-item-lore1:
+  - "15a461730be81a3e"
+zh.node.repair-item-lore2:
+  - "8898b8faca825b83"
+zh.node.repair-not-running:
+  - "38519fded3f92848"
+zh.node.repaired:
+  - "b1eca030e9e3158e"
+zh.nodes.scan-complete:
+  - "4a9cedaf11ee321e"
+zh.nodes.scan-empty-hint:
+  - "504904e12fad90e6"
+zh.nodes.scan-start:
+  - "d894720d9bc3ef23"
+zh.not-in-arena:
+  - "26b6371bb1a0b3b0"
+zh.particles.hint:
+  - "3d66d6d2b8b7c273"
+  - "837962801a732287"
+zh.particles.no-mobspawnpoints:
+  - "1a89c888ea39f7d5"
+zh.particles.no-nodes:
+  - "87d1979e74d2db1c"
+zh.particles.no-shopnpc:
+  - "98ed65e34c991c45"
+zh.particles.no-spawnpoints:
+  - "04bc0c5755ac01d5"
+zh.particles.no-villagers:
+  - "49407f2c781a0c98"
+zh.particles.showing:
+  - "4822ef52900fc386"
+zh.particles.showing-mobspawns:
+  - "fcb1113d45fd1c0d"
+zh.particles.showing-nodes:
+  - "7626c3cacb9138ac"
+zh.particles.showing-shop:
+  - "868c121b003e539f"
+zh.particles.showing-villagers:
+  - "e4135a0f3e1fa884"
+zh.player-died:
+  - "dbe114c8a66dcd54"
+zh.player-joined:
+  - "857e6c5f77e277da"
+zh.player-joined-need-more:
+  - "319df418d0c2dfb9"
+zh.player-left:
+  - "4ced076e0f01a64c"
+zh.player-only-command:
+  - "ddc70d9265b6ad5a"
+zh.player-reconnecting:
+  - "d9eba85b68ef0e28"
+zh.player-rejoined:
+  - "e4a0415e2fb575ea"
+zh.players-only:
+  - "39c160e11c3e078d"
+zh.received-fireball:
+  - "c6061b92f4d099f1"
+zh.received-hammer:
+  - "91d70b343cc1815b"
+zh.rejoin-welcome:
+  - "cba47976f762c605"
+zh.respawn-blocked-no-node:
+  - "f82159c94593bb8f"
+zh.respawn-waiting:
+  - "ba3b48aa23f684fa"
+  - "d4c19f6defe64838"
+zh.respawned:
+  - "221c322758f15a7f"
+zh.scoreboard.alive:
+  - "3271b7750e943f67"
+zh.scoreboard.crystals:
+  - "ae109ac010049006"
+zh.scoreboard.deaths:
+  - "c534bdf9565b5082"
+zh.scoreboard.kills:
+  - "2c76cca93bca7305"
+zh.scoreboard.nodes:
+  - "bf688d42a4afb8df"
+zh.scoreboard.spectators:
+  - "a5f0db0061c87c32"
+zh.scoreboard.starting:
+  - "bff03afeb02a086f"
+zh.scoreboard.title:
+  - "0699793ee0aa117f"
+zh.scoreboard.villagers:
+  - "7195fa572095801d"
+zh.scoreboard.waiting:
+  - "cd6bee5ca73b6baf"
+zh.scoreboard.wave:
+  - "18b09512edcb292d"
+zh.setup.already-done:
+  - "3576a4f837979558"
+zh.setup.btn-add:
+  - "76d6ffbab177eaa3"
+zh.setup.btn-add-lore:
+  - "99724b648600781e"
+  - "f978adcf8748d579"
+zh.setup.btn-add-mobspawn:
+  - "4690369e968ee606"
+zh.setup.btn-add-node:
+  - "226d7062be898473"
+zh.setup.btn-add-villager:
+  - "333755b8dc62fffe"
+zh.setup.btn-add-villager-lore:
+  - "4ff0edc6f8031667"
+zh.setup.btn-back-overview:
+  - "7c7d773abecfd7bc"
+zh.setup.btn-clear-shop:
+  - "600273752e418360"
+zh.setup.btn-confirm:
+  - "f21c044c1deb50e3"
+zh.setup.btn-confirm-core:
+  - "80a599691f14d9e7"
+zh.setup.btn-confirm-lore:
+  - "7e0c7dc1e3a1195a"
+zh.setup.btn-confirm-world:
+  - "e1e11ce013f73e09"
+zh.setup.btn-continue:
+  - "1363e220cbc9cf1f"
+zh.setup.btn-done:
+  - "557a652919b5c2d1"
+zh.setup.btn-done-lore:
+  - "b6a0ff7de999a511"
+zh.setup.btn-enable-arena:
+  - "624d600e2371b9e0"
+zh.setup.btn-list-villagers:
+  - "34dee6e38ae61cd7"
+zh.setup.btn-next-page:
+  - "4097d5ecbcf4b92b"
+zh.setup.btn-nodes-gui:
+  - "a9263af99d63694d"
+zh.setup.btn-open-gui:
+  - "0dbb834e55ec9467"
+zh.setup.btn-open-mobspawn-gui:
+  - "864130e6c5129c62"
+zh.setup.btn-open-overview:
+  - "b3837efa8c2e4851"
+zh.setup.btn-particles-lore-mobspawn:
+  - "825bbaebfffd209d"
+zh.setup.btn-particles-lore-villager:
+  - "00b06c7c7e0d4a0c"
+zh.setup.btn-prev-page:
+  - "8485cd8a7901098e"
+zh.setup.btn-rescan:
+  - "4618ef555efdfee6"
+zh.setup.btn-reset:
+  - "46a69cf0db142a72"
+zh.setup.btn-reset-lore:
+  - "5d92b30aa0bdcbbc"
+zh.setup.btn-save-exit:
+  - "c18de34cbf457047"
+zh.setup.btn-set-shop:
+  - "0de73c8f0b4de91b"
+zh.setup.btn-show-particles:
+  - "2d34c9abe4809f75"
+zh.setup.btn-show-particles-lore:
+  - "12b9ae0af709354f"
+  - "8cf0bfc33af6f96c"
+zh.setup.btn-skip-shop:
+  - "e1c486acf7a0c898"
+zh.setup.btn-villagers-done:
+  - "557a652919b5c2d1"
+zh.setup.btn-villagers-gui:
+  - "537e38df7286e824"
+  - "c3013481718bb427"
+zh.setup.done:
+  - "203220c3ec1811bf"
+zh.setup.done-start:
+  - "15df50efb14b8889"
+zh.setup.enable-done-auto:
+  - "726f0be0e6fc6b83"
+zh.setup.enable-done-manual:
+  - "2cf6e3be86a7856a"
+zh.setup.enable-hint:
+  - "01aca021d8be1040"
+  - "531f2183dd86eb39"
+zh.setup.goto-invalid-number:
+  - "32c8debcb7739351"
+zh.setup.goto-invalid-step:
+  - "0efb85f6611d3221"
+zh.setup.goto-usage:
+  - "f59995e29c6aabb6"
+zh.setup.gui-mobspawns-title:
+  - "44fa0c30a693a343"
+zh.setup.gui-nodes-title:
+  - "6c99ace5f45162ad"
+zh.setup.gui-preview-title:
+  - "265875cd4758a11a"
+zh.setup.gui-spawns-overview-title:
+  - "16cbe36bbb3459f8"
+zh.setup.gui-spawns-title:
+  - "1a9f38e7cf8d0b52"
+zh.setup.gui-villagers-title:
+  - "d641871a69af8507"
+zh.setup.kit-received:
+  - "b43d41eb439e29f6"
+  - "eea22b102b7d0bf6"
+zh.setup.mobspawn-added:
+  - "ffd4533983d62be7"
+zh.setup.mobspawn-entry:
+  - "d65012bf1c979634"
+zh.setup.mobspawn-removed:
+  - "f868f8c47d410cbc"
+zh.setup.mobspawns-required:
+  - "ec7625ae42d89573"
+zh.setup.must-be-in-arena-world:
+  - "6362988d3ae0469f"
+zh.setup.no-arena-here:
+  - "1419ae0de5ae0289"
+zh.setup.node-add-hint:
+  - "8ca885058c980f84"
+zh.setup.node-added:
+  - "5cedd52a936b699f"
+zh.setup.node-already-exists:
+  - "58318c01a671f1f1"
+zh.setup.node-count:
+  - "3fe202137ffcad9d"
+zh.setup.node-deleted:
+  - "e7314f69b44a49d7"
+zh.setup.node-entry:
+  - "208b5ef47792e04e"
+zh.setup.node-entry-lore-coord:
+  - "b5a05a4b73fe5f6d"
+zh.setup.node-entry-lore-delete:
+  - "a85cea9af4614ea7"
+zh.setup.node-entry-lore-world:
+  - "28c98b43aa096d84"
+zh.setup.node-not-valid-block:
+  - "44a62ef408d718f6"
+zh.setup.nodes-done:
+  - "2a0bb5f74ab9cf37"
+zh.setup.nodes-info-lore:
+  - "d21dae3e944bf9ef"
+zh.setup.nodes-required:
+  - "58c232f53d8b1930"
+zh.setup.not-in-progress:
+  - "f96d1ec526a905ab"
+zh.setup.overview-done-locked-lore:
+  - "98cc7404b1d1d484"
+zh.setup.overview-mobspawn-status:
+  - "0c6251a0e6d0d2c6"
+zh.setup.overview-open-gui-lore:
+  - "a3747ab6278bdc95"
+zh.setup.overview-open-mobspawn-gui-lore:
+  - "8c621dc9f2122757"
+zh.setup.overview-spawn-status:
+  - "edeede5a77dbf3c7"
+zh.setup.overview-status-missing:
+  - "67f9f18da8ae13de"
+zh.setup.overview-status-ok:
+  - "d27f7cb707bc2d1b"
+zh.setup.particles-started:
+  - "f444f2826db04721"
+zh.setup.preview-core:
+  - "747b87751aa121be"
+zh.setup.preview-core-not-set:
+  - "2e04d215e48dcb85"
+zh.setup.preview-mobspawns:
+  - "dead95b9421d06f1"
+zh.setup.preview-nodes:
+  - "c9fae1dbd6a64e53"
+zh.setup.preview-players:
+  - "5e0a505bd90f1115"
+zh.setup.preview-spawns:
+  - "b8c4359939f7f38d"
+zh.setup.preview-villagers:
+  - "7b3e0dcd53414bf7"
+zh.setup.preview-waves:
+  - "9d76adda9d0856c8"
+zh.setup.preview-world:
+  - "1cd21a68fca4fe6e"
+zh.setup.rescan-deprecated:
+  - "f35ff773ab63c113"
+zh.setup.resumed-arena-mismatch:
+  - "90bf952def129528"
+zh.setup.resuming:
+  - "412f56290e351e83"
+  - "cab4ee4dc316b13b"
+zh.setup.save-failed:
+  - "c4fbd573a37b6f79"
+zh.setup.saved:
+  - "42ac4c17e095baeb"
+zh.setup.saved-exit:
+  - "649a1deb7a48c69d"
+  - "663110fa77b06bb1"
+zh.setup.shop-blocked-other-arena:
+  - "327eee7db99fb0e2"
+zh.setup.shop-clear-in-game:
+  - "03f6ff61aa3fb6b6"
+zh.setup.shop-clear-none:
+  - "e50a8956895b2280"
+zh.setup.shop-cleared:
+  - "1a481d4787871c63"
+zh.setup.shop-required:
+  - "88ecb70f556cfd47"
+zh.setup.shop-set:
+  - "72e01a43018f3d1e"
+zh.setup.shop-set-in-game:
+  - "1a52dfb64ad9d4d6"
+zh.setup.shop-status:
+  - "69aacef1a73d5f95"
+zh.setup.shop-status-unset:
+  - "3126a359cf06b0d5"
+zh.setup.spawn-added:
+  - "dd0ce4984fbe38e5"
+zh.setup.spawn-entry:
+  - "735b4d463f7838b3"
+zh.setup.spawn-entry-lore:
+  - "25e45b93580a648a"
+zh.setup.spawn-removed:
+  - "1bc65570e97eea39"
+zh.setup.spawns-required:
+  - "3e1b3986f9adab4e"
+  - "5591650f6065434c"
+zh.setup.step1:
+  - "439128a00495ef46"
+  - "caaa3cca29c9ab26"
+zh.setup.step2:
+  - "18a1170133e80337"
+zh.setup.step3:
+  - "008e9ed7cb597258"
+  - "7e23f29f30b9223f"
+zh.setup.step3-mobspawns:
+  - "0ebfa74bfe23c714"
+  - "f23b10bde2325c72"
+zh.setup.step4-nodes:
+  - "12c689d17bdd0a9a"
+  - "f2c5615580a33ede"
+zh.setup.step5-shop:
+  - "3ca62f9a3e92d80a"
+  - "99127c70c756f82a"
+zh.setup.step5-villagers:
+  - "005aabb0f8daf4e8"
+zh.setup.unknown:
+  - "cd9891e5ca401ac6"
+zh.setup.villager-added:
+  - "987f5ed338de92bf"
+zh.setup.villager-entry:
+  - "c74f18120436ae6c"
+zh.setup.villager-entry-lore:
+  - "a85cea9af4614ea7"
+zh.setup.villager-removed:
+  - "7d444b15421c0ffd"
+zh.setup.villagers-empty:
+  - "a707b8c978e6cd0b"
+zh.setup.villagers-required:
+  - "065bc2bb2a6934a7"
+zh.shop-reloaded:
+  - "1f24d1c4fa06225d"
+zh.shop.currency-balance:
+  - "bcbac0e16e7f1a49"
+zh.shop.currency.name:
+  - "fc28d8726f8195fa"
+zh.shop.give-invalid-amount:
+  - "f40e520dfa87d041"
+zh.shop.give-player-not-found:
+  - "d9da3b98828c46f4"
+zh.shop.give-received:
+  - "91862bc4586bd082"
+zh.shop.give-success:
+  - "0179df01d7987c0a"
+  - "527a0e20c1985cef"
+zh.shop.give-too-many:
+  - "1a02a1cfac2481b5"
+zh.shop.give-unavailable:
+  - "4f62673bf21720a0"
+zh.shop.give-usage:
+  - "6751df09f5f853e5"
+  - "6e33fdfbc833ec76"
+zh.shop.gui.title:
+  - "fda3494c9f03e3cf"
+zh.shop.inventory-full:
+  - "b29311b8750d42ec"
+zh.shop.not-enough:
+  - "29fc1fca453e07c5"
+zh.shop.npc.name:
+  - "1b8013edb39205f1"
+zh.shop.price-line:
+  - "2d1b59f435584774"
+zh.shop.purchase-success:
+  - "410ad14169d269ef"
+zh.shop.reloaded:
+  - "9215f9a7f45bae9d"
+zh.shop.usage:
+  - "4a5279bf3e6e0267"
+zh.state.defeat:
+  - "d0a02091abbe2f50"
+zh.state.ending:
+  - "c3ff10746810b168"
+zh.state.running:
+  - "6fa4e9fe8a046f48"
+zh.state.starting:
+  - "4c98c037e47f4d20"
+zh.state.victory:
+  - "55b7a7d36ebe1f37"
+zh.state.waiting:
+  - "9fefccea72c7ebf5"
+zh.state.wave-intermission:
+  - "2eb264ad4348bc04"
+zh.stats.crystals:
+  - "e18d2003e95e09d5"
+zh.stats.disabled:
+  - "309b952ab66eac29"
+zh.stats.games:
+  - "8130a896b13d91b6"
+zh.stats.header:
+  - "34874f667ead595f"
+zh.stats.kills-deaths:
+  - "266b22419ddf8e7d"
+zh.stats.nodes:
+  - "f2a297216ab2dc1a"
+zh.stats.player-not-found:
+  - "55a97ebcdb8ebba5"
+zh.stats.self-hint:
+  - "998929d3ca403b16"
+zh.stats.usage:
+  - "7e2d9d0a71c6d956"
+zh.stats.waves:
+  - "c8083e7291767af0"
+zh.stats.win-loss:
+  - "4a794ae1180539d5"
+zh.status-header:
+  - "23908debbe3ac9c0"
+zh.status-mobs:
+  - "d456bc219c1f5b93"
+zh.status-nodes:
+  - "efd219f64424a091"
+zh.status-players:
+  - "10ad44190e3e5cdf"
+zh.status-spectators:
+  - "2b7eb849d9b5204d"
+zh.status-state:
+  - "44f419c0dbfa7b81"
+zh.status-wave:
+  - "fb77836aa6a9bdc2"
+zh.top.empty:
+  - "c7a3245778c45834"
+zh.top.entry:
+  - "fad12573b9c5fbdd"
+zh.top.header:
+  - "e097764b09d820ef"
+zh.top.types:
+  - "c96dd71b27899dd1"
+zh.top.usage:
+  - "2d93605282a0029b"
+zh.tps.cleanup-queue:
+  - "de7fb79e550fe56b"
+zh.tps.game-players:
+  - "dfc07f69daafb0e3"
+zh.tps.header:
+  - "4a261a19850b7b5c"
+zh.tps.memory:
+  - "6b81b39ef9b73cd6"
+zh.tps.mobs:
+  - "52f07818c03f757d"
+zh.tps.mspt:
+  - "4eb0dc5544443d9d"
+zh.tps.nodes:
+  - "804d37225f7956a1"
+zh.tps.online-players:
+  - "ad1c171f51d1bdc8"
+zh.tps.server-header:
+  - "ccfc445b08c5717d"
+zh.tps.state:
+  - "f32ec7d5238a91f3"
+zh.tps.values:
+  - "73a63cf140f089d7"
+zh.tps.warning-high-mspt:
+  - "af07f5aa0017f678"
+zh.tps.warning-spark:
+  - "84a3d5e0cfdf1c2f"
+zh.tps.warning-suggestion:
+  - "0e325306fe4d4b4d"
+zh.tps.wave:
+  - "9fa61c9a2c7d5625"
+zh.tps.world-line:
+  - "0a5050006fc4456b"
+zh.usage-admin-header:
+  - "604dc548df9d806e"
+zh.usage-arenas:
+  - "80f4d3399f6d31e3"
+zh.usage-build:
+  - "827b78dcbebbb354"
+zh.usage-click-to-copy:
+  - "b55e2261ec7ad1c5"
+zh.usage-config:
+  - "2e724df7d5c948c2"
+  - "94bfe4453a455efa"
+zh.usage-deploy:
+  - "395d708b66087cb0"
+  - "3c7358fc55b6903e"
+zh.usage-disable:
+  - "8f703a4af9048b75"
+zh.usage-enable:
+  - "245f6084247fa3bf"
+zh.usage-fireball:
+  - "bd368c09e7362612"
+zh.usage-gui:
+  - "0bd6f8f0a82781f3"
+zh.usage-hammer:
+  - "be89c10e2b293301"
+zh.usage-header:
+  - "ac89aa094857fee0"
+zh.usage-join:
+  - "62fefa654d8a3fd9"
+  - "ee045cdb6421d261"
+zh.usage-lang:
+  - "528f0ab9c496a3bb"
+zh.usage-leave:
+  - "844465893d7d1e5b"
+  - "fd789617b90278db"
+zh.usage-list:
+  - "96eb63e51c70d2c6"
+zh.usage-lobby:
+  - "e6f25236ba00761c"
+zh.usage-lobby-setspawn:
+  - "34609755fbe0becf"
+zh.usage-manage:
+  - "2cafdfe2fba635a5"
+zh.usage-player-header:
+  - "cac182673b95ee4f"
+zh.usage-reloadconfig:
+  - "e48a9f78596e8043"
+zh.usage-setup:
+  - "263354588a6b7484"
+zh.usage-shop-give:
+  - "607f69157d1cd900"
+  - "a1ddacd77458592c"
+zh.usage-shop-reload:
+  - "4a5279bf3e6e0267"
+zh.usage-start:
+  - "d2b9b21e71817b5d"
+  - "e75cd3b84888c950"
+zh.usage-stats:
+  - "61ac57a9d1b1a9f0"
+zh.usage-status:
+  - "2b8f804216f085a3"
+  - "7aa896ba2e7ea1bd"
+zh.usage-stop:
+  - "129fe08ea40987c1"
+  - "c174164eb6228f50"
+zh.usage-top:
+  - "c14ab3cfae348e49"
+  - "ff1bfa8d8df1e822"
+zh.usage-tps:
+  - "8f2b83b31875ed62"
+zh.usage-wave-clear:
+  - "22388247e2fec292"
+zh.usage-wave-skip:
+  - "d49f07f53da14f95"
+zh.villager-died:
+  - "bb783632b3b19c5d"
+zh.villager.display-name:
+  - "074e2983e2b3b2ab"
+zh.wave-clear-broadcast:
+  - "0581e8fc66905727"
+zh.wave-clear-done:
+  - "ebf0f704fb06b6a1"
+zh.wave-clear-intermission:
+  - "22b6414aa0877c3c"
+zh.wave-complete:
+  - "87f1baf1c50df295"
+zh.wave-not-running:
+  - "fbf1e85939a8ba23"
+zh.wave-skip-broadcast:
+  - "3806b10130369a8b"
+zh.wave-skip-done:
+  - "4f646ef5d44f18a2"
+zh.wave-skip-not-enough-players:
+  - "f50533a7f96e42e9"
+zh.wave-start:
+  - "a82da4f0cc40b2a2"
+zh.wave-stuck-purge:
+  - "729a176aca422328"
+zh.wave-stuck-relocate:
+  - "15bc2b263b8039b0"

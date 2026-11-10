@@ -13,6 +13,7 @@ import java.io.InputStreamReader;
 import java.io.Reader;
 import java.nio.charset.StandardCharsets;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
@@ -24,6 +25,14 @@ public class LanguageManager {
 
     private final HilltopVillagePlugin plugin;
     private File messagesFile;
+
+    /**
+     * messages.yml 的读写闸门。
+     *
+     * <p>读盘不可用（解析失败 / 语义哨兵不通过）时本进程拒写：坏文件永不被 JAR 默认值覆盖，
+     * 玩家继续用 JAR 内嵌文案服务。</p>
+     */
+    private final YamlFileGate messagesGate;
 
     /** 全局默认语言 */
     private String defaultLocale = "zh";
@@ -43,7 +52,19 @@ public class LanguageManager {
 
     public LanguageManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
+        this.messagesFile = new File(plugin.getDataFolder(), "messages.yml");
+        this.messagesGate = new YamlFileGate(messagesFile, YamlFiles.messagesValidator(), plugin.getLogger());
         reload();
+    }
+
+    /**
+     * messages.yml 的读写闸门。
+     *
+     * <p>仅供 {@code /hilltop reloadconfig} 解封：管理员把文件修好后无需重启服务器
+     * （{@link YamlFileGate#reset()} 只清缓存态，下一次 {@link #reload()} 仍会重新判定）。</p>
+     */
+    public YamlFileGate getMessagesGate() {
+        return messagesGate;
     }
 
     // ---- 加载 ----
@@ -65,9 +86,28 @@ public class LanguageManager {
         }
 
         // 2. 加载磁盘文件（旧版/管理员自定义，可能缺 key，但自定义优先）
-        YamlConfiguration diskConfig = messagesFile.exists()
-                ? YamlConfiguration.loadConfiguration(messagesFile)
-                : new YamlConfiguration();
+        //    磁盘不可用时：纯 JAR 默认继续服务玩家，且本次绝不对该文件做任何写入。
+        YamlFiles.Loaded loaded = messagesGate.load();
+        // 只读锁必须与 usable 一起判断：文件被隔离成 *.corrupt 后 load() 返回 ABSENT（usable=true），
+        // 若只判 usable，第 4 步的「文件不存在就写」会把 JAR 默认值写回去、绕过只读降级。
+        boolean diskWritable = loaded.usable() && !messagesGate.isReadOnly();
+        YamlConfiguration diskConfig = loaded.usable() ? loaded.config() : new YamlConfiguration();
+        if (!diskWritable) {
+            plugin.getLogger().severe("messages.yml is unusable; serving JAR defaults only and NOT "
+                    + "overwriting the file this run");
+        }
+
+        // 2b. 【D4】出厂文案同步：把「磁盘值仍是某个出厂值」的键升级成本版文案，服主自定义的键一律不动。
+        //     必须在第 3 步建缓存<b>之前</b>执行：缓存读的是磁盘配置，同步后缓存才反映新文案，
+        //     本进程内立即生效，不需要再重启。磁盘不可用时整段跳过（D1 硬约束：坏文件零写入）。
+        MessageTextSync.Result sync = null;
+        if (diskWritable) {
+            sync = MessageTextSync.sync(jarConfig, diskConfig, legacyHashes(), pluginVersion());
+            // 首次运行（文件本来就不存在）没有「升级」可言，全是 ADD，不必刷一屏日志
+            if (loaded.status() != YamlFiles.Status.ABSENT) {
+                logSyncReport(sync);
+            }
+        }
 
         // 3. 构建缓存：JAR 为基础，磁盘值覆盖
         //    这里顺手把颜色码预编译掉：消息内容是静态的（只在 reload 时变），
@@ -107,18 +147,23 @@ public class LanguageManager {
         }
 
         // 4. 把 JAR 里缺失的 key 补写到磁盘文件（方便管理员查看/编辑全量 key）
-        boolean dirty = false;
-        for (String key : jarConfig.getKeys(true)) {
-            if (!diskConfig.contains(key)) {
-                diskConfig.set(key, jarConfig.get(key));
-                dirty = true;
+        //    磁盘不可用时零写入（D1 硬约束）：坏文件必须原样交给服主修复，不能被 JAR 默认值覆盖。
+        //    _meta 段由第 2b 步的同步逻辑独占维护，绝不从 JAR 拷进磁盘——JAR 里那份只是模板，
+        //    拷过去会把「模板基线」当成「这台服的真实基线」，判定全错。
+        if (diskWritable) {
+            boolean dirty = false;
+            for (String key : jarConfig.getKeys(true)) {
+                if (isMetaKey(key)) {
+                    continue;
+                }
+                if (!diskConfig.contains(key)) {
+                    diskConfig.set(key, jarConfig.get(key));
+                    dirty = true;
+                }
             }
-        }
-        if (dirty || !messagesFile.exists()) {
-            try {
-                diskConfig.save(messagesFile);
-            } catch (IOException e) {
-                plugin.getLogger().warning("Cannot save messages.yml: " + e.getMessage());
+            boolean syncChanged = sync != null && sync.changed();
+            if ((dirty || syncChanged || !messagesFile.exists()) && !messagesGate.write(diskConfig)) {
+                plugin.getLogger().warning("Could not write messages.yml (read-only this run)");
             }
         }
 
@@ -131,6 +176,106 @@ public class LanguageManager {
         plugin.getLogger().info("LanguageManager loaded " +
                 messageCache.getOrDefault("en", Map.of()).size() + " EN keys, " +
                 messageCache.getOrDefault("zh", Map.of()).size() + " ZH keys. Locale: " + defaultLocale);
+    }
+
+    // ---- 出厂文案同步（D4） ----
+
+    /**
+     * 历史出厂值基线的缓存。{@code null} = 尚未读取。
+     *
+     * <p>基线来自内嵌资源 {@code messages-legacy.yml}，随 JAR 走、进程内不变，读一次即可。
+     * 读取失败（资源缺失/损坏）时得到<b>空表</b>：同步逻辑因此把每个无法判定为出厂值的键
+     * 都当成自定义——一个都不改。这是 {@code MessageTextSync} 不变式 3 的 fail-safe。</p>
+     */
+    private Map<String, Set<String>> legacyHashesCache;
+
+    /** 历史出厂值基线；资源缺失/损坏时返回空表（→ 全部保守）。 */
+    private Map<String, Set<String>> legacyHashes() {
+        if (legacyHashesCache != null) {
+            return legacyHashesCache;
+        }
+        Map<String, Set<String>> parsed = Map.of();
+        InputStream stream = plugin.getResource("messages-legacy.yml");
+        if (stream == null) {
+            plugin.getLogger().warning("messages-legacy.yml is missing from the JAR; every key whose value "
+                    + "differs from the current factory text will be treated as customized (nothing updated)");
+        } else {
+            try (InputStreamReader reader = new InputStreamReader(stream, StandardCharsets.UTF_8)) {
+                StringBuilder raw = new StringBuilder();
+                char[] buffer = new char[8192];
+                int read;
+                while ((read = reader.read(buffer)) > 0) {
+                    raw.append(buffer, 0, read);
+                }
+                parsed = MessageTextSync.parseLegacy(raw.toString());
+            } catch (IOException failure) {
+                plugin.getLogger().warning("Cannot read messages-legacy.yml (" + failure.getMessage()
+                        + "); every key whose value differs from the current factory text will be treated "
+                        + "as customized (nothing updated)");
+            }
+        }
+        legacyHashesCache = parsed;
+        return parsed;
+    }
+
+    /** 当前插件版本（写进 {@code _meta.factory-version}）；读不到时返回 null（同步逻辑会保留旧值）。 */
+    private String pluginVersion() {
+        try {
+            return plugin.getPluginMeta().getVersion();
+        } catch (RuntimeException unavailable) {
+            String fallback = plugin.getDescription().getVersion();
+            return fallback == null || fallback.isBlank() ? null : fallback;
+        }
+    }
+
+    /** {@code _meta} 段由同步逻辑独占维护；JAR→磁盘的补键循环必须跳过它。 */
+    private static boolean isMetaKey(String path) {
+        return path.equals("_meta") || path.startsWith("_meta.");
+    }
+
+    /**
+     * 启动报告（PLAN D4.4-⑤）。
+     *
+     * <p>这份日志是服主的信任基础设施：他必须能看见「插件动了哪几个键、保留了我的哪几个键」，
+     * 否则下次又会怀疑自定义被吃掉。被保留的键只列前 10 条，并明确给出恢复出厂文案的操作。</p>
+     */
+    private void logSyncReport(MessageTextSync.Result sync) {
+        java.util.logging.Logger log = plugin.getLogger();
+        if (sync.baselineCorrupt()) {
+            log.warning("messages.yml has a malformed _meta section; skipped the text sync entirely "
+                    + "(nothing was updated). Delete the whole _meta section to let the plugin rebuild it.");
+            return;
+        }
+        if (sync.upgraded() == 0 && sync.added() == 0 && sync.keptCustom() == 0) {
+            return;     // 稳态 / 首次安装只建基线：没有可播报的内容
+        }
+        log.info("messages.yml text sync (plugin " + pluginVersion() + "): "
+                + sync.upgraded() + " key(s) updated to new factory text, "
+                + sync.added() + " new key(s) added, "
+                + sync.keptCustom() + " key(s) kept as customized");
+        sync.steps().stream()
+                .filter(step -> step.action() == MessageTextSync.Action.UPGRADE)
+                .limit(20)
+                .forEach(step -> log.info("  updated: " + step.path()));
+        long upgradedTotal = sync.steps().stream()
+                .filter(step -> step.action() == MessageTextSync.Action.UPGRADE).count();
+        if (upgradedTotal > 20) {
+            log.info("  ... and " + (upgradedTotal - 20) + " more updated key(s)");
+        }
+        long customTotal = sync.steps().stream()
+                .filter(step -> step.action() == MessageTextSync.Action.MARK_CUSTOM).count();
+        if (customTotal > 0) {
+            sync.steps().stream()
+                    .filter(step -> step.action() == MessageTextSync.Action.MARK_CUSTOM)
+                    .limit(10)
+                    .forEach(step -> log.info("  kept custom: " + step.path()));
+            if (customTotal > 10) {
+                log.info("  ... and " + (customTotal - 10) + " more (see _meta.custom in messages.yml)");
+            }
+            log.info("To get the new factory text for one of those, delete that key from messages.yml "
+                    + "and restart (the plugin re-adds the factory text), or paste the factory text in "
+                    + "and restart (it then leaves _meta.custom on its own). Keys you did edit are never touched.");
+        }
     }
 
     // ---- 编译 ----
