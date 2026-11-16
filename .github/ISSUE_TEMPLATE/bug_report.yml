@@ -1,0 +1,103 @@
+---
+name: Bug report
+description: Something does not work as documented
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. A report with the three things below is fixable;
+        one without them usually cannot be reproduced.
+
+        **Do not report security problems here** — see [SECURITY.md](../SECURITY.md).
+
+  - type: input
+    id: plugin-version
+    attributes:
+      label: Plugin version
+      description: The JAR filename, or the `version:` line from `/hilltop status`.
+      placeholder: "1.1.0-SNAPSHOT-fix3"
+    validations:
+      required: true
+
+  - type: input
+    id: server-version
+    attributes:
+      label: Server software and version
+      description: Exact Paper build, and any other plugins involved.
+      placeholder: "Paper 1.21.4 build 232 (no other game plugins)"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: locale
+    attributes:
+      label: Language in use
+      options:
+        - zh (default)
+        - en
+        - both / switching
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Numbered, starting from a known state. If it only happens sometimes, say what you think differs.
+      placeholder: |
+        1. Stand in the lobby and run /hilltop join
+        2. Wait for the countdown to reach 0
+        3. ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behaviour
+      placeholder: "The sidebar should show the wave line."
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behaviour
+      description: What happened instead. Screenshots help for in-game visuals.
+      placeholder: "The wave line is missing and the remaining lines are ordered wrong."
+    validations:
+      required: true
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: |
+        Paste the lines from `logs/latest.log` around the failure. Remove anything
+        private (server IPs, player data) first.
+      render: text
+    validations:
+      required: false
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Related configuration
+      description: |
+        If the problem involves a config key, paste the relevant block from
+        `plugins/HilltopVillage/<file>.yml`. Do not paste whole files.
+      render: yaml
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this is not a duplicate.
+          required: true
+        - label: I am running the latest published release, not an older build.
+          required: true

@@ -1,10 +1,37 @@
 [English](README-EN.md) | 简体中文
 
-> ⚠️ **这是一个初中生用AI做的插件，有任何问题建议欢迎提交Issues，如果您喜欢这个项目，就star一下吧！**
+# Hilltop Village 峰上村庄守卫战
 
-# Hilltop Village
+**面向 Paper 服务器的合作 PvE 塔防插件** —— 多名玩家共同守护村民与能量节点，抵御逐波增强的怪物。与常见的竞技类小游戏插件不同，它主打**合作**：没有对抗队伍，输赢取决于全队能否一起撑过全部波次。
 
-一个面向 Minecraft 服务器的合作 PvE 塔防插件。玩家需要团结协作，保护村庄核心，抵御一波波不断增强的怪物进攻。
+[![build](https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/actions/workflows/build.yml/badge.svg)](https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/sqkl520/Minecraft-server-plugin-Hilltop-Defense?include_prereleases&label=release)](https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/releases)
+[![license](https://img.shields.io/github/license/sqkl520/Minecraft-server-plugin-Hilltop-Defense?label=license)](LICENSE)
+
+## 快速开始
+
+```bash
+# 1. 下载最新 JAR（或从 Releases 页面取）
+gh release download --repo sqkl520/Minecraft-server-plugin-Hilltop-Defense \
+    --pattern "*SNAPSHOT*.jar" --dir plugins/
+
+# 2. 服务器要求：Paper 1.21.4+ / Java 21，放进 plugins/ 后重启
+
+# 3. 进游戏，跟随 8 步向导把地图点位配完
+/hilltop setup
+
+# 4. 大厅出生点单独设一次（向导不碰这个）
+/lobby setspawn
+
+# 5. 开局
+/hilltop join
+```
+
+首次启动会在 `plugins/HilltopVillage/` 生成全部配置文件，其中 `display.yml` 控制侧边栏与 Tab 栏布局。
+
+> 📷 **截图区** —— 仓库目前还没有可用的游戏内截图。欢迎通过 Issue 提交，会补到这一节。
+
+> ⚠️ **关于这个项目** —— 由一名中学生独立开发，AI 辅助编码。问题与建议请开 Issue；喜欢就点个 star。
 
 ## 功能特性
 

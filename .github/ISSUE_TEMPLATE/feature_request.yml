@@ -1,0 +1,74 @@
+---
+name: Feature request
+description: Describe a problem in how you play, not the button you want added
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Start from the problem, not the solution. "I want a button that does X" is
+        hard to act on — "when Y happens I have to do Z by hand and it takes five
+        minutes" tells me what actually needs fixing, and there may be a better
+        answer than the button.
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of the game
+      options:
+        - Gameplay / balance (waves, monsters, nodes, villagers)
+        - Deployment / admin tooling (setup wizard, config GUI, commands)
+        - Display (sidebar, tab list, messages)
+        - Shop / economy
+        - Multi-arena / lobby
+        - Documentation
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: The problem
+      description: What are you trying to do, and what makes it hard or impossible today?
+      placeholder: |
+        When I run a match with six players, the mid-game respawn wait means a dead
+        player sits watching for up to 30 seconds with nothing to do. I end up
+        answering "how long until I'm back" in chat every wave.
+    validations:
+      required: true
+
+  - type: textarea
+    id: current-workaround
+    attributes:
+      label: What you do today instead
+      description: Any workaround you have, even a bad one. This shows whether the problem is real.
+    validations:
+      required: false
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: One idea for how it could work
+      description: Optional. If you have a specific approach in mind, describe it — but the problem matters more.
+    validations:
+      required: false
+
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other ways the same problem could be solved, and why they are worse.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: confirmations
+    attributes:
+      label: Before submitting
+      options:
+        - label: I searched existing issues and this has not been requested already.
+          required: true
+        - label: This is about the plugin's own behaviour, not about another plugin or the server software.
+          required: true

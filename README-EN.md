@@ -1,10 +1,37 @@
 English | [简体中文](README.md)
 
-> ⚠️ **This is a Minecraft plugin developed by an enthusiast with AI assistance. Feel free to submit Issues for any questions or suggestions. If you like this project, give it a star!**
-
 # Hilltop Village
 
-A cooperative PvE tower defense plugin for Minecraft servers. Players must work together to protect the village core from waves of increasingly powerful monsters.
+**A cooperative PvE tower-defense plugin for Paper servers** — a group of players defends villagers and energy nodes against increasingly strong waves. Unlike the usual competitive minigame plugins, this one is built around **cooperation**: there are no opposing teams, and whether you win depends on the whole group surviving every wave together.
+
+[![build](https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/actions/workflows/build.yml/badge.svg)](https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/actions/workflows/build.yml)
+[![release](https://img.shields.io/github/v/release/sqkl520/Minecraft-server-plugin-Hilltop-Defense?include_prereleases&label=release)](https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/releases)
+[![license](https://img.shields.io/github/license/sqkl520/Minecraft-server-plugin-Hilltop-Defense?label=license)](LICENSE)
+
+## Quick start
+
+```bash
+# 1. Download the latest JAR (or grab it from the Releases page)
+gh release download --repo sqkl520/Minecraft-server-plugin-Hilltop-Defense \
+    --pattern "*SNAPSHOT*.jar" --dir plugins/
+
+# 2. Requirements: Paper 1.21.4+ / Java 21. Drop it in plugins/ and restart.
+
+# 3. In game, walk through the 8-step wizard to place every map point
+/hilltop setup
+
+# 4. Set the lobby spawn once, separately (the wizard deliberately leaves it alone)
+/lobby setspawn
+
+# 5. Start a match
+/hilltop join
+```
+
+On first start every config file is generated into `plugins/HilltopVillage/`. The sidebar and tab list layout lives in `display.yml`.
+
+> 📷 **Screenshots** — there are no usable in-game screenshots in the repository yet. Contributions via an issue are welcome; they will be added here.
+
+> ⚠️ **About this project** — built by a single student developer with AI-assisted coding. Please open an issue for problems or suggestions; a star is appreciated if you find it useful.
 
 ## Features
 

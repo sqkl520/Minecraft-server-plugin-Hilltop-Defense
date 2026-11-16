@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/security/advisories/new
+    about: Please report security problems privately, not as a public issue.
+  - name: Deployment and configuration questions
+    url: https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/tree/main/docs/guides
+    about: The per-topic guides cover deployment, the setup wizard, commands and every config key.
