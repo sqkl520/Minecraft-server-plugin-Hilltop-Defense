@@ -1,5 +1,7 @@
 English | [简体中文](README.md)
 
+![Hilltop Village](.github/social-preview.png)
+
 # Hilltop Village
 
 **A cooperative PvE tower-defense plugin for Paper servers** — a group of players defends villagers and energy nodes against increasingly strong waves. Unlike the usual competitive minigame plugins, this one is built around **cooperation**: there are no opposing teams, and whether you win depends on the whole group surviving every wave together.

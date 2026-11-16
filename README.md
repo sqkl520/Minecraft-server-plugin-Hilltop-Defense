@@ -1,5 +1,7 @@
 [English](README-EN.md) | 简体中文
 
+![Hilltop Village](.github/social-preview.png)
+
 # Hilltop Village 峰上村庄守卫战
 
 **面向 Paper 服务器的合作 PvE 塔防插件** —— 多名玩家共同守护村民与能量节点，抵御逐波增强的怪物。与常见的竞技类小游戏插件不同，它主打**合作**：没有对抗队伍，输赢取决于全队能否一起撑过全部波次。
