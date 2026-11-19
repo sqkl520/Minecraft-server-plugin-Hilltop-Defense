@@ -14,6 +14,7 @@ import static org.mockito.Mockito.when;
 import java.lang.reflect.Constructor;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -140,6 +141,9 @@ class ArenaScoreboardTest extends MockBukkitTestBase {
             if (board == null) return;
             BukkitTask task = (BukkitTask) field(board, "updateTask");
             if (task != null) task.cancel();
+            // S08-F2：关闭态会留下恢复探针任务，同样要收掉
+            BukkitTask probe = (BukkitTask) field(board, "reEnableProbeTask");
+            if (probe != null) probe.cancel();
         } catch (ReflectiveOperationException ignored) {
             // 清理失败不应盖过真正的断言失败
         }
@@ -326,6 +330,154 @@ class ArenaScoreboardTest extends MockBukkitTestBase {
             Map<UUID, Object> boards = (Map<UUID, Object>) field(scoreboard, "boards");
             assertTrue(boards.isEmpty(),
                     "关闭侧边栏后已显示的 board 必须被摘除，否则玩家侧边栏冻结在最后一帧");
+        }
+    }
+
+    // ---------------------------------------------------------------- 3. 开关重新打开
+
+    /**
+     * S08-F2：关闭 → 重新打开必须把在场玩家的侧边栏建回来。
+     *
+     * <p><b>本组为什么不经过 {@code show()}</b>：MockBukkit 的
+     * {@code ObjectiveMock#numberFormat} 是裸抛 {@code UnimplementedOperationException}
+     * （已反编译核实），真实 {@code show()} 跑不完。所以用 {@link org.mockito.Mockito#spy}
+     * 把 {@code show()} 打成空实现，只观测「对谁、调了几次」——本组要证明的正是这件事
+     * （重建路径覆盖了哪些人、是否只在翻转的那一次执行），而不是 {@code show()} 的渲染内容
+     * （那部分由 {@code show()} 自身的实现与其它用例覆盖）。</p>
+     */
+    @Nested
+    @DisplayName("开关 false → true 时恢复侧边栏（S08-F2）")
+    class ReEnableRecovery {
+
+        private ArenaScoreboard spied;
+
+        /** 建一个 spy 版本并让 show() 变成可观测的空实现。 */
+        private ArenaScoreboard spiedScoreboard() throws ReflectiveOperationException {
+            spied = org.mockito.Mockito.spy(new ArenaScoreboard(plugin, arena));
+            org.mockito.Mockito.doNothing().when(spied).show(any(Player.class));
+            setField(spied, "updateTask", null);
+            return spied;
+        }
+
+        private void invokeProbe() throws ReflectiveOperationException {
+            Method method = ArenaScoreboard.class.getDeclaredMethod("probeReEnable");
+            method.setAccessible(true);
+            method.invoke(spied);
+        }
+
+        private void invokeRefreshAllOnSpy() throws ReflectiveOperationException {
+            Method method = ArenaScoreboard.class.getDeclaredMethod("refreshAll");
+            method.setAccessible(true);
+            method.invoke(spied);
+        }
+
+        /**
+         * 关闭 → 打开：每个在线竞技场成员各被 {@code show()} 一次，且刷新任务被拉起。
+         *
+         * <p>三条断言各挡一类错误：</p>
+         * <ol>
+         *   <li>{@code show} 调用次数 = 在线成员数 —— 挡住「探针只置标志位、不重建」；</li>
+         *   <li>每名成员都被覆盖 —— 挡住「只恢复了第一个 / 只恢复了自己」；</li>
+         *   <li>{@code updateTask} 非空 —— 挡住「板建好了但刷新任务没重启」，那种情况下
+         *       侧边栏只画一帧就永久冻结。</li>
+         * </ol>
+         */
+        @Test
+        @DisplayName("探针看到开关翻回 true → 为每名在线成员重建侧边栏并重启刷新任务")
+        void flipToEnabledRestoresEveryOnlineMember() throws Exception {
+            PlayerMock second = server.addPlayer("Second");
+            when(arena.getPlayers()).thenReturn(List.of(player, second));
+
+            spiedScoreboard();
+            when(configManager.isScoreboardEffectivelyEnabled()).thenReturn(false);
+            invokeRefreshAllOnSpy();
+
+            assertEquals(Boolean.FALSE, field(spied, "lastEnabled"),
+                    "前置条件：关闭帧必须先记下 lastEnabled=false，否则翻转判定没有基准");
+            org.mockito.Mockito.verify(spied, org.mockito.Mockito.never()).show(any(Player.class));
+
+            when(configManager.isScoreboardEffectivelyEnabled()).thenReturn(true);
+            invokeProbe();
+
+            org.mockito.Mockito.verify(spied, org.mockito.Mockito.times(1)).show(player);
+            org.mockito.Mockito.verify(spied, org.mockito.Mockito.times(1)).show(second);
+            assertNotNull(field(spied, "updateTask"),
+                    "恢复后刷新任务必须被重新拉起（show 内部 ensureTaskRunning），"
+                            + "否则侧边栏只画一帧就永久冻结");
+            assertEquals(Boolean.TRUE, field(spied, "lastEnabled"),
+                    "恢复后 lastEnabled 必须翻成 true，否则下一次探针会重复重建整帧");
+            assertNull(field(spied, "reEnableProbeTask"),
+                    "恢复后探针必须自取消 —— 它已完成使命，留一条每秒轮询是纯浪费");
+        }
+
+        /**
+         * 恢复之后继续推进 tick 不得重复 {@code show()}。
+         *
+         * <p>没有这一条，一个「每 tick 无条件重建」的实现也能通过上面那条 ——
+         * 但那会让每名玩家每秒被新建一次 scoreboard、整帧重发（可见闪烁 + 包量翻倍）。</p>
+         */
+        @Test
+        @DisplayName("对照：恢复完成后再次探针不得重复 show")
+        void repeatedProbeDoesNotReshow() throws Exception {
+            when(arena.getPlayers()).thenReturn(List.of(player));
+            spiedScoreboard();
+            setField(spied, "lastEnabled", true);
+
+            when(configManager.isScoreboardEffectivelyEnabled()).thenReturn(true);
+            invokeProbe();
+            invokeProbe();
+
+            org.mockito.Mockito.verify(spied, org.mockito.Mockito.never()).show(any(Player.class));
+        }
+
+        /**
+         * 关闭态且场上无人 → 探针自取消，不留空转任务。
+         *
+         * <p>这是「探针不浪费」的一半：对局结束、玩家全部离场后，没有谁需要被恢复，
+         * 探针继续每秒读一次开关只是噪音。下一次 {@code show()} 会把它重新挂上。</p>
+         */
+        @Test
+        @DisplayName("关闭且无在线成员 → 探针自取消")
+        void probeStopsWhenArenaHasNoPlayers() throws Exception {
+            when(arena.getPlayers()).thenReturn(List.of());
+            spiedScoreboard();
+            when(configManager.isScoreboardEffectivelyEnabled()).thenReturn(false);
+            invokeRefreshAllOnSpy();
+
+            assertNotNull(field(spied, "reEnableProbeTask"),
+                    "前置条件：关闭帧必须挂上探针，否则本条什么都没证明");
+
+            invokeProbe();
+
+            assertNull(field(spied, "reEnableProbeTask"), "无人在场时探针必须自取消");
+            org.mockito.Mockito.verify(spied, org.mockito.Mockito.never()).show(any(Player.class));
+        }
+
+        /**
+         * 关闭期间入场（{@code show()} 早退）同样要挂上探针。
+         *
+         * <p>挡的是「只有 refreshAll 的关闭分支埋点」这一半实现：玩家在关闭期间加入时
+         * {@code board} 从未建立，{@code refreshAll} 的关闭分支不会再被驱动
+         * （boards 为空 → 停任务 → 任务死），恢复点就只剩这里。</p>
+         *
+         * <p>本用例刻意<b>不</b>用 spy：{@link #spiedScoreboard()} 把 {@code show()} 打成了空实现，
+         * 走那条路根本到不了真实的早退分支，测的就不是本缺陷。关闭态的 {@code show()} 在触碰
+         * 任何 MockBukkit 未实现的 scoreboard API 之前就返回，所以真实实例是安全的。</p>
+         */
+        @Test
+        @DisplayName("关闭期间的 show() 早退但必须挂上探针")
+        void showWhileDisabledArmsTheProbe() throws Exception {
+            ArenaScoreboard plain = new ArenaScoreboard(plugin, arena);
+            scoreboard = plain;
+            when(configManager.isScoreboardEffectivelyEnabled()).thenReturn(false);
+
+            plain.show(player);
+
+            assertNotNull(field(plain, "reEnableProbeTask"),
+                    "关闭期间入场必须挂上恢复探针，否则重新打开后这名玩家整局没有侧边栏");
+            @SuppressWarnings("unchecked")
+            Map<UUID, Object> boards = (Map<UUID, Object>) field(plain, "boards");
+            assertTrue(boards.isEmpty(), "关闭期间不得建板");
         }
     }
 }

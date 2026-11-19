@@ -56,6 +56,11 @@
 - **【D3】`restoreAll()` 分项还原**：插件关闭时不再对「只发过头/尾」的玩家调 `playerListName(null)` + `setPlayerListOrder(0)`。名字/排序仅在对应缓存（`lastName`/`lastOrder`）有条目时才复位，头/尾仅在 `lastHeader`/`lastFooter` 有条目时才擦
 - **测试**：`TabListManagerTest` 新增 9 项（D1 3 项 / D2 3 项 / D3 3 项），该类 24 → 33 项；全库套件 953 项，Failures 0 / Errors 0 / Skipped 1
 
+### Fixed（2026-11-19 — 侧边栏审计批 1，1 项）
+
+- **【S08-F2】侧边栏开关重新打开后不再永久丢失**：`scoreboard.enabled` 被关闭时 `refreshAll()` 拆掉所有板并 `stopTask()`，此后任务已死、`refreshAll()` 不再被调用，管理员改回 `true` 时**没有任何路径为已在场的玩家重建侧边栏**——玩家整局看不到节点 / 村民 / 波次，只能离场重进、重连或等下一局。现新增 `lastEnabled` 翻转判定 + 关闭期间的轻量恢复探针（固定 1 秒轮询一次布尔值，恢复或场上无人即自取消），在 `false → true` 时对每名在线竞技场成员调一次 `show()` 并重启刷新任务；关闭期间入场也会挂上探针。关闭行为（全量拆板 + 停任务）保持不变
+- **测试**：`ArenaScoreboardTest` 新增 4 项（翻转恢复 / 不重复重建 / 无人在场自取消 / 关闭期入场挂探针），该类 5 → 9 项；全库套件 953 → 957 项
+
 ### Changed（2026-11-11 — 工程基建）
 
 - **测试套件首次入库**：78 个测试文件、846 项（MockBukkit + Mockito 基础设施 + 探针测试）
