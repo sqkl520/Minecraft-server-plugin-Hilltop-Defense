@@ -417,7 +417,9 @@ public class HilltopCommandHandler {
                         .ifPresent(gm -> gm.getNodeSystem().resetReadOnlyGates());
                 // 成功提示必须放在所有重载步骤之后：早发会让后续步骤抛出时管理员看到假成功。
                 try {
-                    plugin.getConfigManager().loadFromFile();
+                    // #8：loadFromFile() 失败不抛异常（保留内存值并提前 return），所以这里必须
+                    // 消费返回值；否则下面的 catch 永远不会触发，config-reloaded 照发。
+                    boolean configReloaded = plugin.getConfigManager().loadFromFile();
                     // display.yml 是纯手写文件（插件只读不写），管理员手滑改坏一次就会让闸门把整个进程
                     // 锁成「本进程只读」，此时 loadFromFile() 只会拿上次读到的旧 YamlConfiguration 重解析，
                     // 坏文件的修正永远进不来、布局永久停在默认值。所以这里必须再走一次 reloadDisplay()：
@@ -433,7 +435,13 @@ public class HilltopCommandHandler {
                         }
                     }
                     plugin.getLanguageManager().reload();
-                    sender.sendMessage(lang.getFor(player, "config-reloaded"));
+                    if (configReloaded) {
+                        sender.sendMessage(lang.getFor(player, "config-reloaded"));
+                    } else {
+                        // 不说「已重载」：game-settings.yml 没读进来，内存仍是旧值。
+                        // messages.yml 是独立文件，仍可能已成功重载，故下面照发 messages-reloaded。
+                        sender.sendMessage(lang.getFor(player, "config-reload-failed"));
+                    }
                     sender.sendMessage(lang.getFor(player, "messages-reloaded"));
                     // 竞技场参数来自 arenas.yml，无法热重载，明确告知管理员需重启
                     sender.sendMessage(lang.getFor(player, "config.reload-arena-notice"));

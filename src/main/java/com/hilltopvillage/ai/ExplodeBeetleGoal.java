@@ -34,6 +34,16 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
     private static final int    MAX_STUCK_GIVEUPS = 3;
 
     /**
+     * 原版实体爆炸威力：普通苦力怕 = 3.0。
+     *
+     * <p>#6：{@code explode-damage-multiplier} 的文档/配置中心语义是「对节点伤害倍率」，
+     * 不能同时拿来当 {@code createExplosion} 的 power —— 否则 GUI 允许的 10 会让一次自爆
+     * 变成 10 倍威力，波及范围与玩家伤害完全失控。实体爆炸固定为普通苦力怕强度；
+     * 倍率 0 仍传 0，保留「纯视觉效果、无爆炸伤害」的既有语义。</p>
+     */
+    private static final float  DEFAULT_EXPLOSION_POWER = 3.0f;
+
+    /**
      * Goal 的身份键。
      *
      * <p>{@code GoalKey.of(...)} 每次调用都新建对象（已反编译 paper-api 1.21.4 的
@@ -220,12 +230,16 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
         Location nodeLoc = targetNode.getLocation();
         World world = nodeLoc.getWorld();
 
-        // 怪物爆炸伤害 = 对玩家的基础攻击伤害 × 怪物爆炸倍率；节点倍率只额外应用一次
+        // 节点伤害 = 基础伤害 × 本倍率 × 节点自毁倍率；实体爆炸威力固定为普通苦力怕 3.0，
+        // 倍率为 0 时传 0（无伤害爆炸）。
         GameConfig cfg = gameManager.getConfigManager().getActiveConfig();
         GameConfig.MonsterConfig monsterCfg = cfg.getMonsters().get("explode-beetle");
-        double explodeMultiplier = monsterCfg == null
+        double rawExplodeMultiplier = monsterCfg == null
                 ? 0
-                : Math.max(0, monsterCfg.getExplodeDamageMultiplier());
+                : monsterCfg.getExplodeDamageMultiplier();
+        // NaN 也会穿透 Math.max(0, NaN)，这里统一把非法值折算成 0（无节点伤害/无爆炸）。
+        double explodeMultiplier = Double.isFinite(rawExplodeMultiplier)
+                && rawExplodeMultiplier > 0 ? rawExplodeMultiplier : 0;
         double nodeMultiplier = Math.max(0, cfg.getNodeSelfDestructMultiplier());
         double nodeDamage = resolveBaseDamage(monsterCfg) * explodeMultiplier * nodeMultiplier;
 
@@ -238,7 +252,9 @@ public class ExplodeBeetleGoal implements Goal<Mob> {
             world.spawnParticle(Particle.LARGE_SMOKE, nodeLoc, 10, 0.6, 0.5, 0.6, 0.05);
             world.playSound(nodeLoc, Sound.ENTITY_GENERIC_EXPLODE, 0.8f, 1.0f);
         } else {
-            world.createExplosion(nodeLoc, (float) explodeMultiplier, false, false, beetle);
+            // 实体爆炸威力与节点伤害倍率解耦；0 仍是无伤害爆炸。
+            float power = explodeMultiplier > 0 ? DEFAULT_EXPLOSION_POWER : 0.0f;
+            world.createExplosion(nodeLoc, power, false, false, beetle);
         }
         nodeSystem.damageNode(nodeLoc, nodeDamage);
         gameManager.getDisplayEntityManager().spawnNodeDestroyEffect(nodeLoc);

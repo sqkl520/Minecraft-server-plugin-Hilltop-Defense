@@ -425,6 +425,15 @@ public class ConfigManager {
                 && activeConfig.getWaveTimeoutSeconds() == baseline.getWaveTimeoutSeconds()) {
             activeConfig.setWaveTimeoutSeconds(normalizeWaveTimeout(disk.getInt("wave-timeout-seconds")));
         }
+        if (hasNumber(disk, "victory-waves")
+                && activeConfig.getVictoryWaves() == baseline.getVictoryWaves()) {
+            int rawVictoryWaves = disk.getInt("victory-waves");
+            int normalizedVictoryWaves = normalizeVictoryWaves(rawVictoryWaves);
+            if (normalizedVictoryWaves != rawVictoryWaves) {
+                loadTimeNormalizationPending = true;
+            }
+            activeConfig.setVictoryWaves(normalizedVictoryWaves);
+        }
         if (hasNumber(disk, "defeat-countdown-seconds")
                 && activeConfig.getDefeatCountdownSeconds() == baseline.getDefeatCountdownSeconds()) {
             activeConfig.setDefeatCountdownSeconds(disk.getInt("defeat-countdown-seconds"));
@@ -461,7 +470,12 @@ public class ConfigManager {
         }
         if (hasNumber(disk, "nodes.repair-cost-amount")
                 && activeConfig.getRepairCostAmount() == baseline.getRepairCostAmount()) {
-            activeConfig.setRepairCostAmount(disk.getInt("nodes.repair-cost-amount"));
+            int rawRepairCost = disk.getInt("nodes.repair-cost-amount");
+            int normalizedRepairCost = normalizeRepairCostAmount(rawRepairCost);
+            if (normalizedRepairCost != rawRepairCost) {
+                loadTimeNormalizationPending = true;
+            }
+            activeConfig.setRepairCostAmount(normalizedRepairCost);
         }
         if (disk.isList("nodes.buff-effects")
                 && Objects.equals(activeConfig.getNodeBuffEffects(), baseline.getNodeBuffEffects())) {
@@ -570,6 +584,18 @@ public class ConfigManager {
                 } else {
                     plugin.getLogger().warning("Unknown material: " + eggName + ", keeping the in-memory display-egg");
                 }
+            }
+            // #7：与 loadFromFile 同一份钳制。该键有 GUI 入口，因此仍保留基线守卫——
+            // 本会话在菜单里改过的值优先；只有「没动过」时才采纳并钳制磁盘手改。
+            if (hasNumber(disk, mpath + "explode-damage-multiplier")
+                    && Double.compare(mc.getExplodeDamageMultiplier(),
+                            baseMc.getExplodeDamageMultiplier()) == 0) {
+                double rawExplode = disk.getDouble(mpath + "explode-damage-multiplier");
+                double normalizedExplode = normalizeExplodeDamageMultiplier(rawExplode);
+                if (Double.compare(normalizedExplode, rawExplode) != 0) {
+                    loadTimeNormalizationPending = true;
+                }
+                mc.setExplodeDamageMultiplier(normalizedExplode);
             }
         }
         return loaded;
@@ -730,6 +756,31 @@ public class ConfigManager {
      */
     private static int normalizeWaveTimeout(int raw) {
         return raw == GameConfig.LEGACY_WAVE_TIMEOUT_SECONDS ? 0 : raw;
+    }
+
+    /** #7：与 {@code GameRulesMenu} 的 1..100 同界；0 会让首波即满足胜利条件。 */
+    private static int normalizeVictoryWaves(int raw) {
+        return Math.min(100, Math.max(1, raw));
+    }
+
+    /** #7：修复必须至少消耗 1 个物品；0 = 免费、负数 = 反向增加物品。 */
+    private static int normalizeRepairCostAmount(int raw) {
+        return Math.max(1, raw);
+    }
+
+    /**
+     * #7：{@code explode-damage-multiplier} 会直接参与节点伤害结算，NaN/Infinity 必须挡在
+     * {@code damageNode} 之前。合法区间取 GUI 的 0..10，且<b>保留 0</b>——多个怪物模板
+     * （如 dropper）就用 0 表示不自爆；下限不能照 GUI 的 0.5 抬。
+     */
+    private static double normalizeExplodeDamageMultiplier(double raw) {
+        if (Double.isNaN(raw)) {
+            return 0.0;
+        }
+        if (raw == Double.POSITIVE_INFINITY) {
+            return 10.0;
+        }
+        return Math.min(10.0, Math.max(0.0, raw));
     }
 
     /**
@@ -1327,7 +1378,18 @@ public class ConfigManager {
         };
     }
 
-    public void loadFromFile() {
+    /**
+     * 从 {@code game-settings.yml} 重建内存配置。
+     *
+     * <p><b>返回值不是装饰</b>：文件不可用（校验失败 / 空文件 / 读盘异常）或本进程已因隔离锁定只读时，
+     * 本方法只打一条 SEVERE 并保留调用前的内存值，<b>不会抛异常</b>。调用方（GUI 的
+     * 「加载配置文件」与 {@code /hilltop reloadconfig}）必须消费返回值：{@code false} 表示
+     * 这次没有重载，绝不能向管理员宣告「已重载」。</p>
+     *
+     * @return true = 本次确实读到并应用了可用的 {@code game-settings.yml}；
+     *         false = 未重载，内存值保持调用前的状态
+     */
+    public boolean loadFromFile() {
         // F3 守卫 C：defaultWave 是全库唯一「被无 null 保护地解引用」的配置字段，因此必须在**本方法
         // 最前面**归一化，而不是放进下面的 waves 段：
         //   ① snapshot() 的 defaultWave.copy()（GameConfig:645）—— 本方法末尾的 lastSavedSnapshot
@@ -1350,15 +1412,18 @@ public class ConfigManager {
         // return 分支——放在最前面，保证任何路径下展示布局都已就位
         loadDisplayConfig();
         YamlFiles.Loaded loaded = settingsGate.load();
-        // isReadOnly 一并判断：隔离后文件不存在 → load() 返回 ABSENT（usable），照走会把空配置当权威再迁移写回
-        if (!loaded.usable() || settingsGate.isReadOnly()) {
+        // isReadOnly 一并判断：隔离后文件不存在 → load() 返回 ABSENT（usable），照走会把空配置当权威再迁移写回。
+        // ABSENT 也必须单独拒绝：/hilltop reloadconfig 在 loadFromFile() 之前会 reset() 闸门，
+        // 隔离后的文件已不存在时 reset 会清掉 readOnly，此时只剩 ABSENT 这一条信号；若不拦，
+        // 会把空配置当成权威重建内存（管理员配置被洗成默认值），而且返回 true 继续宣告「已重载」。
+        if (!loaded.usable() || loaded.status() == YamlFiles.Status.ABSENT || settingsGate.isReadOnly()) {
             // 不可用时不套用磁盘值（保留内存/默认值），也不做任何迁移写回
             plugin.getLogger().severe("game-settings.yml is unusable; keeping the in-memory values "
                     + "(nothing will be read from or written to the file this run)");
             settingsLoadedFromDisk = false;
             loadMonstersConfig();
             lastSavedSnapshot = activeConfig.snapshot();
-            return;
+            return false;
         }
         settingsYaml = loaded.config();
         settingsLoadedFromDisk = true;
@@ -1380,7 +1445,15 @@ public class ConfigManager {
         if (settingsYaml.contains("core.z")) activeConfig.setCoreZ(settingsYaml.getDouble("core.z"));
         if (settingsYaml.contains("min-players")) activeConfig.setMinPlayers(settingsYaml.getInt("min-players"));
         if (settingsYaml.contains("max-players")) activeConfig.setMaxPlayers(settingsYaml.getInt("max-players"));
-        if (settingsYaml.contains("victory-waves")) activeConfig.setVictoryWaves(settingsYaml.getInt("victory-waves"));
+        if (settingsYaml.contains("victory-waves")) {
+            int rawVictoryWaves = settingsYaml.getInt("victory-waves");
+            int normalizedVictoryWaves = normalizeVictoryWaves(rawVictoryWaves);
+            // #7：0/负数会让首波即判胜；与 GameRulesMenu 的 1..100 同界。
+            if (normalizedVictoryWaves != rawVictoryWaves) {
+                loadTimeNormalizationPending = true;
+            }
+            activeConfig.setVictoryWaves(normalizedVictoryWaves);
+        }
         if (settingsYaml.contains("wave-interval-seconds")) activeConfig.setWaveIntervalSeconds(settingsYaml.getInt("wave-interval-seconds"));
         if (settingsYaml.contains("wave-timeout-seconds")) {
             int rawTimeout = settingsYaml.getInt("wave-timeout-seconds");
@@ -1454,7 +1527,15 @@ public class ConfigManager {
                         + "' (unknown or not a carryable item), keeping default");
             }
         }
-        if (settingsYaml.contains("nodes.repair-cost-amount")) activeConfig.setRepairCostAmount(settingsYaml.getInt("nodes.repair-cost-amount"));
+        if (settingsYaml.contains("nodes.repair-cost-amount")) {
+            int rawRepairCost = settingsYaml.getInt("nodes.repair-cost-amount");
+            int normalizedRepairCost = normalizeRepairCostAmount(rawRepairCost);
+            // #7：0 = 免费修复、负数 = 每次修复反而增加物品；至少消耗 1 个。
+            if (normalizedRepairCost != rawRepairCost) {
+                loadTimeNormalizationPending = true;
+            }
+            activeConfig.setRepairCostAmount(normalizedRepairCost);
+        }
         if (settingsYaml.contains("nodes.repair-amount-per-cost")) activeConfig.setRepairAmountPerCost(settingsYaml.getDouble("nodes.repair-amount-per-cost"));
 
         // 旧键迁移：早期版本使用 nodes.repair-item / nodes.repair-amount，现统一为
@@ -1669,7 +1750,16 @@ public class ConfigManager {
                 if (settingsYaml.contains("monsters." + key + ".speed")) mc.setSpeed(settingsYaml.getDouble("monsters." + key + ".speed"));
                 if (settingsYaml.contains("monsters." + key + ".hook-velocity")) mc.setHookVelocity(settingsYaml.getDouble("monsters." + key + ".hook-velocity"));
                 if (settingsYaml.contains("monsters." + key + ".display-name")) mc.setDisplayName(settingsYaml.getString("monsters." + key + ".display-name"));
-                if (settingsYaml.contains("monsters." + key + ".explode-damage-multiplier")) mc.setExplodeDamageMultiplier(settingsYaml.getDouble("monsters." + key + ".explode-damage-multiplier"));
+                if (settingsYaml.contains("monsters." + key + ".explode-damage-multiplier")) {
+                    double rawExplode = settingsYaml.getDouble(
+                            "monsters." + key + ".explode-damage-multiplier");
+                    double normalizedExplode = normalizeExplodeDamageMultiplier(rawExplode);
+                    // #7：NaN/Infinity/负值/超大值会污染节点伤害；保留 0（部分模板即 0）。
+                    if (Double.compare(normalizedExplode, rawExplode) != 0) {
+                        loadTimeNormalizationPending = true;
+                    }
+                    mc.setExplodeDamageMultiplier(normalizedExplode);
+                }
                 if (settingsYaml.contains("monsters." + key + ".entity-explosion")) mc.setEntityExplosion(settingsYaml.getBoolean("monsters." + key + ".entity-explosion"));
                 if (settingsYaml.contains("monsters." + key + ".cooldown-ticks")) mc.setCooldownTicks(settingsYaml.getInt("monsters." + key + ".cooldown-ticks"));
                 if (settingsYaml.contains("monsters." + key + ".stun-duration-ticks")) mc.setStunDurationTicks(settingsYaml.getInt("monsters." + key + ".stun-duration-ticks"));
@@ -1871,6 +1961,7 @@ public class ConfigManager {
         // P2-36：未知顶层键一次性汇总 warning（拼写错误 如 victory-wave 会被静默保默认，
         // 排障困难）。只在加载时扫一遍，不影响任何热路径。
         warnUnknownTopLevelKeys();
+        return true;
     }
 
     /**

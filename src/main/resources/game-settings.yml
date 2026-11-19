@@ -124,7 +124,7 @@ nodes:
   base-health: 100.0
   # 修复节点消耗的物品（默认恶魂之泪，击杀下界恶魂获得，也可在商店购买）
   repair-cost-item: GHAST_TEAR
-  # 每次修复消耗几个
+  # 单次修复最多消耗几个（按实际缺口取最少，够修就不多扣）
   repair-cost-amount: 1
   # 每消耗一个恢复多少节点血量
   repair-amount-per-cost: 50.0

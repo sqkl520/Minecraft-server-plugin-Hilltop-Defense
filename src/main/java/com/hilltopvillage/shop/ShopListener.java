@@ -149,17 +149,19 @@ public class ShopListener implements Listener {
         }
 
         // 背包投递：满则溢出部分掉在脚下
+        // F5：必须先记下购买量——Paper 的 CraftInventory#addItem 在并入半满叠时会原地
+        // 修改传入的 product，把它的数量改成没放进去的余量，之后再读就只能读到余量。
+        int purchasedAmount = product.getAmount();
         java.util.Map<Integer, ItemStack> overflow = player.getInventory().addItem(product);
         if (!overflow.isEmpty()) {
             for (ItemStack leftover : overflow.values()) {
-                player.getWorld().dropItemNaturally(player.getLocation(), leftover)
-                        .getPersistentDataContainer().set(PAID_DROP_KEY, PersistentDataType.BYTE, (byte) 1);
+                markPaidDrop(player.getWorld().dropItemNaturally(player.getLocation(), leftover));
             }
             player.sendMessage(lang.getFor(player, "shop.inventory-full"));
         }
 
         player.sendMessage(lang.getFor(player, "shop.purchase-success",
-                resolveItemName(player, item), String.valueOf(product.getAmount()),
+                resolveItemName(player, item), String.valueOf(purchasedAmount),
                 String.valueOf(item.getPrice())));
         player.playSound(player.getLocation(), Sound.ENTITY_EXPERIENCE_ORB_PICKUP, 1.0f, 1.0f);
 
@@ -190,14 +192,74 @@ public class ShopListener implements Listener {
                 java.util.Map<Integer, ItemStack> refundOverflow =
                         player.getInventory().addItem(shopManager.createCurrencyItem(item.getPrice()));
                 for (ItemStack leftover : refundOverflow.values()) {
-                    player.getWorld().dropItemNaturally(player.getLocation(), leftover)
-                            .getPersistentDataContainer().set(PAID_DROP_KEY, PersistentDataType.BYTE, (byte) 1);
+                    markPaidDrop(player.getWorld().dropItemNaturally(player.getLocation(), leftover));
                 }
             } catch (RuntimeException ex) {
                 plugin.getLogger().severe("Shop refund FAILED for " + player.getName() + " item '"
                         + item.getId() + "' amount " + item.getPrice()
                         + " — manual compensation required: " + ex);
             }
+        }
+    }
+
+    /**
+     * 打「已付对价」标记。
+     *
+     * <p><b>为什么打在 Item 实体的 PDC 上</b>：标记的语义是「这一件掉落物是玩家花水晶买的，
+     * 竞技场重置不得清理」。它只对<b>地上的那一件</b>成立 —— 玩家捡起来之后，对价已经兑现，
+     * 标记就不该再跟着物品走。</p>
+     *
+     * <p>曾经考虑过改打在 {@link ItemStack} 的 PDC（items components）上，因为
+     * {@code copyWithCount} 会拷贝 components、能天然活过原版并物。核实后<b>否决</b>：</p>
+     * <ul>
+     *   <li>{@code Inventory#add} 用 {@code isSameItemSameComponents} 判同叠，
+     *       带 PDC 的栈与普通栈 components 不相等 → 玩家捡起来后<b>永远并不进同材质叠</b>，
+     *       在最缺格子的场景（背包满）再白占一格；</li>
+     *   <li>更糟：标记会随物品永久留在玩家背包里，玩家日后在竞技场主动丢掉它时，
+     *       {@code clearDroppedItems} 仍会跳过 → 竞技场世界里出现<b>永不被清理</b>的物品，
+     *       逐局累积。这正是「防修过头」要避免的实体泄漏，只是换到了更隐蔽的路径上。</li>
+     * </ul>
+     *
+     * <p>标记留在实体上，合并时会丢 —— 由 {@link #onItemMerge(ItemMergeEvent)} 补回。</p>
+     */
+    private static void markPaidDrop(org.bukkit.entity.Item item) {
+        item.getPersistentDataContainer().set(PAID_DROP_KEY, PersistentDataType.BYTE, (byte) 1);
+    }
+
+    /**
+     * 原版并物会抹掉实体标记：把 {@link #PAID_DROP_KEY} 转移到<b>存活</b>的那个实体上。
+     *
+     * <p><b>缺陷</b>：{@code net.minecraft.world.entity.item.ItemEntity#merge} 用
+     * <b>{@code this}</b> 的栈 {@code copyWithCount} 重建结果，并把 <b>{@code other}</b>
+     * 的实体 {@code discard(EntityRemoveEvent.Cause.MERGE)}。实体 PDC 不在物品栈里，
+     * 所以 {@code other} 那份标记随实体消失。若 {@code this}（存活方）是普通掉落物，
+     * 合并后的实体就不再有标记 → {@code ArenaInstance.clearDroppedItems} 会把玩家
+     * 付过钱的货当垃圾删掉 = <b>付了钱拿不到货</b>。</p>
+     *
+     * <p><b>为什么在事件里修</b>（已反编译核实 {@code paper-1.21.4.jar}）：</p>
+     * <ul>
+     *   <li>{@code CraftEventFactory.callItemMergeEvent} 是合并的<b>唯一闸门</b> ——
+     *       4 参 {@code merge} 的唯一调用点是它，3 参 {@code merge} 的唯一调用点又是 4 参那个，
+     *       没有绕过路径；</li>
+     *   <li>实参是 {@code callItemMergeEvent(other, this)}，故 {@link ItemMergeEvent#getEntity()}
+     *       是<b>将被 discard</b> 的一方，{@link ItemMergeEvent#getTarget()} 是<b>存活</b>的一方；</li>
+     *   <li>事件同步触发在合并<b>执行之前</b>，此时写存活实体的 PDC 是安全且有效的
+     *       （实体 PDC 与物品栈正交，{@code setItem} 不会碰它）。</li>
+     * </ul>
+     *
+     * <p>{@code ignoreCancelled = true} + {@code MONITOR}：只在合并<b>确实会发生</b>时补标。
+     * 若不判取消，任何被别的插件拦下的合并不但没发生、我们还会把一件普通掉落物
+     * 标成「已付款」→ 它从此不被清理，等于制造泄漏。</p>
+     */
+    @EventHandler(priority = EventPriority.MONITOR, ignoreCancelled = true)
+    public void onItemMerge(org.bukkit.event.entity.ItemMergeEvent event) {
+        org.bukkit.entity.Item removed = event.getEntity();
+        org.bukkit.entity.Item survivor = event.getTarget();
+        if (removed == null || survivor == null) return;
+        // 只有「付过钱的那件要被合并掉」才需要抢救；若存活方本来就有标记，什么也不用做。
+        if (survivor.getPersistentDataContainer().has(PAID_DROP_KEY, PersistentDataType.BYTE)) return;
+        if (removed.getPersistentDataContainer().has(PAID_DROP_KEY, PersistentDataType.BYTE)) {
+            markPaidDrop(survivor);
         }
     }
 

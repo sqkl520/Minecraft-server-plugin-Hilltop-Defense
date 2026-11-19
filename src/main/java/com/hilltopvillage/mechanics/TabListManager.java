@@ -147,9 +147,12 @@ public class TabListManager {
             return;
         }
         int period = tab.refreshTicks() > 0 ? tab.refreshTicks() : DisplayConfig.DEFAULT_TAB_REFRESH_TICKS;
-        // 除周期比对还须查 isCancelled：任务体抛未捕获异常时 CraftScheduler 会静默取消它，
-        // 而 refreshTask 字段仍非 null、scheduledPeriod 也还是原值——只判这两个会让 start()
-        // 永远早退，之后玩家加入、reloadconfig 都救不回来（见 refreshAll 的 try/catch 注释）。
+        // 除周期比对还须查 isCancelled：stop() / restoreAll() 会主动 cancel 任务，
+        // 此时 refreshTask 字段虽已置空、但若有人绕过来调用也会命中；而 Error（catch RuntimeException
+        // 抓不到）导致的异常会让 CraftScheduler 走到「异常→重新入队」分支的 finally，
+        // 状态可能不一致。isCancelled 是最省事的一致性判据。
+        // 注意：**不要**指望「任务抛异常后 CraftScheduler 会取消它」——
+        // 反编译 paper-1.21.4-232 的 mainThreadHeartbeat 证实它不会（详见 refreshAll 的注释）。
         if (refreshTask != null && !refreshTask.isCancelled() && period == scheduledPeriod) return;
         stopTask();
         scheduledPeriod = period;
@@ -283,20 +286,32 @@ public class TabListManager {
      * 但也不做任何取配置以外的动作。每个玩家访问前都过 {@code isOnline()}——
      * 这一轮迭代途中可能有人退出，而 {@code getOnlinePlayers()} 的快照不保证这一点。</p>
      *
-     * <p><b>为什么整段包 try/catch（T6.1）：</b>{@code CraftScheduler} 对抛未捕获异常的
-     * 重复任务会记录一次并<b>静默取消它</b>。若不兜住，任意一次 {@code legacy.deserialize}
-     * 或 {@code lang.getFor} 抛异常就会让 tab 的头尾/名字/排序整局不再更新，且
-     * {@code refreshTask} 字段仍指向那个已被取消的句柄。这里置空句柄而非立即重建：
-     * 立即重建会掩盖根因，而下一帧 {@link #start()} 的 {@code isCancelled()} 判定可自然恢复。</p>
+     * <p><b>为什么整段包 try/catch（T6.1）：</b>渲染一帧里的任何一处抛异常，
+     * 都不该让日志刷屏或中断后续玩家的处理。这里兜住并记一条 SEVERE。</p>
+     *
+     * <p><b>为什么 catch 里<b>不</b>清空句柄与周期（2026-11-14 修正）：</b>
+     * 原实现写的是「置空句柄 + 周期归 -1，下一帧 start() 自然重建」，理由是
+     * 「{@code CraftScheduler} 对抛未捕获异常的重复任务会静默取消它」。那个前提是<b>错的</b>——
+     * 反编译 {@code paper-1.21.4-232} 的 {@code CraftScheduler.mainThreadHeartbeat()} 可见，
+     * 任务体抛异常后走的分支是：记 WARNING → 发 {@code ServerExceptionEvent} → 清 currentTask →
+     * <b>与正常路径汇合</b> → 因 {@code period > 0} 而 {@code pending.add(task)} 重新入队。
+     * 全程没有 {@code cancel()}。所以周期任务抛异常后会按时继续执行。</p>
+     *
+     * <p>既然旧任务从未被取消，把它置空就等于制造一个无人持有的孤儿：
+     * 下一帧 {@link #start()} 看到 {@code refreshTask == null} 会新建一条，
+     * 而旧的那条还在跑 → 两条（以及每异常一次再加一条）并行，
+     * {@link #refreshAllUnchecked()} 里的 {@code tick++} 也就按倍数推进，动画相位双倍速。</p>
+     *
+     * <p>保留句柄才是正确语义：异常已经被这个 catch 吃掉，任务本身是健康的，
+     * 下一个周期照常执行，导致失败的条件消失后自然恢复。同样的写法见
+     * {@code ArenaScoreboard} 的 catch 分支。</p>
      */
     private void refreshAll() {
         try {
             refreshAllUnchecked();
         } catch (RuntimeException e) {
             plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "Tab list refresh failed; the task will be re-created on the next refresh", e);
-            refreshTask = null;
-            scheduledPeriod = -1;
+                    "Tab list refresh failed; the task stays scheduled and will retry next period", e);
         }
     }
 
