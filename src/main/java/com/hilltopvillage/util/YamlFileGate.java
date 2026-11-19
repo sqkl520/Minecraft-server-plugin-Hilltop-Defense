@@ -103,4 +103,20 @@ public final class YamlFileGate {
         readOnly = false;
         warned.set(false);
     }
+
+    /**
+     * 强制置为只读，不解封。
+     *
+     * <p>用于「已知文件处于隔离态，且调用方选择<b>不</b>调 {@link #load()}」的场景。
+     * 正常情况下 {@code load()} 遇到不可用文件会自己上闩，但配置文件缺失的分支里
+     * 调用方可能在 {@code load()} 之前就 return（因为绝不能 {@code saveResource} 重建）；
+     * 此时若不显式上闩，{@link #writable()} 会返回 true，
+     * 后续任何写路径都会以为可以写。</p>
+     *
+     * <p>与 {@link #reset()} 对称：这是唯一的另一个能改变 {@code readOnly} 的方法，
+     * 且方向相反——只有它能把闸门<b>关上</b>而不需要先有一次失败的读盘。</p>
+     */
+    public void lock() {
+        readOnly = true;
+    }
 }

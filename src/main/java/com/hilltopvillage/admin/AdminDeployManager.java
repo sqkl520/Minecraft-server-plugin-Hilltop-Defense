@@ -455,8 +455,7 @@ public class AdminDeployManager {
         String arenaId = gameManager.getArenaId();
 
         YamlFileGate gate = arenasGate();
-        if (gate == null || !gate.writable()) {
-            // 只读降级：内存值保持不动（不清空），如实记失败让调用方播报
+        if (gate == null) {
             lastSaveFailed = true;
             return false;
         }
@@ -468,12 +467,25 @@ public class AdminDeployManager {
         if (arenasFile == null) {
             arenasFile = new File(plugin.getDataFolder(), "arenas.yml");
         }
+
+        // ★ 必须**先 load 再查 writable**：load() 本身可能触发隔离并上闩。
+        // 旧实现把 writable() 放在 load() 之前，于是出现这个窗口：
+        //   :458 writable() 为 true → :471 load() 把**正在用的** arenas.yml 改名成 .corrupt
+        // 检查通过了，可文件已经被移走——后面虽然会 return false，但伤害已经发生：
+        // 注册表被清空、整个会话后续写盘全被拒。
         YamlFiles.Loaded loaded = gate.load();
         // isReadOnly 一并判断：隔离后文件已不存在 → load() 返回 ABSENT（usable=true），
         // 若只看 usable 会拿空配置当底稿（后续 gate.write 仍会拒写，但没必要把空配置推给内存）
         if (!loaded.usable() || gate.isReadOnly()) {
             lastSaveFailed = true;
-            plugin.getLogger().warning("Refusing to write arenas.yml (unusable)");
+            plugin.getLogger().warning("Refusing to write arenas.yml (unusable"
+                    + (gate.isReadOnly() ? " / quarantined" : "") + ")");
+            return false;
+        }
+        // load() 之后 gate 的状态才是可信的，此时再判断能不能写
+        if (!gate.writable()) {
+            // 只读降级：内存值保持不动（不清空），如实记失败让调用方播报
+            lastSaveFailed = true;
             return false;
         }
         arenasConfig = loaded.config();
@@ -526,6 +538,14 @@ public class AdminDeployManager {
         // 闸门内部已打 SEVERE（拒写 / IO 失败），这里只如实返回失败让调用方播报
         boolean saved = gate.write(arenasConfig);
 
+        // ★ 写盘失败时**不得**刷新内存。
+        // 旧实现在这里无条件 push，于是内存是新值、磁盘是旧值：管理员在本次会话内
+        // 看到的是「已生效」，重启即回滚——静默的会话级状态漂移，比直接报错更糟。
+        if (!saved) {
+            lastSaveFailed = true;
+            return false;
+        }
+
         // 刷新内存中的 GameManager（生成点与核心位置）
         gameManager.setSpawnPoints(savedSpawnPoints);
         gameManager.setMobSpawnPoints(savedMobSpawnPoints);
@@ -535,11 +555,14 @@ public class AdminDeployManager {
 
         // 商店村民位置写入同一份 arenas.yml 的 arenas.<id>.shop-npc（按竞技场隔离）
         if (!saveShopNpcLocation()) {
-            saved = false;
+            // 主写入已成功、shop-npc 失败：磁盘上是「生成点已更新、shop-npc 未更新」的半成功状态。
+            // 内存已按主写入刷新，与生成点部分保持一致；如实报失败让调用方播报。
+            lastSaveFailed = true;
+            return false;
         }
         // P2-10：记录本次写盘结果（反映最近一次写入，供向导的 autoSave 调用点消费并如实播报）
-        lastSaveFailed = !saved;
-        return saved;
+        lastSaveFailed = false;
+        return true;
     }
 
     /**

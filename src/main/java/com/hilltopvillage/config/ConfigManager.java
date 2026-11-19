@@ -145,6 +145,16 @@ public class ConfigManager {
      */
     private void initSettingsFile() {
         if (!settingsFile.exists()) {
+            if (YamlFiles.isQuarantined(settingsFile, settingsGate)) {
+                settingsGate.lock();
+                plugin.getLogger().severe("game-settings.yml is missing but "
+                        + YamlFiles.corruptFile(settingsFile).getName() + " is present: the file was"
+                        + " quarantined. Refusing to rebuild it from the jar template (that would"
+                        + " silently replace the admin's tuning with factory defaults)."
+                        + " Restore/repair the .corrupt file as game-settings.yml, then restart.");
+                settingsYaml = new YamlConfiguration();
+                return;
+            }
             plugin.saveResource("game-settings.yml", false);
         }
         YamlFiles.Loaded loaded = settingsGate.load();
@@ -163,6 +173,16 @@ public class ConfigManager {
      */
     private void initMonstersConfigFile() {
         if (!monstersConfigFile.exists()) {
+            if (YamlFiles.isQuarantined(monstersConfigFile, monstersGate)) {
+                monstersGate.lock();
+                plugin.getLogger().severe("monsters-config.yml is missing but "
+                        + YamlFiles.corruptFile(monstersConfigFile).getName() + " is present: the file was"
+                        + " quarantined. Refusing to rebuild it from the jar template (that would"
+                        + " silently replace the admin's monster overrides with factory defaults)."
+                        + " Restore/repair the .corrupt file, then restart.");
+                monstersConfigYaml = new YamlConfiguration();
+                return;
+            }
             plugin.saveResource("monsters-config.yml", false);
         }
         YamlFiles.Loaded loaded = monstersGate.load();
@@ -186,6 +206,18 @@ public class ConfigManager {
      */
     private void initDisplayFile() {
         if (!displayFile.exists()) {
+            if (YamlFiles.isQuarantined(displayFile, displayGate)) {
+                displayGate.lock();
+                plugin.getLogger().severe("display.yml is missing but "
+                        + YamlFiles.corruptFile(displayFile).getName() + " is present: the file was"
+                        + " quarantined. Refusing to rebuild it from the jar template (that would"
+                        + " silently replace the admin's scoreboard/tab layout with factory defaults)."
+                        + " Restore/repair the .corrupt file, then restart."
+                        + " Falling back to the built-in default layout for this run.");
+                displayYaml = new YamlConfiguration();
+                displayConfig = DisplayConfig.defaults();
+                return;
+            }
             plugin.saveResource("display.yml", false);
         }
         YamlFiles.Loaded loaded = displayGate.load();
