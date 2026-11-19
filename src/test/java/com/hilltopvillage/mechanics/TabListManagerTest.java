@@ -28,6 +28,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
+import org.mockbukkit.mockbukkit.ServerMock;
 import org.mockbukkit.mockbukkit.entity.PlayerMock;
 import org.mockbukkit.mockbukkit.world.WorldMock;
 
@@ -138,6 +139,48 @@ class TabListManagerTest extends MockBukkitTestBase {
                 base.nameAlive(), base.nameDead(), base.nameSpectator());
         when(configManager.getDisplayConfig())
                 .thenReturn(new DisplayConfig(defaults.scoreboard(), tab));
+    }
+
+    /**
+     * 按「上下文开关 + 头尾行」定制 tab 配置（D1/D2 用例用）。
+     *
+     * <p>三个上下文开关各自独立给值：D2 的两条用例全部建立在
+     * 「大厅不接管、其它照旧」这一组上，把「未接管」与「全局关闭」区分开
+     * （后者由 {@code enabled} 管，走的是另一条分支）。</p>
+     */
+    private void withTabCustom(int ticks, boolean lobby, boolean arena, boolean spectator,
+                               java.util.List<DisplayConfig.Line> header) {
+        DisplayConfig defaults = DisplayConfig.defaults();
+        DisplayConfig.Tab base = defaults.tab();
+        DisplayConfig.Tab tab = new DisplayConfig.Tab(
+                true, ticks, lobby, arena, spectator,
+                header, base.footer(),
+                base.nameAlive(), base.nameDead(), base.nameSpectator());
+        when(configManager.getDisplayConfig())
+                .thenReturn(new DisplayConfig(defaults.scoreboard(), tab));
+    }
+
+    /** 反射调用私有的 {@code pushHeaderFooter(Player, DisplayConfig.Tab)}，绕过调度器。 */
+    private void invokePushHeaderFooter(Player viewer) throws ReflectiveOperationException {
+        Method m = TabListManager.class.getDeclaredMethod(
+                "pushHeaderFooter", Player.class, DisplayConfig.Tab.class);
+        m.setAccessible(true);
+        m.invoke(tabList, viewer, tabListTab());
+    }
+
+    /** 当前桩好的 {@code DisplayConfig.Tab}（即生产代码这一帧会用的那份）。 */
+    private DisplayConfig.Tab tabListTab() {
+        return configManager.getDisplayConfig().tab();
+    }
+
+    /** 反射调用私有的 {@code renderLine(Player, DisplayConfig.Line, View)}。 */
+    private String invokeRenderLine(Player viewer, DisplayConfig.Line line, Object view)
+            throws ReflectiveOperationException {
+        Method m = TabListManager.class.getDeclaredMethod(
+                "renderLine", Player.class, DisplayConfig.Line.class,
+                Class.forName("com.hilltopvillage.mechanics.TabListManager$View"));
+        m.setAccessible(true);
+        return (String) m.invoke(tabList, viewer, line, view);
     }
 
     // ---------------------------------------------------------------- 1. orphan-task fix
@@ -629,5 +672,298 @@ class TabListManagerTest extends MockBukkitTestBase {
         tabList.apply(player);
         assertNotNull(field("refreshTask"),
                 "tab 打开后第一个加入的玩家应是补开点 —— 插件启停顺序可能让任务没开起来");
+    }
+
+    // ---------------------------------------------------------------- 6. D1 动画时钟
+
+    @Nested
+    @DisplayName("D1 — 动画时钟按真实 tick 推进（frame-ticks 的单位是 tick）")
+    class AnimationClock {
+
+        /**
+         * ★ D1 修复本身：一轮刷新推进的是「刷新周期」个 tick，不是 1。
+         *
+         * <p>有判别力的是数值：修复前跑两轮得到 {@code tick == 2}，
+         * 修复后是 {@code 2 * 周期}。默认 {@code frame-ticks: 20} 配 {@code refresh-ticks: 20}
+         * 的动画，修复前要 20 次刷新（= 400 tick = 20 秒）才换一帧。</p>
+         */
+        @Test
+        @DisplayName("★ 每轮刷新推进 refresh-ticks 个 tick（不是 +1）")
+        void animationClockAdvancesByRefreshPeriod() throws Exception {
+            withTab(true, 20);
+            when(arenas.getPlayerArena(any(Player.class))).thenReturn(null);
+            tabList.start();
+
+            invokeRefreshAll();
+            assertEquals(20L, field("tick"),
+                    "【D1】一轮刷新必须推进 20 tick（= 配置的 refresh-ticks）。"
+                            + "若这里是 1，frame-ticks: 20 的动画要 400 tick 才换一帧，"
+                            + "比侧边栏慢 20 倍");
+
+            invokeRefreshAll();
+            assertEquals(40L, field("tick"), "第二轮应累加同样的周期");
+        }
+
+        /** 派生断言：20 tick 周期 + frame-ticks 20 ⇒ 每秒恰好一帧（与 frame 索引公式一致）。 */
+        @Test
+        @DisplayName("20 tick 周期 + frame-ticks 20 → 每次刷新前进恰好一帧")
+        void animationAdvancesOneFramePerSecond() throws Exception {
+            withTab(true, 20);
+            when(arenas.getPlayerArena(any(Player.class))).thenReturn(null);
+            tabList.start();
+
+            for (int i = 0; i < 5; i++) {
+                invokeRefreshAll();
+            }
+
+            long tick = (long) field("tick");
+            int frameTicks = 20;
+            assertEquals(5L, tick / frameTicks,
+                    "5 次刷新（= 100 tick = 5 秒）后应走到第 5 帧；"
+                            + "修复前 tick 只到 5，tick / 20 恒为 0 —— 动画永远停在第 0 帧");
+        }
+
+        /**
+         * 周期被热重载改变后，后续刷新按<b>新</b>周期推进。
+         *
+         * <p>注意改变周期的那一帧本身不推进：{@code refreshAllUnchecked()} 发现
+         * {@code period != scheduledPeriod} 会 {@code start()} 后<b>直接 return</b>，
+         * 因此 tick 停留在重排前的值。这是既有行为，本用例把它钉住。</p>
+         */
+        @Test
+        @DisplayName("reloadconfig 改周期后，后续刷新按新周期推进")
+        void clockFollowsNewPeriodAfterReload() throws Exception {
+            withTab(true, 20);
+            when(arenas.getPlayerArena(any(Player.class))).thenReturn(null);
+            tabList.start();
+            invokeRefreshAll();
+            assertEquals(20L, field("tick"));
+
+            withTab(true, 10);
+            invokeRefreshAll(); // 重排这一帧不推进
+            assertEquals(20L, field("tick"), "重排帧只重启任务，不推进动画相位");
+
+            invokeRefreshAll();
+            assertEquals(30L, field("tick"), "之后每轮按新周期 10 推进");
+        }
+    }
+
+    // ---------------------------------------------------------------- 7. D2 未接管上下文
+
+    @Nested
+    @DisplayName("D2 — 未接管的上下文不得抹掉别的插件的头/尾")
+    class UnmanagedContext {
+
+        /**
+         * MockBukkit 的 {@link PlayerMock} <b>没有实现</b> Adventure 的
+         * {@code sendPlayerListHeaderAndFooter(Component, Component)}（反编译 4.45.0 核实：
+         * 该类只有 {@code setPlayerListHeaderFooter(String,String)} 等 legacy 重载，
+         * Adventure 版走 {@code Audience} 的 default 空实现）。于是「发了几次包」在
+         * 原生 PlayerMock 上完全不可观测——不重写就只能测个 mock 自己的空值。
+         *
+         * <p>这里用子类重写该方法，把<b>本插件实际发出的内容与次数</b>记下来。
+         * 这正是 D2 唯一有判别力的观测点：D2 的缺陷就是「在未接管的上下文里也发了包」。</p>
+         */
+        final class RecordingPlayer extends PlayerMock {
+
+            private Component sentHeader;
+            private Component sentFooter;
+            private int sends;
+
+            RecordingPlayer(ServerMock server, String name) {
+                super(server, name);
+            }
+
+            @Override
+            public void sendPlayerListHeaderAndFooter(Component header, Component footer) {
+                this.sentHeader = header;
+                this.sentFooter = footer;
+                this.sends++;
+            }
+
+            Component sentHeader() {
+                return sentHeader;
+            }
+
+            Component sentFooter() {
+                return sentFooter;
+            }
+
+            int sends() {
+                return sends;
+            }
+
+            void resetSends() {
+                this.sends = 0;
+                this.sentHeader = null;
+                this.sentFooter = null;
+            }
+        }
+
+        private RecordingPlayer recorder;
+
+        private RecordingPlayer recorder() {
+            if (recorder == null) {
+                recorder = new RecordingPlayer(server, "Recorder");
+                recorder.teleport(new Location(world, 0, 64, 0));
+                server.addPlayer(recorder);
+            }
+            return recorder;
+        }
+
+        /** 别的插件设的内容要在「本插件从未碰过」时原样存活。 */
+        @Test
+        @DisplayName("★ 缓存为空 + 上下文未接管 → 一个包都不发")
+        void unmanagedContextWithoutCacheSendsNothing() throws Exception {
+            when(arenas.getPlayerArena(any(Player.class))).thenReturn(null);
+            RecordingPlayer p = recorder();
+            withTabCustom(20, false, true, true, DisplayConfig.defaults().tab().header());
+
+            invokePushHeaderFooter(p);
+
+            assertEquals(0, p.sends(),
+                    "【D2】本插件在大厅从未发过任何东西，pushHeaderFooter 不得发空值 —— "
+                            + "头/尾是每个玩家唯一一份，发一次空值就把别的插件的布局抹掉了");
+        }
+
+        /** 从「接管」切到「不接管」时擦一次，之后不再触碰。 */
+        @Test
+        @DisplayName("接管 → 不接管：只擦一次，之后不再发包")
+        void managedToUnmanagedWipesExactlyOnce() throws Exception {
+            when(arenas.getPlayerArena(any(Player.class))).thenReturn(null);
+            RecordingPlayer p = recorder();
+            withTabCustom(20, true, true, true, DisplayConfig.defaults().tab().header());
+            invokePushHeaderFooter(p);
+
+            assertEquals(1, p.sends(), "前置条件：接管时首帧应发一次包");
+            assertFalse(cache("lastHeader").isEmpty(), "前置条件：接管时应写入缓存");
+            p.resetSends();
+
+            // 管理员把大厅关掉
+            withTabCustom(20, false, true, true, DisplayConfig.defaults().tab().header());
+            invokePushHeaderFooter(p);
+
+            assertEquals(1, p.sends(),
+                    "刚从接管变不接管：必须擦一次，否则玩家会一直看着上一个上下文的旧文字");
+            assertEquals(Component.empty(), p.sentHeader(), "擦除包的头必须是空值");
+            assertFalse(cache("lastHeader").containsKey(p.getUniqueId()),
+                    "擦完必须删缓存条目，否则下一帧会再次判定为「刚变过来」而每秒发包");
+            p.resetSends();
+
+            // 再跑两帧：另一个插件可能在这期间写了自己的内容，本插件必须彻底放手
+            invokePushHeaderFooter(p);
+            invokePushHeaderFooter(p);
+
+            assertEquals(0, p.sends(),
+                    "【D2】擦过一次之后，未接管上下文必须彻底放手；"
+                            + "再次发空值就是每秒覆盖别的插件一次");
+        }
+
+        /** 上下文重新被接管后，第一帧必须重新渲染并写入缓存（擦除删除缓存的自愈性）。 */
+        @Test
+        @DisplayName("不接管 → 重新接管：第一帧就重渲染（缓存已删，不会被误判为未变化）")
+        void unmanagedThenManagedRendersImmediately() throws Exception {
+            when(arenas.getPlayerArena(any(Player.class))).thenReturn(null);
+            RecordingPlayer p = recorder();
+            withTabCustom(20, true, true, true, DisplayConfig.defaults().tab().header());
+            invokePushHeaderFooter(p);
+            Object first = cache("lastHeader").get(p.getUniqueId());
+            assertNotNull(first, "前置条件：接管时首帧应写入缓存");
+
+            withTabCustom(20, false, true, true, DisplayConfig.defaults().tab().header());
+            invokePushHeaderFooter(p);
+            p.resetSends();
+
+            withTabCustom(20, true, true, true, DisplayConfig.defaults().tab().header());
+            invokePushHeaderFooter(p);
+
+            assertEquals(1, p.sends(),
+                    "重新接管后必须立刻重发：擦除时若留着旧缓存条目，"
+                            + "首帧会拿旧值比对而误判「没变化」，头/尾再也不更新");
+            assertEquals(first, cache("lastHeader").get(p.getUniqueId()), "缓存应写回渲染结果");
+        }
+    }
+
+    // ---------------------------------------------------------------- 8. D3 分项还原
+
+    @Nested
+    @DisplayName("D3 — restoreAll 按项判定，只复位本插件真的设过的值")
+    class RestorePerConcern {
+
+        /** 与 D2 同理：头/尾的发送次数只能靠重写 Adventure 方法观测。 */
+        private int headerSends;
+        private Component sentHeader;
+
+        private PlayerMock recordingPlayer(String name) {
+            PlayerMock p = new PlayerMock(server, name) {
+                @Override
+                public void sendPlayerListHeaderAndFooter(Component header, Component footer) {
+                    headerSends++;
+                    sentHeader = header;
+                }
+            };
+            server.addPlayer(p);
+            return p;
+        }
+
+        /** 只有头/尾缓存 → 只擦头尾，名字与排序属于别人，必须原样保留。 */
+        @Test
+        @DisplayName("★ 仅头/尾被本插件动过 → restoreAll 不得复位名字与排序")
+        void headerOnlyCacheDoesNotResetNameOrOrder() throws Exception {
+            PlayerMock p = recordingPlayer("HeaderOnly");
+            Component otherName = Component.text("OTHER-NAME");
+            p.playerListName(otherName);
+            p.setPlayerListOrder(7777);
+            cache("lastHeader").put(p.getUniqueId(), Component.text("ours"));
+            cache("lastFooter").put(p.getUniqueId(), Component.text("ours"));
+
+            tabList.restoreAll();
+
+            assertEquals(otherName, p.playerListName(),
+                    "【D3】lastHeader 里有条目只说明「发过头/尾」，不说明本插件设过名字 —— "
+                            + "在这里调 playerListName(null) 会抹掉别的插件的名字格式");
+            assertEquals(7777, p.getPlayerListOrder(),
+                    "【D3】排序同理：未进过 lastOrder 就不该被清零");
+            assertEquals(1, headerSends, "头/尾确实被本插件发过，必须擦一次");
+            assertEquals(Component.empty(), sentHeader, "擦除包必须是空值");
+        }
+
+        /** 只有名字缓存 → 只复位名字，排序与头尾不动。 */
+        @Test
+        @DisplayName("仅名字被本插件动过 → 只复位名字，排序与头尾不碰")
+        void nameOnlyCacheResetsNameOnly() throws Exception {
+            PlayerMock p = recordingPlayer("NameOnly");
+            p.setPlayerListOrder(7777);
+            cache("lastName").put(p.getUniqueId(), Component.text("ours"));
+
+            tabList.restoreAll();
+
+            assertEquals(p.getName(), p.getPlayerListName(),
+                    "名字缓存有条目 → 本插件设过名字，必须恢复成客户端默认（本名）");
+            assertEquals(7777, p.getPlayerListOrder(),
+                    "【D3】lastOrder 里没有条目 → 这个排序不是本插件设的，不得清零");
+            assertEquals(0, headerSends,
+                    "【D3】lastHeader/lastFooter 里没有条目 → 头/尾是别人的，一个包都不该发");
+        }
+
+        /** 名字/排序/头尾三项全部有缓存 → 三项都还原（回归保护）。 */
+        @Test
+        @DisplayName("三项缓存齐全 → 三项都还原成默认")
+        void allCachesRestoreEverything() throws Exception {
+            PlayerMock p = recordingPlayer("AllThree");
+            UUID id = p.getUniqueId();
+            cache("lastName").put(id, Component.text("ours"));
+            cache("lastOrder").put(id, Integer.valueOf(3000));
+            cache("lastHeader").put(id, Component.text("ours"));
+            cache("lastFooter").put(id, Component.text("ours"));
+
+            tabList.restoreAll();
+
+            assertEquals(p.getName(), p.getPlayerListName(),
+                    "名字应恢复成客户端默认（即玩家本名）");
+            assertEquals(0, p.getPlayerListOrder(), "排序应归 0");
+            assertEquals(1, headerSends, "头/尾应被擦一次");
+            assertEquals(Component.empty(), sentHeader, "擦除包必须是空值");
+        }
     }
 }

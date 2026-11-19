@@ -49,6 +49,13 @@
 - **只读测试守卫**：`YamlFileGateTest` 的只读用例从「依赖文件权限」改为「写进不可写目录」，总数恒定
 - **日志英文化与等级修正**：全库 `getLogger()` 输出统一英文；`arenas.yml` 写盘失败 6 个入口统一 SEVERE；`MapRestoreManager` 逐块失败日志每 tick 最多 5 条
 
+### Fixed（2026-11-19 — Tab 栏审计批 1，3 项）
+
+- **【D1】Tab 动画速度修正**：`refreshAllUnchecked()` 的动画时钟由「每次刷新 +1」改为按真实周期累加（`tick += scheduledPeriod`）。`display.yml` 的 `frame-ticks` 单位是 Minecraft tick，此前配 `refresh-ticks: 20` + `frame-ticks: 20` 的动画每 400 tick（20 秒）才换一帧，比侧边栏慢 20 倍；现与 `ArenaScoreboard#tickCounter` 口径一致
+- **【D2】未接管的上下文不再抹掉别的插件的头/尾**：`pushHeaderFooter()` 在 `tab.contexts.*` 为 `false` 时不再每帧发空值，改为「缓存里还留着本插件发过的值时擦一次，然后彻底放手」。此前关闭某个上下文等于告诉别的插件「你的头/尾每秒被清空一次」
+- **【D3】`restoreAll()` 分项还原**：插件关闭时不再对「只发过头/尾」的玩家调 `playerListName(null)` + `setPlayerListOrder(0)`。名字/排序仅在对应缓存（`lastName`/`lastOrder`）有条目时才复位，头/尾仅在 `lastHeader`/`lastFooter` 有条目时才擦
+- **测试**：`TabListManagerTest` 新增 9 项（D1 3 项 / D2 3 项 / D3 3 项），该类 24 → 33 项；全库套件 953 项，Failures 0 / Errors 0 / Skipped 1
+
 ### Changed（2026-11-11 — 工程基建）
 
 - **测试套件首次入库**：78 个测试文件、846 项（MockBukkit + Mockito 基础设施 + 探针测试）
