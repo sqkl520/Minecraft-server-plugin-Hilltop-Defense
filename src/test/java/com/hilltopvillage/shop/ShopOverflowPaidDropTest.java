@@ -133,8 +133,14 @@ class ShopOverflowPaidDropTest extends MockBukkitTestBase {
     }
 
     private static boolean isPaidDrop(Item item) {
+        // 标记在 Item **实体**的 PDC 上（与 ArenaInstance.clearDroppedItems 的口径一致）。
         return item.getPersistentDataContainer()
                 .has(ShopListener.PAID_DROP_KEY, PersistentDataType.BYTE);
+    }
+
+    /** 写入侧：与生产实现 {@code ShopListener#markPaidDrop} 同一容器（实体 PDC）。 */
+    private static void markPaid(Item item, NamespacedKey key) {
+        item.getPersistentDataContainer().set(key, PersistentDataType.BYTE, (byte) 1);
     }
 
     // ================================================================ 打标侧
@@ -312,8 +318,7 @@ class ShopOverflowPaidDropTest extends MockBukkitTestBase {
         @DisplayName("重置后：带 PAID_DROP_KEY 的存活，未带标记的被删除")
         void markedDropSurvivesWhileUnmarkedIsRemoved() {
             Item marked = world.dropItemNaturally(at(), new ItemStack(Material.BOW, 1));
-            marked.getPersistentDataContainer()
-                    .set(ShopListener.PAID_DROP_KEY, PersistentDataType.BYTE, (byte) 1);
+            markPaid(marked, ShopListener.PAID_DROP_KEY);
             Item plain = world.dropItemNaturally(at(), new ItemStack(Material.ARROW, 1));
             assertEquals(2, world.getEntitiesByClass(Item.class).size(),
                     "前置条件：世界里应有两件掉落物");
@@ -336,9 +341,9 @@ class ShopOverflowPaidDropTest extends MockBukkitTestBase {
         @DisplayName("对照：带「别的」PDC 键的掉落物仍被删除（放行判据是键本身，不是「有 PDC 就放行」）")
         void dropWithSomeOtherPdcKeyIsStillRemoved() {
             Item foreign = world.dropItemNaturally(at(), new ItemStack(Material.STONE, 1));
-            foreign.getPersistentDataContainer().set(
-                    new NamespacedKey("hilltopvillage", "some_other_drop"),
-                    PersistentDataType.BYTE, (byte) 1);
+            // 同样打在 ItemStack 的 PDC 上（与生产判据同一容器），
+            // 否则这条对照会因为「查错了容器」而恒真，失去意义。
+            markPaid(foreign, new NamespacedKey("hilltopvillage", "some_other_drop"));
 
             arena.resetNow();
 

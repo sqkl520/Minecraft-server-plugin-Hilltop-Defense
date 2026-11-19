@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertNull;
+import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
@@ -324,21 +325,63 @@ class TabListManagerTest extends MockBukkitTestBase {
             assertTrue(cache("lastHeader").isEmpty(), "无人在线时不应产生任何缓存条目");
         }
 
-        /** 运行期致命异常必须被兜住（T6.1），且只打一条 SEVERE。 */
+        /**
+         * 运行期致命异常必须被兜住（T6.1），且**保留原有的任务句柄**。
+         *
+         * <p>2026-11-14 修正：原版的期望是「句柄置空、周期归 -1，下一帧自愈」，
+         * 理由是「CraftScheduler 会静默取消抛异常的重复任务，留着旧句柄会让 start() 永远早退」。
+         *
+         * <p><b>那个前提经反编译核实是错的。</b> 在 paper-1.21.4-232 的
+         * {@code CraftScheduler.mainThreadHeartbeat()} 字节码里，任务体抛异常后走的分支是：
+         * 记日志 → 发 ServerExceptionEvent → 清空 currentTask → 与正常路径汇合 →
+         * 因 {@code period > 0} 而 {@code pending.add(task)} <b>重新入队</b>。
+         * 全程没有任何 {@code cancel()} 调用。也就是说周期任务抛异常后会<b>继续按时执行</b>。
+         *
+         * <p>于是原版「置空句柄」的做法会在下一帧触发 {@code start()} 新建一条，
+         * 而旧的那条从未被取消、仍在运行 —— 两条并行，刷新频率翻倍。
+         */
         @Test
-        @DisplayName("刷新体抛异常 → 被 catch 住、句柄置空、周期归 -1（下一帧可自愈）")
+        @DisplayName("刷新体抛异常 → 被 catch 住，但句柄与周期都保持不变（不制造孤儿任务）")
         void refreshFailureIsContained() throws Exception {
             withTab(true, 20);
             when(arenas.getPlayerArena(any(Player.class)))
                     .thenThrow(new IllegalStateException("boom"));
             tabList.start();
 
+            BukkitTask before = (BukkitTask) field("refreshTask");
+            assertNotNull(before, "前置条件：start() 后应有一个任务句柄");
+
             invokeRefreshAll();
 
-            assertNull(field("refreshTask"),
-                    "异常路径必须把句柄置空：CraftScheduler 会静默取消抛异常的重复任务，"
-                            + "留着旧句柄会让 start() 永远早退（slice-11-concurrency-001 的成因）");
-            assertEquals(-1, field("scheduledPeriod"), "异常路径必须把周期归 -1，让下一帧重新排期");
+            // 关键断言：句柄身份不变。若被置空，说明 catch 又把一个仍在运行的
+            // ticker 变成了孤儿（Paper 不会因异常取消它）。
+            assertSame(before, field("refreshTask"),
+                    "异常路径不得清空句柄：Paper 的 CraftScheduler 不会取消抛异常的周期任务，"
+                            + "清空只会让下一帧 start() 再建一条，与仍然活着的旧任务并行（刷新频率翻倍）");
+            assertEquals(20, field("scheduledPeriod"),
+                    "异常路径不得把周期归 -1：否则下一帧 start() 会判定「周期变了」而重建");
+            assertFalse(before.isCancelled(),
+                    "任务不应被取消——本 catch 是兜住异常，不是终止任务");
+        }
+
+        /** 连续异常不得让任务数量增长：句柄必须始终是同一个对象。 */
+        @Test
+        @DisplayName("连续 10 次刷新异常 → 任务句柄始终是同一个（不累积）")
+        void repeatedFailuresDoNotAccumulateTasks() throws Exception {
+            withTab(true, 20);
+            when(arenas.getPlayerArena(any(Player.class)))
+                    .thenThrow(new IllegalStateException("boom"));
+            tabList.start();
+
+            BukkitTask first = (BukkitTask) field("refreshTask");
+            assertNotNull(first);
+
+            for (int i = 0; i < 10; i++) {
+                invokeRefreshAll();
+                assertSame(first, field("refreshTask"),
+                        "第 " + (i + 1) + " 次异常后句柄变了 —— 说明产生了第二条任务，旧任务成了孤儿");
+            }
+            assertFalse(first.isCancelled(), "十轮异常之后任务仍应活着（由周期驱动自愈）");
         }
     }
 
