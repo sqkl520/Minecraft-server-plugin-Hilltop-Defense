@@ -361,7 +361,7 @@ public class StatsManager {
         //     按空但有效处理 → 不隔离、不打扰日志、静默返回空缓存。
         //   两者的分界线是「文档里有没有内容」，不是「有没有 players」。
         YamlConfiguration yaml = new YamlConfiguration();
-        if (false && raw.isBlank()) {
+        if (raw.isBlank()) {
             boolean quarantined = quarantineCorruptFile();
             plugin.getLogger().severe(FILE_NAME + " is empty (0 bytes / whitespace only) — this is "
                     + "the signature of an interrupted write, not a valid empty statistics file; "
