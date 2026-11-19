@@ -4,6 +4,7 @@ import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.util.LanguageManager;
 import org.bukkit.Bukkit;
 import org.bukkit.ChatColor;
+import org.bukkit.Material;
 import org.bukkit.NamespacedKey;
 import org.bukkit.entity.Player;
 import org.bukkit.inventory.ItemStack;
@@ -14,6 +15,7 @@ import org.bukkit.persistence.PersistentDataType;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.logging.Level;
 
 /**
  * 村民商店管理器：配置生命周期 + 货币物品工厂 + 发货路由 + 背包货币统计/扣除。
@@ -51,9 +53,47 @@ public class ShopManager {
         this.npcManager = new NpcManager(plugin);
     }
 
-    /** 重载 shop.yml 并刷新内存快照 */
-    public void reload() {
-        this.config = loader.load();
+    /**
+     * 重载 shop.yml 并刷新内存快照。
+     *
+     * <p><b>S09-F1：本方法永不抛异常。</b>商店是<b>功能</b>而不是核心基础设施 ——
+     * {@code shop.yml} 为空/损坏/被隔离时，正确行为是让<b>商店</b>降级，而不是让整个插件
+     * 起不来。旧实现的第一个语句就是 {@code this.config = loader.load()}，
+     * 而 {@link ShopConfigLoader#load()} 对每种不可用读取都抛 {@link IllegalStateException}；
+     * {@code onEnable} 又刻意不给 {@code ShopManager} 套 try/catch（核心模块失败即禁用插件），
+     * 于是「一份空的 shop.yml」= onEnable 中止 = 没有竞技场、没有世界、没有命令、没有监听器。</p>
+     *
+     * <p><b>降级口径</b>（两种场景都必须有确定行为）：</p>
+     * <ul>
+     *   <li><b>已有上一份有效配置</b> → 保留它（{@code /hilltop shop reload} 改坏文件不该把
+     *       正在营业的商店清空）。</li>
+     *   <li><b>首次启动就没有可用配置</b>（{@code config == null}）→ 落回内置空商店。
+     *       「保留上一份」这条在首次启动时无解：此时没有任何可用快照，{@code config} 必须
+     *       非 null（{@code ShopGUI} / {@code NpcManager} / {@code createCurrencyItem} 都会解引用它）。
+     *       空商店 = 0 件商品，{@link ShopGUI} 因此只剩占位板，{@code getItemAt} 恒返回 null，
+     *       点击不会进入 {@link #deliverItem}，购买链自然拒绝而不会 NPE。</li>
+     * </ul>
+     *
+     * <p>只 catch {@link RuntimeException}：{@link Error}（OOM / 类加载失败）不应该被当成
+     * 配置问题吞掉。</p>
+     *
+     * @return true = 新配置已生效；false = 读取失败，正在使用「上一份快照或内置空商店」
+     */
+    public boolean reload() {
+        try {
+            this.config = loader.load();
+        } catch (RuntimeException failure) {
+            // 文案英文（日志一律英文），并指明当前降级到哪种状态，避免管理员以为商店只是「没刷新」
+            plugin.getLogger().log(Level.SEVERE,
+                    "Failed to load shop.yml — the shop is now running on "
+                            + (config == null ? "a built-in empty item list" : "the previously loaded configuration")
+                            + " (no items can be bought until the file is fixed, then run /hilltop shop reload)",
+                    failure);
+            if (config == null) {
+                config = emptyShopConfig();
+            }
+            return false;
+        }
         // 已打开的 ShopGUI 在构造期固化了旧 ShopConfig 与 bySlot，reload 不换掉它们，
         // 玩家会继续按旧价成交。这里关闭所有残留 GUI，强制重开以拾取新配置。
         for (Player p : Bukkit.getOnlinePlayers()) {
@@ -62,6 +102,18 @@ public class ShopManager {
             }
         }
         plugin.getLogger().info("Shop loaded " + config.getItems().size() + " items");
+        return true;
+    }
+
+    /**
+     * 内置空商店（S09-F1 的首次启动兜底）：0 件商品 + 出厂货币材质 + 最小合法 GUI 尺寸。
+     *
+     * <p>{@code currencyMaterial} 必须是可携带物品：{@link #createCurrencyItem} 会对它调
+     * {@code new ItemStack}，用 {@code Material.AIR} 之类会抛异常 —— 而这正落在「坏配置也要
+     * 能安全降级」的反面。i18n 与 GUI 文案全部留 null，让它们各自回退到默认键。</p>
+     */
+    private static ShopConfig emptyShopConfig() {
+        return new ShopConfig(Material.EMERALD, null, null, null, 27, List.of());
     }
 
     public ShopConfig getShopConfig() {

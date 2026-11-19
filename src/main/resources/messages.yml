@@ -23,6 +23,7 @@ en:
   config-reload-failed: "&cGame settings were NOT reloaded — game-settings.yml is unreadable or read-only this run, so the in-memory game-settings values are unchanged. Check the console log (latest.log) for the SEVERE entry, fix the file, then run /hilltop reloadconfig again."
   messages-reloaded: "&aMessages reloaded from messages.yml."
   shop-reloaded: "&aShop config reloaded ({0} items)."
+  shop-reload-failed: "&cShop reload FAILED — shop.yml could not be read (blank, corrupt or quarantined). The shop is still running on the previous items, or on an empty list if this is the first start. Check the console log, fix shop.yml, then run /hilltop shop reload again."
   game-start: "&6The defense has begun! Protect the village!"
   wave-start: "&eWave &6{0} &eis incoming — prepare yourselves!"
   wave-complete: "&aWave &6{0} &acleared! Excellent work!"
@@ -801,6 +802,7 @@ en:
   config.menu.monsters.cycle-chestplate: "&8Cycle: Leather/Chain/Iron/Diamond/Netherite/Gold Chestplate"
   config.menu.monsters.cycle-leggings: "&8Cycle: Leather/Chain/Iron/Diamond/Netherite/Gold Leggings"
   config.menu.monsters.cycle-boots: "&8Cycle: Leather/Chain/Iron/Diamond/Netherite/Gold Boots"
+  config.menu.monsters.armor-cycle-unknown: "&c{0}&c is not one of the preset armor pieces for this slot, so it was left unchanged. Hold SHIFT and click to type any material."
 
   config.menu.waves.title: "&8Wave Config"
   config.menu.waves.header: "&c&lMonster Wave Editor"
@@ -1312,6 +1314,7 @@ zh:
   config-reload-failed: "&c游戏设置未重载——本次运行中 game-settings.yml 无法读取或处于只读状态，游戏设置没有重载，内存中的游戏设置值保持不变。请查看控制台日志（latest.log）中的 SEVERE 记录，修好文件后再次执行 /hilltop reloadconfig。"
   messages-reloaded: "&a语言文件已从 messages.yml 重新加载。"
   shop-reloaded: "&a商店配置已重载（{0} 件商品）。"
+  shop-reload-failed: "&c商店重载失败 —— shop.yml 读不出来（空文件 / 损坏 / 已被隔离）。商店仍在用上一份商品，若这是首次启动则为空列表。请查看控制台日志，修好 shop.yml 后重新执行 /hilltop shop reload。"
   game-start: "&6守卫战开始！保护好村庄！"
   wave-start: "&e第 &6{0} &e波来袭 — 做好准备！"
   wave-complete: "&a第 &6{0} &a波已清除！干得好！"
@@ -1901,6 +1904,7 @@ zh:
   config.menu.monsters.cycle-chestplate: "&8可循环: 皮革/锁链/铁/钻石/下界合金/金 胸甲"
   config.menu.monsters.cycle-leggings: "&8可循环: 皮革/锁链/铁/钻石/下界合金/金 护腿"
   config.menu.monsters.cycle-boots: "&8可循环: 皮革/锁链/铁/钻石/下界合金/金 靴子"
+  config.menu.monsters.armor-cycle-unknown: "&c{0}&c 不在本槽位的预设护甲表里，已保持原值不变。按住 SHIFT 点击可手动输入任意材质。"
 
   config.menu.waves.title: "&8波次配置"
   config.menu.waves.header: "&c&l怪物波次编辑器"

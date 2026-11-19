@@ -66,7 +66,15 @@
 - **【A】0 字节统计文件不再静默放过**：`StatsManager.load()` 对「文件存在但解析出空文档」的情况原本直接返回空缓存 —— 零日志、不隔离。`loadFromString("")` 不抛异常，所以那个宽 `catch` 兜不住它；而该类自己的注释早就写着「该文件在真实部署目录中曾被实测为 0 字节形态」，即这个已知发生过的事故形态一直是静默通过的。现与解析失败同等处理：SEVERE + 隔离 + 空数据启动。区分两种「空」——「文件无 YAML 文档」判为损坏，「能解析但没有 `players` 段」判为合法的空数据集，不隔离
 - **【B】瞬时读错误不再被当成文件损坏**：原实现用同一个 `catch (Exception)` 同时接 `Files.readString` 的 `IOException`（杀毒软件/备份占用、ACL 变更、共享冲突）和解析异常。前者内容完好、重试即可，却被当成损坏把好文件改名成 `.corrupt`，随后第一次保存用空数据永久覆盖。现分离两类：IO 失败进入本次运行的**只读模式**（拒绝写盘并明确播报，与 `YamlFileGate` 同一哲学：读不出来的文件绝不覆盖），解析失败才隔离
 - **【C】落盘改真原子 + 修正失实 javadoc**：`writeAtomically()` 的注释写着「临时文件 + 原子替换」，但 `Files.move` 没带 `ATOMIC_MOVE` —— Windows 上非原子 `REPLACE_EXISTING` 是先删后改名，崩在中间就是**整个文件消失**。现补上 `ATOMIC_MOVE`，并在文件系统不支持时（`AtomicMoveNotSupportedException`）回退到非原子移动、只 WARNING 一次告知保证减弱；javadoc 改为诚实的「尽力而为」
-- **测试**：`StatsManagerTest` 15 → 21 项，全库套件 957 → 963 项
+- **测试**：`StatsManagerTest` 15 → 22 项，全库套件 957 → 964 项
+
+### Fixed（2026-11-19 — 管理工具审计批 3，3 项）
+
+- **【S03-F2】怪物属性菜单的四件护甲改用各自的循环表**：`MonsterSettingsMenu` 的 `addArmorSlot` 四个槽位此前共用一份「全头盔」数组 `ARMOR_CYCLE`，点「胸甲」槽会把 `LEATHER_HELMET` 写进 `chestplate` 字段；更糟的是管理员通过 SHIFT 输入或手改 YAML 配好的真实胸甲不在表内，第一次左键就被覆盖且再也循环不回来。现拆成 `HELMET_CYCLE` / `CHESTPLATE_CYCLE` / `LEGGINGS_CYCLE` / `BOOTS_CYCLE` 四张表（档位顺序一致：皮革 → 锁链 → 铁 → 钻石 → 下界合金 → 金 → 空），并由 `nextArmorMaterial` 取代 `cycleMaterial`：**当前值不在本槽位预设表里时拒绝改动**并提示改用 SHIFT 手动输入（不动比静默换档更安全——护甲直接影响战斗数值，必须由管理员显式决定）。`WaveSettingsMenu.MonsterPropMenu` 的同一份「全头盔」数组 `ARMOR_LIST` 同版修复（新增 `addArmorCycle` / `nextArmorMat`，四张新表；该页没有 SHIFT 输入，表外值同样只提示不改）
+- **【S05-F1】三个单条删除方法不再丢弃写盘结果**：`AdminDeployManager` 的 `removeSpawnPoint` / `removeMobSpawnPoint` / `removeVillager` 此前无条件 `return true`，把 `saveSpawnPoints()` 的结果整个丢掉——`arenas.yml` 只读或 IO 失败时管理员收到「已删除」，重启后点位原样回来。现直接返回落盘结果，并把三个命令入口（`delspawn` / `delmobspawn` / `delvillager`）的**序号校验前置**：序号非法报「ID 不存在」，校验通过后拿到 `false` 则如实报 `deploy.save-failed`，两种失败模式不再混淆
+- **【S02-F3】部署向导删除点位不再「没删也报已删」**：`SetupWizard` 的 `setup-spawn-<i>` 与 `setup-mobspawn-<i>` 两个点击分支此前丢弃返回值，写盘失败照样播「已移除」并继续刷新界面。现与村民分支（一直有校验）同口径：失败即播 `setup.save-failed` 并提前返回，不复位页码、不刷新、不自动保存
+- **【S09-F1】损坏的 `shop.yml` 不再拖垮整个插件**：`ShopConfigLoader.load()` 对每种不可用读取都抛 `IllegalStateException`，而 `ShopManager.reload()` 首句就是 `this.config = loader.load()` 无 try/catch，`onEnable` 又不给商店套容错——于是「一份空的 shop.yml」= onEnable 中止 = **没有竞技场、没有世界、没有命令、没有监听器**。现 `reload()` 改为不抛异常并返回 `boolean`：失败时打一条英文 SEVERE，**已有上一份有效配置就保留它**、**首次启动则落回内置空商店**（`EMERALD` / 27 格 / 0 件商品；空商店在 `ShopGUI` 里只有占位板，点击拿不到商品，购买链自然拒绝而不 NPE）。`onEnable` 刻意**不加** blanket catch（隐藏未来的 bug），`/hilltop shop reload` 改为按返回值播报成功或失败（新增双语键 `shop-reload-failed`）
+- **测试**：`MonsterArmorCycleTest` 新增 15 项（四槽位各走自己的表 / 表外值不被覆盖 / SHIFT 仍可输入任意材质 / 四表档位对齐 / 波次菜单同一份副本）；`AdminDeployWriteResultTest` 新增 6 项（三个 remove 方法在只读闸门下返回 false / 序号非法仍返回 false 且内存不变 / 成功侧与失败标记对照）；`ShopReloadDegradeTest` 新增 7 项（首启坏文件得到空商店且不抛 / 已有快照时坏文件保留旧快照 / 返回值区分成功失败 / 空商店购买链安全拒绝 / 货币工厂不崩）；既有 `ShopConfigCorruptFileTest` 的两条 `assertThrows(shop::reload)` 改为 `assertFalse(shop.reload())`（契约从「抛异常」变为「返回 false」）；全库套件 963 → 991 项
 
 ### Changed（2026-11-11 — 工程基建）
 

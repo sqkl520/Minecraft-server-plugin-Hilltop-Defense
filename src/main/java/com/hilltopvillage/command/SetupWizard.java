@@ -1942,7 +1942,14 @@ public class SetupWizard implements Listener {
             default:
                 if (tag.startsWith("setup-spawn-")) {
                     int idx = Integer.parseInt(tag.substring("setup-spawn-".length()));
-                    deploy(player).removeSpawnPoint(idx);
+                    // S02-F3：此前丢弃返回值 → 写盘失败也照报「已移除」。与村民分支（:1860）对齐：
+                    // 只有真的删掉才播「已移除」+ 复位页码 + 刷新 + 自动保存；
+                    // 失败时给出一条如实的失败提示（setup.save-failed 的文案已覆盖「内存改过但没落盘」）。
+                    if (!deploy(player).removeSpawnPoint(idx)) {
+                        player.sendMessage(LegacyComponentSerializer.legacySection()
+                                .deserialize(lang.getFor(player, "setup.save-failed")));
+                        break;
+                    }
                     // If removing caused current page to become empty, go back one page
                     int totalAfter = deploy(player).getSpawnPoints().size();
                     int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
@@ -2013,7 +2020,12 @@ public class SetupWizard implements Listener {
             default:
                 if (tag.startsWith("setup-mobspawn-")) {
                     int idx = Integer.parseInt(tag.substring("setup-mobspawn-".length()));
-                    deploy(player).removeMobSpawnPoint(idx);
+                    // S02-F3：与上面 setup-spawn- 分支同口径 —— 写盘失败不得播「已移除」
+                    if (!deploy(player).removeMobSpawnPoint(idx)) {
+                        player.sendMessage(LegacyComponentSerializer.legacySection()
+                                .deserialize(lang.getFor(player, "setup.save-failed")));
+                        break;
+                    }
                     int totalAfter = deploy(player).getMobSpawnPoints().size();
                     int maxPageAfter = totalAfter == 0 ? 0 : (totalAfter - 1) / SPAWNS_PER_PAGE;
                     if (s.mobSpawnPage > maxPageAfter) s.mobSpawnPage = maxPageAfter;

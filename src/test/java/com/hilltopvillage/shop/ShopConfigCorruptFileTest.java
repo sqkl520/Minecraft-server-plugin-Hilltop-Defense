@@ -1,6 +1,7 @@
 package com.hilltopvillage.shop;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
@@ -94,8 +95,11 @@ class ShopConfigCorruptFileTest extends MockBukkitTestBase {
 
         TestPaths.write(shopFile, CORRUPT_SHOP_YML);
 
-        assertThrows(IllegalStateException.class, shop::reload,
-                "Reloading a corrupt shop.yml must fail instead of replacing the live shop with an empty one");
+        // S09-F1：reload() 不再抛异常（商店是功能不是核心基础设施，坏文件只能让商店降级）。
+        // 但「必须失败」的语义没变 —— 返回值变成 false，且旧快照原样保留。
+        assertFalse(shop.reload(),
+                "Reloading a corrupt shop.yml must report failure instead of replacing the live shop"
+                        + " with an empty one (S09-F1: it must not throw out of onEnable either)");
         assertSame(previous, shop.getShopConfig(),
                 "A failed load must not assign a new empty config; the last valid snapshot must survive");
         assertSame(Material.DIAMOND, shop.getShopConfig().getCurrencyMaterial(),
@@ -133,8 +137,9 @@ class ShopConfigCorruptFileTest extends MockBukkitTestBase {
         assertTrue(directFailure.getMessage().contains("shop.yml"), directFailure.getMessage());
         assertTrue(directFailure.getMessage().contains("shop.items"), directFailure.getMessage());
 
-        assertThrows(IllegalStateException.class, shop::reload,
-                "Reloading the truncated shop.yml must fail instead of replacing the live shop");
+        // S09-F1：reload() 改为返回 false（不抛），旧快照必须原样保留。
+        assertFalse(shop.reload(),
+                "Reloading the truncated shop.yml must report failure instead of replacing the live shop");
         assertSame(previous, shop.getShopConfig(),
                 "The previous snapshot must survive when the items header is truncated");
         assertEquals(1, shop.getShopConfig().getItems().size(),

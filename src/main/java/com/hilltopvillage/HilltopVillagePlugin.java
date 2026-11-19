@@ -117,6 +117,10 @@ public class HilltopVillagePlugin extends JavaPlugin implements Listener {
         this.mapRestoreManager = new MapRestoreManager(this);
         this.villagerPreviewManager = new VillagerPreviewManager(this);
         this.shopManager = new ShopManager(this, languageManager);
+        // S09-F1：这里刻意**不加** try/catch —— ShopManager#reload() 自己已保证不抛异常。
+        // 商店是功能而非核心基础设施：一份空的/损坏的 shop.yml 只能让商店降级（保留上一份
+        // 快照，首次启动则用内置空商店），绝不能中止 onEnable（那会连带丢掉竞技场、世界、
+        // 命令与监听器）。失败时 reload() 已打 SEVERE 并返回 false，此处无需再处理。
         this.shopManager.reload();
 
         // Initialize multi-arena system

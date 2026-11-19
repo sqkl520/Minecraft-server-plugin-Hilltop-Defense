@@ -676,11 +676,24 @@ public class AdminDeployManager {
         saveSpawnPoints();
     }
 
+    /**
+     * S05-F1：删除一个玩家出生点。
+     *
+     * <p><b>返回值契约（1.1.0-SNAPSHOT-fix3 起收紧）</b>：{@code true} = 已从内存移除<b>且</b>
+     * 成功落盘；{@code false} = 序号非法，<b>或</b>落盘失败。</p>
+     *
+     * <p>旧实现无条件 {@code return true}，把 {@link #saveSpawnPoints()} 的写盘结果整个丢掉：
+     * arenas.yml 只读/IO 失败时管理员收到「已删除」，重启后点位原样回来（本次会话内看到的
+     * 是内存新值、磁盘旧值）。调用方若要区分「序号非法」与「写盘失败」，必须<b>先自行校验序号</b>
+     * （{@code ArenaAdminService} / 命令路径均已如此），校验通过后拿到 false 即写盘失败。</p>
+     *
+     * <p>注意：写盘失败时内存里的移除<b>不回滚</b> —— 与 {@link #saveSpawnPoints()} 的
+     * 「失败不刷新 GameManager」口径一致，界面立刻反映管理员的操作，磁盘留给下次重试。</p>
+     */
     public boolean removeSpawnPoint(int index) {
         if (index < 0 || index >= savedSpawnPoints.size()) return false;
         savedSpawnPoints.remove(index);
-        saveSpawnPoints();
-        return true;
+        return saveSpawnPoints();
     }
 
     public void clearSpawnPoints() {
@@ -712,11 +725,11 @@ public class AdminDeployManager {
         saveSpawnPoints();
     }
 
+    /** 删除一个怪物刷怪点。返回值语义与 {@link #removeSpawnPoint(int)} 一致（S05-F1）。 */
     public boolean removeMobSpawnPoint(int index) {
         if (index < 0 || index >= savedMobSpawnPoints.size()) return false;
         savedMobSpawnPoints.remove(index);
-        saveSpawnPoints();
-        return true;
+        return saveSpawnPoints();
     }
 
     public void clearMobSpawnPoints() {
@@ -748,11 +761,11 @@ public class AdminDeployManager {
         saveSpawnPoints();
     }
 
+    /** 删除一名村民。返回值语义与 {@link #removeSpawnPoint(int)} 一致（S05-F1）。 */
     public boolean removeVillager(int index) {
         if (index < 0 || index >= savedVillagerPositions.size()) return false;
         savedVillagerPositions.remove(index);
-        saveSpawnPoints();
-        return true;
+        return saveSpawnPoints();
     }
 
     public void clearVillagers() {
