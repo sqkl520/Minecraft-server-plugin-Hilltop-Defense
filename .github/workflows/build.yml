@@ -13,16 +13,22 @@ name: build
 #
 # Do NOT add -o (offline) here: ~/.m2 on CI starts empty.
 #
-# build.sh is invoked via `bash tools/build.sh`, NOT `./tools/build.sh`: this
+# tools/build.sh is invoked via `bash tools/build.sh`, NOT `./tools/build.sh`: this
 # repository has core.fileMode=false, so the git-tracked mode is always 100644
 # and the file is not executable after checkout on a Linux runner. Calling it
 # through bash keeps the workflow independent of that bit.
+#
+# Trigger scope: every pull request, regardless of its base branch. Restricting
+# `pull_request` to `main` meant stacked PRs (base = another feature branch) ran
+# no CI at all — their "tests pass" claim rested entirely on the author's local
+# run, which is exactly the kind of unverified assertion a green badge is
+# supposed to rule out. `push` stays limited to `main` so feature branches do not
+# build twice (once on push, once on the PR).
 
 on:
   push:
     branches: [main]
   pull_request:
-    branches: [main]
   workflow_dispatch:
 
 permissions:
