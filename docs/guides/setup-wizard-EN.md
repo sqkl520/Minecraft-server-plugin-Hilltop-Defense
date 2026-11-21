@@ -1,3 +1,5 @@
+[简体中文](setup-wizard.md) | English
+
 # Setup Wizard: Step-by-Step Reference
 
 > Moved from the English README. The README keeps a summary and links here.

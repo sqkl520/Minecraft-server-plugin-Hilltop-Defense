@@ -9,10 +9,13 @@ rem  This script gives native cmd / PowerShell the same four-probe behaviour.
 rem
 rem  Usage (all arguments are forwarded to Maven verbatim; no argument means
 rem  "clean package"):
-rem    .\build.cmd                          = mvn clean package
-rem    .\build.cmd -o compile               = mvn -o compile
-rem    .\build.cmd -o test-compile
-rem    .\build.cmd -DskipTests clean package
+rem    .\tools\build.cmd                          = mvn clean package
+rem    .\tools\build.cmd -o compile               = mvn -o compile
+rem    .\tools\build.cmd -o test-compile
+rem    .\tools\build.cmd -DskipTests clean package
+rem
+rem  The script lives in <repo root>\tools\ and switches the working directory to
+rem  the repo root on start, so it can be invoked from anywhere.
 rem
 rem  Overridable environment variables (same names as build.sh):
 rem    HV_JDK21_HOME   JDK 21 root. If it does not point at a usable JDK 21 the
@@ -31,6 +34,22 @@ rem  corrupt control flow. ASCII keeps the parser deterministic on every locale.
 rem ============================================================================
 
 setlocal EnableExtensions EnableDelayedExpansion
+
+rem ---- Locate the repo root ------------------------------------------------
+rem This script lives in <repo root>\tools\; Maven must run where pom.xml is.
+rem Derive the root from the script's own location instead of the caller's cwd,
+rem so invoking it from any directory works. pushd also covers UNC-safe restore.
+for %%I in ("%~dp0..") do set "HV_REPO_ROOT=%%~fI"
+if not exist "%HV_REPO_ROOT%\pom.xml" (
+    echo [build.cmd][ERROR] pom.xml not found in "%HV_REPO_ROOT%"
+    echo [build.cmd][ERROR] Keep this script at "repo-root\tools\build.cmd"
+    endlocal & exit /b 1
+)
+pushd "%HV_REPO_ROOT%" 2>nul
+if errorlevel 1 (
+    echo [build.cmd][ERROR] Cannot switch to repo root: "%HV_REPO_ROOT%"
+    endlocal & exit /b 1
+)
 
 rem Let Maven emit its (localized) output as UTF-8 instead of the OEM codepage.
 rem The caller's codepage is captured first and restored before exiting, because
@@ -169,11 +188,13 @@ goto :finish
 :finish
 echo %HV_TAG% Maven exit code=%HV_RC%
 if defined _HV_OLD_CP chcp !_HV_OLD_CP! >nul 2>&1
+popd
 endlocal & exit /b %HV_RC%
 
 :fail
 echo %HV_TAG% aborted before invoking Maven: environment is not usable.
 if defined _HV_OLD_CP chcp !_HV_OLD_CP! >nul 2>&1
+popd
 endlocal & exit /b 1
 
 rem ============================================================================

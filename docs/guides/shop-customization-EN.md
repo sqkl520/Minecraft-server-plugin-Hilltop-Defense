@@ -1,3 +1,5 @@
+[简体中文](shop-customization.md) | English
+
 # Shop Customization (shop.yml Full Reference)
 
 > Moved from the English README. The README keeps a summary and links here.

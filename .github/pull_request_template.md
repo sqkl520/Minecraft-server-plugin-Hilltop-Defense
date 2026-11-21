@@ -13,7 +13,7 @@
   say what you actually observed.
 -->
 
-- [ ] `./build.sh -o clean test` passes locally
+- [ ] `./tools/build.sh -o clean test` passes locally
 - [ ] Manual check in game: <!-- describe what you did and what you saw -->
 
 ## Checklist

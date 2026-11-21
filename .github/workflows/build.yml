@@ -5,7 +5,7 @@ name: build
 # Scope is deliberately narrow: this workflow ONLY builds and tests. It performs
 # no distribution step of any kind; the author decides when a version ships.
 #
-# The local wrapper build.sh defaults to a Windows Maven path
+# The local wrapper tools/build.sh defaults to a Windows Maven path
 # (D:/maven/apache-maven-3.9.9/bin/mvn.cmd) and a Windows JDK glob, so on a
 # Linux runner both must be overridden explicitly:
 #   HV_MAVEN=mvn                    -> use the Maven on PATH (actions/setup-java)
@@ -13,12 +13,10 @@ name: build
 #
 # Do NOT add -o (offline) here: ~/.m2 on CI starts empty.
 #
-# build.sh is invoked via `bash build.sh`, NOT `./build.sh`: this repository has
-# core.fileMode=false, so the git-tracked mode is always 100644 and the file is
-# not executable after checkout on a Linux runner. Calling it through bash keeps
-# the workflow independent of that bit.
-# (Path note: the script lives at the repo root on main. A stacked branch may move
-#  it to tools/; the merge that lands that move also updates line ~67.)
+# tools/build.sh is invoked via `bash tools/build.sh`, NOT `./tools/build.sh`: this
+# repository has core.fileMode=false, so the git-tracked mode is always 100644
+# and the file is not executable after checkout on a Linux runner. Calling it
+# through bash keeps the workflow independent of that bit.
 #
 # Trigger scope: every pull request, regardless of its base branch. Restricting
 # `pull_request` to `main` meant stacked PRs (base = another feature branch) ran
@@ -66,7 +64,7 @@ jobs:
           export HV_MAVEN=mvn
           export HV_JDK21_HOME="$JAVA_HOME"
           # via `bash`, not `./`: the executable bit is not preserved (core.fileMode=false).
-          bash build.sh -B clean test
+          bash tools/build.sh -B clean test
 
       - name: Upload surefire reports on failure
         if: failure()

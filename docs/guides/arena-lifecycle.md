@@ -1,3 +1,5 @@
+[English](arena-lifecycle-EN.md) | 简体中文
+
 # 竞技场生命周期：启用队列、管理 GUI 与恢复初始状态
 
 本文由 README 对应章节下移而来，README 侧保留摘要与入口链接。

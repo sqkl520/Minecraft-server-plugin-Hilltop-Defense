@@ -1,3 +1,5 @@
+[简体中文](deploy-stages-1-2.md) | English
+
 # Deploy Stages 1–2: Prepare the Worlds and Configure the Arena
 
 > Moved from the English README. The README keeps a summary and links here.

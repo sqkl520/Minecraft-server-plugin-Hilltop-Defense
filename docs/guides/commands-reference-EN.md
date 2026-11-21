@@ -1,3 +1,5 @@
+[简体中文](commands-reference.md) | English
+
 # Commands Reference (All Sub-commands)
 
 > Moved from the English README. The README keeps a summary and links here.

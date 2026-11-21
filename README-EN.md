@@ -1,7 +1,5 @@
 English | [简体中文](README.md)
 
-![Hilltop Village](.github/social-preview.png)
-
 # Hilltop Village
 
 **A cooperative PvE tower-defense plugin for Paper servers** — a group of players defends villagers and energy nodes against increasingly strong waves. Unlike the usual competitive minigame plugins, this one is built around **cooperation**: there are no opposing teams, and whether you win depends on the whole group surviving every wave together.
@@ -86,7 +84,7 @@ Every wave-monster kill **drops 1–2 Energy Crystals** (currency; the drop-chan
 
 **Economy loop**: monsters drop crystals → right-click the shop villager to buy items/World Tree Sap → right-click deactivated nodes with sap to repair → nodes resume buffing the defenders.
 
-> 📖 Full `shop.yml` field reference, the five item `type` values, and the upgrade notes for existing servers: [Shop Customization](docs/guides/en/shop-customization.md).
+> 📖 Full `shop.yml` field reference, the five item `type` values, and the upgrade notes for existing servers: [Shop Customization](docs/guides/shop-customization-EN.md).
 
 **Shop villager deployment**:
 
@@ -145,10 +143,10 @@ shop:
 
 ## Deployment Guide (Server Owner Guide)
 
-> 📖 **Companion guides** (in `docs/guides/en/`): this chapter is the condensed version —
-> [Stages 1/2/2.5 in full](docs/guides/en/deploy-stages-1-2.md) ·
-> [8-step wizard, step by step](docs/guides/en/setup-wizard.md) ·
-> [Arena lifecycle and the enable queue](docs/guides/en/arena-lifecycle.md)
+> 📖 **Companion guides** (in `docs/guides/`): this chapter is the condensed version —
+> [Stages 1/2/2.5 in full](docs/guides/deploy-stages-1-2-EN.md) ·
+> [8-step wizard, step by step](docs/guides/setup-wizard-EN.md) ·
+> [Arena lifecycle and the enable queue](docs/guides/arena-lifecycle-EN.md)
 
 From zero to your first match in 6 phases. **Follow them in order for a first-time setup.**
 
@@ -519,7 +517,7 @@ Four line kinds: `separator: N` (divider), `blank: true` (spacer), `key: <i18n k
 
 Run `/hilltop reloadconfig` to apply changes immediately. A mistake never leaves you with a blank sidebar — a bad line is skipped with one English warning, and a fully broken file falls back to the built-in default layout.
 
-See the [configuration reference](docs/guides/en/config-reference.md#displayyml--sidebar-and-tab-list-layout).
+See the [configuration reference](docs/guides/config-reference-EN.md#displayyml--sidebar-and-tab-list-layout).
 
 ### Player list (tab)
 
@@ -574,7 +572,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 
 ## Commands
 
-> 📖 This chapter is the quick reference; the version with full parameter notes and examples is [Complete Command Reference](docs/guides/en/commands-reference.md).
+> 📖 This chapter is the quick reference; the version with full parameter notes and examples is [Complete Command Reference](docs/guides/commands-reference-EN.md).
 
 > "Console" column: ✅ = runnable from the server console (admin commands still require OP / the `hilltopvillage.admin` permission, which the console has by default);
 > ❌ = must be run by a player in game.
@@ -712,7 +710,7 @@ Available while the wizard is in progress (normally triggered via clickable chat
 
 ### arenas.yml — arenas and lobby (core config)
 
-> 📖 A key-by-key explanation of all three config files (what each key controls, its default, and whether a restart is needed) is in [Configuration Reference](docs/guides/en/config-reference.md).
+> 📖 A key-by-key explanation of all three config files (what each key controls, its default, and whether a restart is needed) is in [Configuration Reference](docs/guides/config-reference-EN.md).
 
 One node per arena, containing world, waiting area, core, player spawn points, mob spawn points, player counts and waves.
 
@@ -814,7 +812,7 @@ The "wave composition" page in the GUI maps to the `waves` section at the end of
 - **Deleting a wave requires [Confirm & Save]**. Delete then `/hilltop reloadconfig` without saving and the wave reappears from disk (disk is authoritative).
 - A wave number you hand-write into the file (e.g. `waves: {"7": ...}`) **does** take effect after reload or restart (older versions discarded it silently; fixed in 1.1.0).
 
-See the `waves` section of [Configuration Reference](docs/guides/en/config-reference.md) for the full key-by-key explanation.
+See the `waves` section of [Configuration Reference](docs/guides/config-reference-EN.md) for the full key-by-key explanation.
 
 ### config.yml
 
@@ -844,21 +842,21 @@ See the individual files under `plugins/HilltopVillage/` for the complete refere
 
 ## Build
 
-Requires JDK 21 and Maven 3.9.9. The recommended way is the build script in the project root (the directory containing `pom.xml`):
+Requires JDK 21 and Maven 3.9.9. The recommended way is the wrapper script `tools/build.sh` (it switches to the directory containing `pom.xml` on start, so it can be invoked from anywhere):
 
 ```bash
-./build.sh clean package
+./tools/build.sh clean package
 ```
 
-`build.sh` automatically detects and switches to JDK 21 (it keeps `JAVA_HOME` as-is when that already points to JDK 21), and passes every argument through to Maven unchanged. With no arguments it is equivalent to `mvn clean package`. Examples:
+`tools/build.sh` automatically detects and switches to JDK 21 (it keeps `JAVA_HOME` as-is when that already points to JDK 21), and passes every argument through to Maven unchanged. With no arguments it is equivalent to `mvn clean package`. Examples:
 
 ```bash
-./build.sh -o compile                  # offline compile
-./build.sh -DskipTests clean package  # build without tests
-./build.sh test                       # tests only
+./tools/build.sh -o compile                  # offline compile
+./tools/build.sh -DskipTests clean package   # build without tests
+./tools/build.sh test                        # tests only
 ```
 
-`build.sh` requires a Git Bash / MSYS environment; it cannot be run directly from native cmd or PowerShell. Override the JDK location with `HV_JDK21_HOME`, the auto-detection path with `HV_JDK21_GLOB` (default `/d/Java/zulu21.48.17-*`), or the Maven executable with `HV_MAVEN`.
+`tools/build.sh` requires a Git Bash / MSYS environment; it cannot be run directly from native cmd or PowerShell (use `tools\build.cmd` instead). Override the JDK location with `HV_JDK21_HOME`, the auto-detection path with `HV_JDK21_GLOB` (default `/d/Java/zulu21.48.17-*`), or the Maven executable with `HV_MAVEN`.
 
 Manual path: if you call `mvn` directly, you must set `JAVA_HOME` to JDK 21 first. This machine's default shell points `JAVA_HOME` at JDK 17, which conflicts with the Java 21 compile target; without the switch, `maven-enforcer-plugin` stops the build at the `validate` phase with a clear JDK-mismatch message instead of the cryptic "invalid target release: 21" error. The diagnostic message is written in Chinese.
 

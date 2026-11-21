@@ -1,3 +1,5 @@
+[English](setup-wizard-EN.md) | 简体中文
+
 # 8 步部署向导：边角规则与子命令详解
 
 本文由 README 对应章节下移而来，README 侧保留摘要与入口链接。

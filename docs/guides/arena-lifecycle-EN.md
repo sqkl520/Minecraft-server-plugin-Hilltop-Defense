@@ -1,3 +1,5 @@
+[简体中文](arena-lifecycle.md) | English
+
 # Arena Lifecycle: Enable Queue, Management GUI, Restore Initial State
 
 > Moved from the English README. The README keeps a summary and links here.
