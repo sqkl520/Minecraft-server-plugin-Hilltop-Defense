@@ -233,4 +233,37 @@ class AdminDeployWriteResultTest extends MockBukkitTestBase {
                             + "因此校验通过后拿到的 false 只能是写盘失败");
         }
     }
+
+    // ================================================================ 失败标记的消费契约
+
+    /**
+     * 命令层三条删除分支（delspawn / delmobspawn / delvillager）在 {@code remove*()} 返回
+     * {@code false} 时，必须走 {@code reportDeploySaveFailure} 而不是直接 {@code sendMessage}。
+     *
+     * <p><b>为什么要专门守这条</b>：失败标记 {@code lastSaveFailed} 是「读取即消费」的语义。
+     * 命令路径原先在 false 分支里直接播报 save-failed，却没消费标记，于是标记残留到下一次
+     * 操作，让 {@code reportDeploySaveFailure} 再播一条<b>迟到的</b>失败提示——管理员会以为
+     * 这一次也失败了。测试不可能直接驱动命令处理器（需要完整的玩家/权限上下文），
+     * 所以这里守的是标记本身的双向契约：失败时置位、消费后清零。</p>
+     */
+    @Nested
+    @DisplayName("失败标记：置位后可被消费，消费后不再重放")
+    class SaveFailureFlagContract {
+
+        @Test
+        @DisplayName("写盘失败 → 标记置位 → 消费一次为 true → 再消费为 false")
+        void failureFlagIsConsumedExactlyOnce() throws IOException {
+            writeValidArenasYml();
+            deploy.loadSpawnPoints();
+            breakArenasYml();
+
+            assertFalse(deploy.removeSpawnPoint(0), "前置条件：只读闸门下写盘失败");
+
+            assertTrue(deploy.consumeSaveFailure(),
+                    "命令路径必须能读到这次失败并播报一次");
+            assertFalse(deploy.consumeSaveFailure(),
+                    "★ 读取即消费：标记只能被播报一次。若这里仍为 true，说明命令路径"
+                            + "在某处播报了却没消费，下一次成功操作会多收到一条迟到的失败提示");
+        }
+    }
 }
