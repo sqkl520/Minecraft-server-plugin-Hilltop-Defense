@@ -268,6 +268,154 @@ class StatsManagerTest extends MockBukkitTestBase {
                 "损坏现场应保留为 .corrupt");
     }
 
+    // ---------------------------------------------------------------- 读盘容错
+
+    /**
+     * 缺陷 A：0 字节文件曾被静默接受。
+     *
+     * <p>{@code loadFromString("")} 不抛异常 —— 它得到空配置，于是 {@code root == null}
+     * 静默返回空缓存，既无日志也无隔离。而这份文件在真实部署目录中确实被实测为 0 字节形态，
+     * 等于一个已知的真实故障模式完全无声。
+     */
+    @Test
+    @DisplayName("load: 0 字节文件 = 截断产物，必须隔离并 SEVERE，不得静默接受")
+    void emptyFileIsQuarantinedNotSilentlyAccepted() throws Exception {
+        BareHost host = loadBareHost();
+        MockBukkitTestBase.LogCapture logs = attachLogCapture(host.getLogger());
+        File statsFile = new File(host.getDataFolder(), "player-stats.yml");
+        MockBukkitTestBase.TestPaths.write(statsFile, "");
+
+        StatsManager stats = new StatsManager(host);
+
+        assertTrue(stats.top(StatsManager.StatType.KILLS, 10).isEmpty(), "应以空统计启动");
+        assertFalse(statsFile.exists(), "0 字节文件必须被移走 —— 它是截断写的签名，不是合法空表");
+        assertTrue(new File(host.getDataFolder(), "player-stats.yml.corrupt").isFile(),
+                "空文件的现场必须保留为 .corrupt，供服主核对");
+        assertTrue(logs.anyMatch(line -> line.startsWith("SEVERE|") && line.contains("is empty")),
+                "空文件必须打 SEVERE（旧实现在这里一行日志都没有）。捕获到：" + logs.lines());
+    }
+
+    @Test
+    @DisplayName("load: 纯空白文件（非 0 字节但无 YAML 文档）同样按截断处理")
+    void whitespaceOnlyFileIsQuarantined() throws Exception {
+        BareHost host = loadBareHost();
+        File statsFile = new File(host.getDataFolder(), "player-stats.yml");
+        MockBukkitTestBase.TestPaths.write(statsFile, "  \n\t\n\n");
+
+        new StatsManager(host);
+
+        assertFalse(statsFile.exists(), "只有空白字符的文件同样没有任何 YAML 文档，必须隔离");
+        assertTrue(new File(host.getDataFolder(), "player-stats.yml.corrupt").isFile());
+    }
+
+    /**
+     * 缺陷 A 的另一半：把「无 YAML 文档」与「有文档但没有 players 段」分开。
+     *
+     * <p>后者是<b>本类能读懂的合法形态</b>（当前零记录，或服主手写成这样）。
+     * 若把两者一并隔离，服主在文件里留一行别的键就会丢掉整份文件 —— 代价与收益倒挂。
+     */
+    @Test
+    @DisplayName("load: 合法 YAML 但没有 players 段 = 空但有效，绝不隔离")
+    void validYamlWithoutPlayersSectionIsNotQuarantined() throws Exception {
+        BareHost host = loadBareHost();
+        MockBukkitTestBase.LogCapture logs = attachLogCapture(host.getLogger());
+        File statsFile = new File(host.getDataFolder(), "player-stats.yml");
+        MockBukkitTestBase.TestPaths.write(statsFile, "some-other-key: 1\nplayers-empty: true\n");
+
+        StatsManager stats = new StatsManager(host);
+
+        assertTrue(stats.top(StatsManager.StatType.KILLS, 10).isEmpty(), "零记录应是空缓存");
+        assertTrue(statsFile.isFile(), "能解析的文件不得被移走 —— 这是合法配置，不是损坏");
+        assertFalse(new File(host.getDataFolder(), "player-stats.yml.corrupt").exists(),
+                "不得产生 .corrupt");
+        assertEquals(0, logs.countAt(java.util.logging.Level.SEVERE),
+                "合法空配置不该刷 SEVERE。捕获到：" + logs.lines());
+    }
+
+    @Test
+    @DisplayName("buildSnapshot: 空表落盘产物是 `players: {}`，重读不得被当成截断隔离（自洽性）")
+    void emptySnapshotRoundTripsWithoutSelfQuarantine() throws Exception {
+        BareHost host = loadBareHost();
+        StatsManager stats = new StatsManager(host);
+        stats.saveNow();
+
+        File statsFile = new File(host.getDataFolder(), "player-stats.yml");
+        assertTrue(statsFile.isFile(), "saveNow() 必须真的写出文件");
+        assertFalse(MockBukkitTestBase.TestPaths.read(statsFile).isBlank(),
+                "空表落盘也不能产出 0 字节 —— 否则本类会亲手写出 load() 要隔离的截断形态。实际内容："
+                        + MockBukkitTestBase.TestPaths.read(statsFile));
+
+        // 重读：同一份文件不得被判损坏（否则「空表 → 落盘 → 重启 → 文件被隔离」形成闭环）
+        MockBukkitTestBase.LogCapture logs = attachLogCapture(host.getLogger());
+        new StatsManager(host);
+        assertTrue(statsFile.isFile(), "自己写出的空表在重读时不得被隔离");
+        assertEquals(0, logs.countAt(java.util.logging.Level.SEVERE),
+                "重读不得打 SEVERE。捕获到：" + logs.lines());
+    }
+
+    /**
+     * 缺陷 B：瞬时 I/O 失败曾与解析失败共用一个 catch。
+     *
+     * <p>用一个<b>目录</b>顶替 {@code player-stats.yml}：{@code exists()} 为 true，
+     * 而 {@code Files.readString} 会抛 {@link java.io.IOException}（Windows 上是
+     * {@code AccessDeniedException: Is a directory}）。这精确复现了「文件在、内容没问题、
+     * 这次就是读不到」的语义 —— 而这正是杀软/备份占用时的情形（内容完好）。
+     */
+    @Test
+    @DisplayName("load: I/O 失败 → 不隔离、进只读、拒写（绝不用空缓存覆盖读不出来的好数据）")
+    void ioFailureEntersReadOnlyAndRefusesToSave() throws Exception {
+        BareHost host = loadBareHost();
+        MockBukkitTestBase.LogCapture logs = attachLogCapture(host.getLogger());
+        File statsFile = new File(host.getDataFolder(), "player-stats.yml");
+        java.nio.file.Files.createDirectory(statsFile.toPath());   // exists() == true，读必失败
+
+        StatsManager stats = new StatsManager(host);
+
+        assertTrue(stats.top(StatsManager.StatType.KILLS, 10).isEmpty(), "应以空缓存启动");
+        assertTrue(logs.anyMatch(line -> line.startsWith("SEVERE|")
+                        && line.contains("could not be read") && line.contains("READ-ONLY")),
+                "I/O 失败必须 SEVERE 且明确宣告进入只读。捕获到：" + logs.lines());
+        assertFalse(new File(host.getDataFolder(), "player-stats.yml.corrupt").exists(),
+                "I/O 失败绝不能隔离 —— 那会把一份内容完好的文件挪走");
+        assertTrue(java.nio.file.Files.isDirectory(statsFile.toPath()), "原文件必须原地保留");
+
+        // 关键：本局结算出的战绩不得落盘（否则 60 秒后定时刷盘会用空快照覆盖那份好数据）
+        stats.recordOffline(BOB, "Bob", new PlayerData(BOB), Boolean.TRUE, 5);
+        stats.saveNow();
+
+        assertTrue(java.nio.file.Files.isDirectory(statsFile.toPath()),
+                "只读模式下 saveNow() 必须拒写 —— 文件路径上仍是原物，未被替换成空快照");
+        assertTrue(logs.anyMatch(line -> line.startsWith("WARNING|")
+                        && line.contains("Refusing to save " + "player-stats.yml")),
+                "拒写必须明确告知（含恢复指引）。捕获到：" + logs.lines());
+        assertEquals(1, logs.lines().stream()
+                        .filter(line -> line.contains("Refusing to save player-stats.yml")).count(),
+                "拒写提示必须只打一次 —— 每轮定时刷盘都刷一行会把日志淹掉");
+    }
+
+    @Test
+    @DisplayName("load: 只读降级在「文件再次可读」时解除（对应 YamlFileGate 的 OK 才解封）")
+    void readOnlyIsClearedWhenFileBecomesReadableAgain() throws Exception {
+        BareHost host = loadBareHost();
+        File statsFile = new File(host.getDataFolder(), "player-stats.yml");
+        java.nio.file.Files.createDirectory(statsFile.toPath());
+
+        StatsManager stats = new StatsManager(host);
+        java.nio.file.Files.delete(statsFile.toPath());
+        MockBukkitTestBase.TestPaths.write(statsFile, "players: {}\n");
+
+        stats.load();                    // 管理员修好文件后的 reload 路径
+
+        stats.recordOffline(BOB, "Bob", new PlayerData(BOB), Boolean.TRUE, 5);
+        stats.saveNow();
+
+        assertTrue(statsFile.isFile(), "解除只读后必须恢复写盘");
+        assertFalse(MockBukkitTestBase.TestPaths.read(statsFile).isBlank(), "文件内容不得为空");
+        assertFalse(MockBukkitTestBase.TestPaths.read(statsFile).isEmpty());
+        assertEquals(1, new StatsManager(host).top(StatsManager.StatType.GAMES, 10).size(),
+                "解除只读后写入的战绩必须能被重读回来");
+    }
+
     // ---------------------------------------------------------------- StatType
 
     @Test
