@@ -70,12 +70,42 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
     private File shopFile;
     private File corruptFile;
 
+    /** 数目录里 shop.yml 的隔离产物（固定名或带时间戳的都算）。 */
+    private long countQuarantineFiles() {
+        File[] all = shopFile.getParentFile().listFiles();
+        if (all == null) return 0;
+        return java.util.Arrays.stream(all)
+                .filter(f -> f.getName().equals("shop.yml.corrupt")
+                        || f.getName().startsWith("shop.yml.corrupt."))
+                .count();
+    }
+
     @BeforeEach
     void setUp() {
         host = loadBareHost();
         loader = new ShopConfigLoader(host);
         shopFile = new File(host.getDataFolder(), "shop.yml");
         corruptFile = new File(host.getDataFolder(), "shop.yml.corrupt");
+    }
+
+    /**
+     * 删掉 shop.yml 的**全部**隔离产物（固定名 + 所有带时间戳的）。
+     *
+     * <p>隔离产物带时间戳后，「删掉 .corrupt」这个动作可能对应多份文件；
+     * 只删固定名会留下时间戳副本，于是 {@code hasQuarantinedCopy} 仍为真，
+     * 「服主清理证据后应当允许重建」这条回归就测不出来了。</p>
+     */
+    private void deleteAllQuarantineFiles() {
+        File[] all = shopFile.getParentFile().listFiles();
+        if (all == null) return;
+        boolean deletedAny = false;
+        for (File f : all) {
+            if (f.getName().equals("shop.yml.corrupt") || f.getName().startsWith("shop.yml.corrupt.")) {
+                assertTrue(f.delete(), "测试前置：删除隔离产物失败 " + f.getName());
+                deletedAny = true;
+            }
+        }
+        assertTrue(deletedAny, "测试前置：本应存在隔离产物可删");
     }
 
     // ================================================================ 回归本体
@@ -88,7 +118,7 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
         assertThrows(IllegalStateException.class, loader::load,
                 "首次 load 必须失败并触发隔离（F1 的原意：不得降级成空商店）");
         assertFalse(shopFile.exists(), "坏文件必须已被隔离搬走（shop.yml 不应还在原地）");
-        assertTrue(corruptFile.exists(), "隔离产物 shop.yml.corrupt 必须存在");
+        assertTrue(countQuarantineFiles() > 0, "隔离产物 shop.yml.corrupt 必须存在");
 
         // ---- 关键：第二次 load。此时 shop.yml 不存在 —— 与「首次安装」无法从文件系统区分 ----
         assertThrows(IllegalStateException.class, loader::load,
@@ -98,7 +128,7 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
 
         assertFalse(shopFile.exists(),
                 "第二次 load 之后 shop.yml 仍不得被写出来 —— 重建出厂模板正是本回归的核心杀伤");
-        assertTrue(corruptFile.exists(),
+        assertTrue(countQuarantineFiles() > 0,
                 "隔离产物必须原样保留，供服主对照修复");
     }
 
@@ -107,7 +137,7 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
     void restartedLoaderDoesNotRebuildFactoryTemplateWhileCorruptSiblingExists() throws IOException {
         TestPaths.write(shopFile, CORRUPT_SHOP_YML);
         assertThrows(IllegalStateException.class, loader::load);
-        assertTrue(corruptFile.exists(), "前置条件：隔离产物存在");
+        assertTrue(countQuarantineFiles() > 0, "前置条件：隔离产物存在");
 
         // 新实例 = 新进程（YamlFileGate 的进程内闩全部重置）。跨重启只能靠磁盘信号判定。
         ShopConfigLoader afterRestart = new ShopConfigLoader(host);
@@ -117,7 +147,7 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
                         + "评审描述的「坏文件 → 插件禁用 + 文件被搬走 + 下次启动静默写回出厂模板」链条最后一步");
 
         assertFalse(shopFile.exists(), "重启路径同样不得重建出厂模板");
-        assertTrue(corruptFile.exists(), "隔离产物必须保留到服主显式处理");
+        assertTrue(countQuarantineFiles() > 0, "隔离产物必须保留到服主显式处理");
     }
 
     // ================================================================ 防「修过头」
@@ -126,13 +156,13 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
     @DisplayName("首次安装（无 shop.yml、无 .corrupt）仍必须写出出厂模板并解析成功")
     void firstInstallStillWritesFactoryTemplate() {
         assertFalse(shopFile.exists(), "前置条件：全新数据目录");
-        assertFalse(corruptFile.exists(), "前置条件：没有隔离产物");
+        assertFalse(countQuarantineFiles() > 0, "前置条件：没有隔离产物");
 
         ShopConfig config = loader.load();
 
         assertTrue(shopFile.exists(),
                 "首次安装必须生成 shop.yml；否则商店在全新服务器上直接不可用");
-        assertFalse(corruptFile.exists(), "正常路径不得凭空产生隔离产物");
+        assertFalse(countQuarantineFiles() > 0, "正常路径不得凭空产生隔离产物");
         assertEquals(Material.EMERALD, config.getCurrencyMaterial());
         assertEquals(54, config.getGuiSize());
         assertEquals(16, config.getItems().size(),
@@ -145,12 +175,12 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
     void deletingCorruptSiblingAllowsFactoryResetAfterRestart() throws IOException {
         TestPaths.write(shopFile, CORRUPT_SHOP_YML);
         assertThrows(IllegalStateException.class, loader::load);
-        assertTrue(corruptFile.exists());
+        assertTrue(countQuarantineFiles() > 0);
 
         // 服主认账：「我就是要一份干净的 shop.yml」。删掉隔离产物 + 重启即是显式同意。
         // 必须用新实例：YamlFileGate 的进程内闩刻意不自动解封（同 ArenaManager 的约定），
         // 所以「删 .corrupt 但不重启」不会立刻放行——这是有意的，见类注释的风险说明。
-        assertTrue(corruptFile.delete(), "测试前置：删除隔离产物失败");
+        deleteAllQuarantineFiles();
         ShopConfigLoader afterRestart = new ShopConfigLoader(host);
 
         ShopConfig config = afterRestart.load();
@@ -164,7 +194,7 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
     void deletingCorruptSiblingWithoutRestartStillRefusesRebuild() throws IOException {
         TestPaths.write(shopFile, CORRUPT_SHOP_YML);
         assertThrows(IllegalStateException.class, loader::load);
-        assertTrue(corruptFile.delete(), "测试前置：删除隔离产物失败");
+        deleteAllQuarantineFiles();
 
         assertThrows(IllegalStateException.class, loader::load,
                 "闸门的「ABSENT 不解除锁定」是本回归的最后一道防线：删掉 .corrupt 不能等于同意覆盖");
@@ -178,7 +208,7 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
     void adminRepairedFileLoadsAfterQuarantine() throws IOException {
         TestPaths.write(shopFile, CORRUPT_SHOP_YML);
         assertThrows(IllegalStateException.class, loader::load);
-        assertTrue(corruptFile.exists(), "前置条件：坏文件已被隔离");
+        assertTrue(countQuarantineFiles() > 0, "前置条件：坏文件已被隔离");
 
         // 服主从 .corrupt 取回内容、修好后放回 shop.yml（.corrupt 留在原地也无妨）
         TestPaths.write(shopFile, ADMIN_SHOP_YML);
@@ -210,8 +240,10 @@ class ShopConfigQuarantineRebuildTest extends MockBukkitTestBase {
 
         TestPaths.write(shopFile, CORRUPT_SHOP_YML);
         assertThrows(IllegalStateException.class, loader::load, "再次被改坏必须再次失败");
-        assertTrue(corruptFile.exists(), "第二次隔离同样要留下 .corrupt");
         assertFalse(shopFile.exists(), "第二次隔离会把 shop.yml 再次搬走");
+        // 隔离产物带时间戳后，两次隔离必须各留一份现场（不再互相覆盖）
+        assertEquals(2, countQuarantineFiles(),
+                "★ 第二次隔离不得抹掉第一次的现场——两份现场同时在场才看得出复发规律");
 
         assertThrows(IllegalStateException.class, loader::load,
                 "第二次隔离后的 load 同样不得重建模板");
