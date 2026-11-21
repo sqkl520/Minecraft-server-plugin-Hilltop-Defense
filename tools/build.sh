@@ -118,11 +118,29 @@ java_major() {
     # 不用 `| head -n 1` 取首行：脚本开了 pipefail，而 Windows 的 java.exe 在
     # head 读完退出后会收到 SIGPIPE，管道返回 141，会被误判成「取版本失败」。
     # 改成整段捕获再用参数展开截首行，并对 CRLF 去掉行尾 \r。
-    out="$("$java" -version 2>&1)" || return 1
-    out="${out%%$'\n'*}"
-    out="${out%$'\r'}"
+    #
+    # 为什么重试：入口探测要连试多个候选目录，每个都起一次 java.exe。并发构建
+    # （同一台机器上另一个 Maven 正在跑测试、或杀毒软件正在扫描新解压的 JDK）
+    # 会让 `java -version` 偶发非零退出。一次失败就判定「这个 JDK 不可用」是错的
+    # 判断——它只是这一次没起来。三个候选目录各失败一次，脚本就报了「未找到 JDK 21」，
+    # 而实际上 JDK 完全正常。这里给两次尝试，失败间隔 200ms 让占用方先退。
+    local attempt out=""
+    for attempt in 1 2; do
+        if out="$("$java" -version 2>&1)"; then
+            break
+        fi
+        out=""
+        (( attempt < 2 )) && sleep 0.2
+    done
+    [[ -n "$out" ]] || return 1
     # 形如：java version "17.0.20.1" / openjdk version "21.0.10"
-    ver="$(printf '%s' "$out" | sed -n 's/.*version "\([0-9][0-9.]*\)".*/\1/p')"
+    #
+    # 不能只取首行：设了 JDK_JAVA_OPTIONS / JAVA_TOOL_OPTIONS 时，java 会先打一行
+    #   NOTE: Picked up JDK_JAVA_OPTIONS: -Djdk.attach.allowAttachSelf=true ...
+    # 把真正的版本行挤到第二行。取首行会让正则匹配失败，于是明明是可用的 JDK 21
+    # 被判成「未找到 JDK 21」（本仓库的测试文档恰好要求设 JDK_JAVA_OPTIONS，
+    # 所以这条路径是常态而非边缘情况）。改为在整段输出里找第一行含 version "x.y" 的。
+    ver="$(printf '%s' "$out" | sed -n 's/.*version "\([0-9][0-9.]*\)".*/\1/p' | head -n 1)"
     if [[ "$ver" == 1.* ]]; then
         ver="$(printf '%s' "$ver" | cut -d. -f2)"   # 1.8 -> 8
     else
