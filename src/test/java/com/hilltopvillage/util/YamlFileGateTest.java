@@ -84,7 +84,7 @@ class YamlFileGateTest {
         assertFalse(gate.write(fresh), "只读闸门必须拒绝写盘");
 
         assertFalse(file.exists(), "绝不能生成新的 arenas.yml");
-        assertTrue(dir.resolve("arenas.yml.corrupt").toFile().exists());
+        assertTrue(quarantineFiles(dir, "arenas.yml") > 0);
         assertEquals(1, countFiles(dir), "目录里只应有 .corrupt");
     }
 
@@ -151,7 +151,7 @@ class YamlFileGateTest {
         assertTrue(gate.isReadOnly());
 
         // 管理员把 .corrupt 改回并补全
-        Files.deleteIfExists(dir.resolve("arenas.yml.corrupt"));
+        deleteAllQuarantineFiles(dir, "arenas.yml");
         Files.writeString(file.toPath(), REALISTIC_ARENA, StandardCharsets.UTF_8);
 
         gate.reset();
@@ -242,6 +242,30 @@ class YamlFileGateTest {
     private static long countFiles(Path dir) throws IOException {
         try (var entries = Files.list(dir)) {
             return entries.count();
+        }
+    }
+
+    /** 数某个文件的隔离产物（固定名或带时间戳的都算——自 S10 系列修复起命名带时间戳）。 */
+    private static long quarantineFiles(Path dir, String baseName) throws IOException {
+        try (var entries = Files.list(dir)) {
+            return entries
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.equals(baseName + ".corrupt") || n.startsWith(baseName + ".corrupt.");
+                    })
+                    .count();
+        }
+    }
+
+    /** 删掉某个文件的全部隔离产物（模拟服主清理证据后重启）。 */
+    private static void deleteAllQuarantineFiles(Path dir, String baseName) throws IOException {
+        try (var entries = Files.list(dir)) {
+            for (Path p : entries.toList()) {
+                String n = p.getFileName().toString();
+                if (n.equals(baseName + ".corrupt") || n.startsWith(baseName + ".corrupt.")) {
+                    Files.deleteIfExists(p);
+                }
+            }
         }
     }
 

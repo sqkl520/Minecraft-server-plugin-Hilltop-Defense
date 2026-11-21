@@ -203,12 +203,15 @@ public class ShopConfigLoader {
      * 正发生在重启之后。</p>
      */
     private boolean isQuarantined(File file) {
-        return gate.isReadOnly() || corruptFile(file).exists();
+        return gate.isReadOnly() || YamlFiles.hasQuarantinedCopy(file);
     }
 
-    /** 隔离产物路径：与 {@link YamlFiles#quarantine} 的命名保持一致（{@code <name>.corrupt}）。 */
+    /**
+     * 隔离产物路径前缀：与 {@link YamlFiles#quarantinedCopy} 的命名保持一致
+     * （{@code <name>.corrupt.<时间戳>}）。仅用于文案里点名，不用于判定。
+     */
     private static File corruptFile(File file) {
-        return new File(file.getAbsoluteFile().getParentFile(), file.getName() + ".corrupt");
+        return YamlFiles.corruptFile(file);
     }
 
     /**

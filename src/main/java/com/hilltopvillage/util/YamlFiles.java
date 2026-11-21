@@ -131,10 +131,56 @@ public final class YamlFiles {
     }
 
     /**
-     * 该文件的隔离产物路径（{@code <name>.corrupt}），与 {@link #quarantine} 的命名保持一致。
+     * 该文件的隔离产物**前缀**（{@code <name>.corrupt}）。
+     *
+     * <p>真正的隔离文件名是 {@code <name>.corrupt.<时间戳>}（见 {@link #quarantinedCopy}），
+     * 这个名字只用作前缀与「是否隔离过」的判据依据。</p>
      */
     public static File corruptFile(File file) {
         return new File(file.getAbsoluteFile().getParentFile(), file.getName() + ".corrupt");
+    }
+
+    /**
+     * 为一次隔离生成带时间戳的落点：{@code <name>.corrupt.<yyyyMMdd-HHmmss-SSS>}。
+     *
+     * <p><b>为什么不再覆盖同一份 {@code .corrupt}</b>：隔离的用途是<b>留下证据</b>给人看，
+     * 不是给人恢复的（恢复要的是最后一次<b>有效</b>的备份，那不是 {@code .corrupt}）。
+     * 固定名 + {@code REPLACE_EXISTING} 会让第二次损坏抹掉第一次的现场——而「一周内坏两次」
+     * 恰恰是最需要两次现场同时在场才能看出规律的情况。改用时间戳后每次损坏各自留一份。</p>
+     *
+     * <p>时间戳精确到毫秒并加序号兜底：同一毫秒内连续隔离两次时（几乎只可能出现在测试里）
+     * 追加 {@code -2}、{@code -3} 直到不重名，保证<b>绝不覆盖</b>。</p>
+     */
+    public static File quarantinedCopy(File file) {
+        File dir = file.getAbsoluteFile().getParentFile();
+        String stamp = java.time.LocalDateTime.now()
+                .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss-SSS"));
+        File candidate = new File(dir, file.getName() + ".corrupt." + stamp);
+        int seq = 2;
+        while (candidate.exists()) {
+            candidate = new File(dir, file.getName() + ".corrupt." + stamp + "-" + seq);
+            seq++;
+            if (seq > 1000) {
+                // 理论上到不了；真到了就退化成覆盖固定名，也比抛异常中止加载流程好
+                return corruptFile(file);
+            }
+        }
+        return candidate;
+    }
+
+    /**
+     * 该文件是否**存在任意一份**隔离产物（{@code <name>.corrupt} 或 {@code <name>.corrupt.<时间戳>}）。
+     */
+    public static boolean hasQuarantinedCopy(File file) {
+        if (corruptFile(file).exists()) return true;
+        File dir = file.getAbsoluteFile().getParentFile();
+        File[] siblings = dir == null ? null : dir.listFiles();
+        if (siblings == null) return false;
+        String prefix = file.getName() + ".corrupt.";
+        for (File sibling : siblings) {
+            if (sibling.getName().startsWith(prefix)) return true;
+        }
+        return false;
     }
 
     /**
@@ -149,22 +195,21 @@ public final class YamlFiles {
      *       正发生在重启之后——重启后新 gate 是干净的，模板照样被写回去。</li>
      * </ul>
      *
-     * <p>这条判据的正确先例是 {@code ShopConfigLoader#isQuarantined}，
-     * 本方法把它提上来给所有配置文件共用。调用方在 {@code !file.exists()} 分支里
-     * 必须先问这个，再决定要不要 {@code saveResource}。</p>
+     * <p>隔离产物自 S10 系列修复起带时间戳（{@link #quarantinedCopy}），因此这里的磁盘判据
+     * 必须用 {@link #hasQuarantinedCopy}（前缀匹配）而<b>不能</b>再判固定名是否存在，
+     * 否则历史 {@code .corrupt} 会让隔离态永远判不出来。</p>
      */
     public static boolean isQuarantined(File file, YamlFileGate gate) {
-        return (gate != null && gate.isReadOnly()) || corruptFile(file).exists();
+        return (gate != null && gate.isReadOnly()) || hasQuarantinedCopy(file);
     }
 
     /**
-     * 把不可用的文件挪成 {@code *.corrupt}，并返回「不可用」的结论。
+     * 把不可用的文件挪成 {@code *.corrupt.<时间戳>}，并返回「不可用」的结论。
      *
-     * <p>{@code REPLACE_EXISTING}：上一次的坏文件会被覆盖。刻意如此——保留「最新一次现场」比
-     * 堆一串历史上更有用，日志里会打出被截断的原因。</p>
+     * <p><b>不再覆盖</b>：每次隔离各自留一份现场（{@link #quarantinedCopy}）。</p>
      */
     private static Loaded quarantine(File file, Status status, String detail, Logger logger) {
-        File corrupt = corruptFile(file);
+        File corrupt = quarantinedCopy(file);
         try {
             Files.move(file.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
             logger.severe(file.getName() + " is unusable (" + detail + "); renamed to "

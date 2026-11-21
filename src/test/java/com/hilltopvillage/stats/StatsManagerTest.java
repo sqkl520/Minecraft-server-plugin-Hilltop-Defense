@@ -36,6 +36,21 @@ class StatsManagerTest extends MockBukkitTestBase {
     private static final UUID BOB = UUID.nameUUIDFromBytes("bob".getBytes());
     private static final UUID CARA = UUID.nameUUIDFromBytes("cara".getBytes());
 
+    /**
+     * 数 player-stats.yml 的隔离产物（固定名或带时间戳的都算）。
+     *
+     * <p>隔离产物自 S10 系列修复起带时间戳，固定名只作前缀；测试不能再硬编码
+     * {@code player-stats.yml.corrupt}。</p>
+     */
+    private static long countQuarantineFiles(BareHost host) {
+        File[] all = host.getDataFolder().listFiles();
+        if (all == null) return 0;
+        return java.util.Arrays.stream(all)
+                .filter(f -> f.getName().equals("player-stats.yml.corrupt")
+                        || f.getName().startsWith("player-stats.yml.corrupt."))
+                .count();
+    }
+
     // ---------------------------------------------------------------- top() 过滤
 
     @Test
@@ -264,7 +279,7 @@ class StatsManagerTest extends MockBukkitTestBase {
         assertTrue(stats.top(StatsManager.StatType.KILLS, 10).isEmpty(),
                 "损坏文件应以空统计启动，而不是让 onEnable 抛异常");
         assertFalse(statsFile.exists(), "损坏文件应被移走");
-        assertTrue(new File(host.getDataFolder(), "player-stats.yml.corrupt").isFile(),
+        assertTrue(countQuarantineFiles(host) > 0,
                 "损坏现场应保留为 .corrupt");
     }
 
@@ -289,7 +304,7 @@ class StatsManagerTest extends MockBukkitTestBase {
 
         assertTrue(stats.top(StatsManager.StatType.KILLS, 10).isEmpty(), "应以空统计启动");
         assertFalse(statsFile.exists(), "0 字节文件必须被移走 —— 它是截断写的签名，不是合法空表");
-        assertTrue(new File(host.getDataFolder(), "player-stats.yml.corrupt").isFile(),
+        assertTrue(countQuarantineFiles(host) > 0,
                 "空文件的现场必须保留为 .corrupt，供服主核对");
         assertTrue(logs.anyMatch(line -> line.startsWith("SEVERE|") && line.contains("is empty")),
                 "空文件必须打 SEVERE（旧实现在这里一行日志都没有）。捕获到：" + logs.lines());
@@ -305,7 +320,7 @@ class StatsManagerTest extends MockBukkitTestBase {
         new StatsManager(host);
 
         assertFalse(statsFile.exists(), "只有空白字符的文件同样没有任何 YAML 文档，必须隔离");
-        assertTrue(new File(host.getDataFolder(), "player-stats.yml.corrupt").isFile());
+        assertTrue(countQuarantineFiles(host) > 0);
     }
 
     /**
@@ -326,7 +341,7 @@ class StatsManagerTest extends MockBukkitTestBase {
 
         assertTrue(stats.top(StatsManager.StatType.KILLS, 10).isEmpty(), "零记录应是空缓存");
         assertTrue(statsFile.isFile(), "能解析的文件不得被移走 —— 这是合法配置，不是损坏");
-        assertFalse(new File(host.getDataFolder(), "player-stats.yml.corrupt").exists(),
+        assertFalse(countQuarantineFiles(host) > 0,
                 "不得产生 .corrupt");
         assertEquals(0, logs.countAt(java.util.logging.Level.SEVERE),
                 "合法空配置不该刷 SEVERE。捕获到：" + logs.lines());
@@ -375,7 +390,7 @@ class StatsManagerTest extends MockBukkitTestBase {
         assertTrue(logs.anyMatch(line -> line.startsWith("SEVERE|")
                         && line.contains("could not be read") && line.contains("READ-ONLY")),
                 "I/O 失败必须 SEVERE 且明确宣告进入只读。捕获到：" + logs.lines());
-        assertFalse(new File(host.getDataFolder(), "player-stats.yml.corrupt").exists(),
+        assertFalse(countQuarantineFiles(host) > 0,
                 "I/O 失败绝不能隔离 —— 那会把一份内容完好的文件挪走");
         assertTrue(java.nio.file.Files.isDirectory(statsFile.toPath()), "原文件必须原地保留");
 

@@ -92,7 +92,7 @@ class YamlFilesQuarantinePersistenceTest {
 
         assertFalse(firstLoaded.usable(), "前置：第一轮必须判为不可用");
         assertFalse(target.exists(), "前置：隔离后原文件必须已不在磁盘上");
-        assertTrue(YamlFiles.corruptFile(target).exists(), "前置：必须留下 .corrupt 现场");
+        assertTrue(YamlFiles.hasQuarantinedCopy(target), "前置：必须留下隔离现场（带时间戳）");
 
         // ── 第二轮（模拟重启）：全新 gate，原文件仍不存在 ──
         YamlFileGate afterRestart = new YamlFileGate(target, null, LOG);

@@ -2,6 +2,7 @@ package com.hilltopvillage.stats;
 
 import com.hilltopvillage.HilltopVillagePlugin;
 import com.hilltopvillage.core.PlayerData;
+import com.hilltopvillage.util.YamlFiles;
 import org.bukkit.Bukkit;
 import org.bukkit.configuration.ConfigurationSection;
 import org.bukkit.configuration.file.YamlConfiguration;
@@ -431,17 +432,22 @@ public class StatsManager {
     }
 
     /**
-     * 把损坏的存档文件重命名为 {@code *.corrupt} 保留现场（P2-34 / fix5 M-12）。
+     * 把损坏的存档文件重命名为 {@code *.corrupt.<时间戳>} 保留现场（P2-34 / fix5 M-12）。
      *
      * <p>fix5 M-12：原实现用 {@link File#renameTo} —— Windows（MoveFile 语义）不能覆盖
-     * 已存在的目标，上一轮生成的 {@code .corrupt} 会让二次隔离永远失败；改用
-     * {@link Files#move} + {@link StandardCopyOption#REPLACE_EXISTING}（与写盘路径同款），
-     * 目标已存在也能替换。返回值供调用方如实播报隔离结果。</p>
+     * 已存在的目标，上一轮生成的 {@code .corrupt} 会让二次隔离永远失败。当时改用
+     * {@code REPLACE_EXISTING} 解决，但那条修法只解决了「能不能隔离」，没解决「会不会
+     * 抹掉上一次的现场」。</p>
+     *
+     * <p>现改为每次隔离各自留一份带时间戳的副本（{@link YamlFiles#quarantinedCopy}）：
+     * 统计文件损坏往往不是孤立事件（磁盘满、掉电、写盘中断都会连续复发），而「一周内坏两次」
+     * 恰恰是最需要两份现场同时在场才能看出规律的场景。覆盖式命名会让第二次损坏把第一次的
+     * 证据抹掉。</p>
      *
      * @return 是否成功隔离
      */
     private boolean quarantineCorruptFile() {
-        File corrupt = new File(statsFile.getParentFile(), statsFile.getName() + ".corrupt");
+        File corrupt = YamlFiles.quarantinedCopy(statsFile);
         try {
             Files.move(statsFile.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
             plugin.getLogger().warning("Damaged " + FILE_NAME + " renamed to " + corrupt.getName());

@@ -41,6 +41,32 @@ class YamlFilesTest {
     private static final Logger LOG = Logger.getLogger("YamlFilesTest");
 
     /**
+     * 找出某个文件的所有隔离产物（{@code <name>.corrupt} 或 {@code <name>.corrupt.<时间戳>}）。
+     *
+     * <p>隔离产物自 S10 系列修复起带时间戳，固定名只作为前缀——测试不能再硬编码
+     * {@code arenas.yml.corrupt}，否则实现一改成带时间戳就全线飘红（那正是这次改动的现象）。</p>
+     */
+    private static List<Path> quarantineFiles(Path dir, String baseName) throws IOException {
+        try (Stream<Path> stream = Files.list(dir)) {
+            return stream
+                    .filter(p -> {
+                        String n = p.getFileName().toString();
+                        return n.equals(baseName + ".corrupt") || n.startsWith(baseName + ".corrupt.");
+                    })
+                    .sorted()
+                    .toList();
+        }
+    }
+
+    /** 恰好一份隔离产物；多于一份说明发生了重复隔离，调用方通常应该失败。 */
+    private static Path singleQuarantine(Path dir, String baseName) throws IOException {
+        List<Path> all = quarantineFiles(dir, baseName);
+        assertEquals(1, all.size(),
+                "期望恰好一份隔离产物，实际：" + all.stream().map(p -> p.getFileName().toString()).toList());
+        return all.get(0);
+    }
+
+    /**
      * 最小「形态正常」的 arenas.yml：竞技场段除 world 外还有别的键。
      *
      * <p>只写 {@code world} 一个键会被哨兵②b 判为截断特征（这正是本组用例要区分的东西），
@@ -63,8 +89,8 @@ class YamlFilesTest {
         assertFalse(loaded.usable());
         assertNull(loaded.config());
         assertFalse(file.exists(), "被隔离的原文件不应留在原地");
-        assertTrue(dir.resolve("arenas.yml.corrupt").toFile().exists(), ".corrupt 应被创建");
-        assertEquals(0, Files.size(dir.resolve("arenas.yml.corrupt")), ".corrupt 应保留原内容");
+        assertFalse(quarantineFiles(dir, "arenas.yml").isEmpty(), ".corrupt 应被创建");
+        assertEquals(0, Files.size(singleQuarantine(dir, "arenas.yml")), ".corrupt 应保留原内容");
     }
 
     @Test
@@ -77,7 +103,7 @@ class YamlFilesTest {
 
         assertEquals(YamlFiles.Status.SUSPECT, loaded.status());
         assertFalse(loaded.usable());
-        assertTrue(dir.resolve("arenas.yml.corrupt").toFile().exists());
+        assertFalse(quarantineFiles(dir, "arenas.yml").isEmpty());
     }
 
     @Test
@@ -90,7 +116,7 @@ class YamlFilesTest {
 
         assertEquals(YamlFiles.Status.PARSE_FAILED, loaded.status());
         assertFalse(loaded.usable());
-        assertTrue(dir.resolve("game-settings.yml.corrupt").toFile().exists());
+        assertFalse(quarantineFiles(dir, "game-settings.yml").isEmpty());
     }
 
     @Test
@@ -132,15 +158,38 @@ class YamlFilesTest {
     }
 
     @Test
-    @DisplayName("已有的 .corrupt 被覆盖（保留最新一次现场）")
-    void existingCorruptIsReplaced(@TempDir Path dir) throws IOException {
+    @DisplayName("已有的 .corrupt 不被覆盖：每次隔离各留一份现场")
+    void existingCorruptIsPreservedNotOverwritten(@TempDir Path dir) throws IOException {
         File file = dir.resolve("arenas.yml").toFile();
-        Files.writeString(dir.resolve("arenas.yml.corrupt"), "old-scene\n", StandardCharsets.UTF_8);
+        // 上一次损坏留下的现场
+        Path previous = dir.resolve("arenas.yml.corrupt");
+        Files.writeString(previous, "old-scene\n", StandardCharsets.UTF_8);
+        // 这一次又坏了
         Files.write(file.toPath(), new byte[0]);
 
         YamlFiles.load(file, YamlFiles.arenasValidator(), LOG);
 
-        assertEquals("", Files.readString(dir.resolve("arenas.yml.corrupt"), StandardCharsets.UTF_8));
+        // 旧现场必须原封不动
+        assertEquals("old-scene\n", Files.readString(previous, StandardCharsets.UTF_8),
+                "★ 上一次损坏的现场不得被抹掉——两份现场同时在场才看得出复发规律");
+
+        // 并且新生成了第二份（固定名 + 本次带时间戳的副本）
+        List<Path> all = quarantineFiles(dir, "arenas.yml");
+        assertEquals(2, all.size(),
+                "应有两份现场（旧的固定名 + 本次时间戳），实际：" + all.stream().map(p -> p.getFileName().toString()).toList());
+        Path fresh = all.stream().filter(p -> !p.equals(previous)).findFirst().orElseThrow();
+        assertEquals(0, Files.size(fresh), "新现场应是这次的空文件内容");
+    }
+
+    @Test
+    @DisplayName("时间戳命名下 isQuarantined 仍能判出隔离态")
+    void isQuarantinedDetectsTimestampedCopy(@TempDir Path dir) throws IOException {
+        File file = dir.resolve("arenas.yml").toFile();
+        Files.writeString(dir.resolve("arenas.yml.corrupt.20261121-223015-123"), "x\n", StandardCharsets.UTF_8);
+
+        assertTrue(YamlFiles.isQuarantined(file, null),
+                "★ 判据必须前缀匹配：只判固定名的话，带时间戳的隔离产物会让「已隔离」永远判不出来");
+        assertTrue(YamlFiles.hasQuarantinedCopy(file));
     }
 
     @Test
@@ -155,7 +204,7 @@ class YamlFilesTest {
         assertEquals(YamlFiles.Status.OK, loaded.status());
         assertNotNull(loaded.config());
         assertTrue(file.exists(), "OK 的文件不应被隔离");
-        assertFalse(dir.resolve("arenas.yml.corrupt").toFile().exists());
+        assertTrue(quarantineFiles(dir, "arenas.yml").isEmpty());
 
         String saved = loaded.config().saveToString();
 
@@ -214,9 +263,9 @@ class YamlFilesTest {
                 "空竞技场段必须判 SUSPECT：" + loaded.detail());
         assertFalse(loaded.usable());
         assertFalse(file.exists(), "必须被隔离");
-        assertTrue(dir.resolve("arenas.yml.corrupt").toFile().exists());
+        assertFalse(quarantineFiles(dir, "arenas.yml").isEmpty());
         assertEquals(emptySection,
-                Files.readString(dir.resolve("arenas.yml.corrupt"), StandardCharsets.UTF_8),
+                Files.readString(singleQuarantine(dir, "arenas.yml"), StandardCharsets.UTF_8),
                 ".corrupt 应保留原始字节");
 
         assertSuspect(YamlFiles.arenasValidator(), "arenas:\n  arena1: {}\n",
@@ -264,7 +313,7 @@ class YamlFilesTest {
         assertTrue(loaded.usable());
         assertNotNull(loaded.config());
         assertTrue(file.exists(), "合法文件必须留在原地");
-        assertFalse(dir.resolve("arenas.yml.corrupt").toFile().exists(), "不应产生 .corrupt");
+        assertTrue(quarantineFiles(dir, "arenas.yml").isEmpty(), "不应产生 .corrupt");
         assertEquals("hilltop_arena1", loaded.config().getString("arenas.arena1.world"));
     }
 
@@ -346,7 +395,7 @@ class YamlFilesTest {
         Files.write(empty.toPath(), new byte[0]);
         YamlFiles.Loaded loaded = YamlFiles.load(empty, YamlFiles.monstersConfigValidator(), LOG);
         assertEquals(YamlFiles.Status.SUSPECT, loaded.status());
-        assertTrue(dir.resolve("monsters-config.yml.corrupt").toFile().exists(), "空文件仍须被隔离");
+        assertFalse(quarantineFiles(dir, "monsters-config.yml").isEmpty(), "空文件仍须被隔离");
     }
 
     @Test
