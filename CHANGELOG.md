@@ -83,6 +83,7 @@
 - **新增 CI**（`.github/workflows/build.yml`）：Linux + JDK 21 上跑 `clean test`，只构建不分发
 - **新增 `.gitattributes`**：`*.sh` 强制 LF / `*.cmd` 强制 CRLF / 源码与文档统一 LF
 - **`.gitignore` 新增 `/.work/`**：多智能体流水线的过程产物不入库
+- **构建脚本移入 `tools/`（2026-11-21）**：`build.sh` / `build.cmd` 从仓库根移到 `tools/`，符合「根目录不允许散落文件」的仓库规范；两个脚本改为用自身位置反推仓库根并在启动时 `cd` 过去，因此从任何目录调用都能正确定位 `pom.xml`（此前要求 cwd 必须是仓库根）；CI workflow、PR 模板、`CONTRIBUTING*`、`README*`、`pom.xml` enforcer 提示中的调用路径同步更新为 `tools/build.sh` / `tools\build.cmd`
 
 ### ⚠️ 升级提示（升级到本版必读）
 

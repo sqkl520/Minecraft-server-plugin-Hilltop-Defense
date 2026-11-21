@@ -1,3 +1,5 @@
+[English](config-reference-EN.md) | 简体中文
+
 # 配置文件逐项解释
 
 本文由 README 对应章节下移而来，README 侧保留摘要与入口链接。原 README 的 starter-kit 段落在 YAML 围栏之外（渲染会散成段落），此处把闭合围栏移到 starter-kit 之后修复，正文逐字未动。

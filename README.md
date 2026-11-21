@@ -1,7 +1,5 @@
 [English](README-EN.md) | 简体中文
 
-![Hilltop Village](.github/social-preview.png)
-
 # Hilltop Village 峰上村庄守卫战
 
 **面向 Paper 服务器的合作 PvE 塔防插件** —— 多名玩家共同守护村民与能量节点，抵御逐波增强的怪物。与常见的竞技类小游戏插件不同，它主打**合作**：没有对抗队伍，输赢取决于全队能否一起撑过全部波次。
@@ -151,7 +149,7 @@ shop:
 > [部署阶段 1/2/2.5 完整版](docs/guides/deploy-stages-1-2.md) ·
 > [8 步向导逐步骤详解](docs/guides/setup-wizard.md) ·
 > [竞技场生命周期与启用队列](docs/guides/arena-lifecycle.md)
-> ｜ English: [docs/guides/en/](docs/guides/en/)
+> ｜ English: [arena-lifecycle](docs/guides/arena-lifecycle-EN.md) · [deploy-stages-1-2](docs/guides/deploy-stages-1-2-EN.md) · [setup-wizard](docs/guides/setup-wizard-EN.md)
 
 ### 阶段 1：准备世界
 
@@ -846,21 +844,21 @@ language: "zh"    # zh / en
 
 ## 构建
 
-需要 JDK 21 与 Maven 3.9.9。推荐在项目根目录（`pom.xml` 所在目录）使用随仓库提供的构建脚本：
+需要 JDK 21 与 Maven 3.9.9。推荐在项目根目录使用随仓库提供的构建脚本 `tools/build.sh`（脚本会自动切到 `pom.xml` 所在目录，因此在任何位置调用都可以）：
 
 ```bash
-./build.sh clean package
+./tools/build.sh clean package
 ```
 
-`build.sh` 会自动探测并切换 JDK 21（`JAVA_HOME` 已是 21 则直接沿用），所有参数原样透传给 Maven，不带参数时等价于 `mvn clean package`。例如：
+`tools/build.sh` 会自动探测并切换 JDK 21（`JAVA_HOME` 已是 21 则直接沿用），所有参数原样透传给 Maven，不带参数时等价于 `mvn clean package`。例如：
 
 ```bash
-./build.sh -o compile                  # 离线编译
-./build.sh -DskipTests clean package  # 跳过测试构建
-./build.sh test                       # 仅运行测试
+./tools/build.sh -o compile                  # 离线编译
+./tools/build.sh -DskipTests clean package   # 跳过测试构建
+./tools/build.sh test                        # 仅运行测试
 ```
 
-`build.sh` 需要 Git Bash / MSYS 环境，原生 cmd / PowerShell 不能直接执行。可用 `HV_JDK21_HOME` 覆盖 JDK 21 位置，`HV_JDK21_GLOB` 覆盖自动探测路径（默认 `/d/Java/zulu21.48.17-*`），`HV_MAVEN` 覆盖 Maven 路径。
+`tools/build.sh` 需要 Git Bash / MSYS 环境，原生 cmd / PowerShell 不能直接执行（改用 `tools\build.cmd`）。可用 `HV_JDK21_HOME` 覆盖 JDK 21 位置，`HV_JDK21_GLOB` 覆盖自动探测路径（默认 `/d/Java/zulu21.48.17-*`），`HV_MAVEN` 覆盖 Maven 路径。
 
 手动方式：如果直接调用 `mvn`，必须先设置 JDK 21 的 `JAVA_HOME`。本机默认 shell 的 `JAVA_HOME` 指向 JDK 17，与编译目标 21 冲突；未切换时 `maven-enforcer-plugin` 会在 `validate` 阶段拦下构建并打印清晰的中文提示，不会再出现晦涩的「无效的目标发行版: 21」。
 

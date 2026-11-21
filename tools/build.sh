@@ -6,10 +6,12 @@
 # 变清楚，但不会自动切 JDK；本脚本负责给出可执行路径。
 #
 # 用法（参数原样透传给 Maven，缺省参数等价于 clean package）：
-#   ./build.sh                         # = mvn clean package
-#   ./build.sh -o compile              # = mvn -o compile
-#   ./build.sh -o test-compile         # = mvn -o test-compile
-#   ./build.sh -DskipTests clean package
+#   ./tools/build.sh                         # = mvn clean package
+#   ./tools/build.sh -o compile              # = mvn -o compile
+#   ./tools/build.sh -o test-compile         # = mvn -o test-compile
+#   ./tools/build.sh -DskipTests clean package
+#
+# 脚本位于 <仓库根>/tools/，启动时会把 cwd 切到仓库根，因此在任何目录下调用都可以。
 #
 # 环境支持：Git Bash / MSYS2（有 cygpath）与 WSL（有 wslpath）都可以，
 # 两种环境的盘符路径写法不同（/d/... vs /mnt/d/...），脚本会自动识别并转换。
@@ -22,6 +24,21 @@
 #   MAVEN_OPTS      由调用者自行设置；本脚本不会覆盖
 
 set -uo pipefail
+
+# ---- 定位仓库根 -------------------------------------------------------------
+# 本脚本位于 <仓库根>/tools/，Maven 必须在 pom.xml 所在目录运行。
+# 用脚本自身位置反推根目录（而不是调用者的 cwd），这样从任何目录调用都能工作。
+HV_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HV_REPO_ROOT="$(cd "$HV_SCRIPT_DIR/.." && pwd)"
+if [[ ! -f "$HV_REPO_ROOT/pom.xml" ]]; then
+    echo "[build.sh][错误] 未在 $HV_REPO_ROOT 找到 pom.xml，无法确定仓库根目录。" >&2
+    echo "[build.sh][提示] 请保持脚本位于 <仓库根>/tools/build.sh，不要单独复制出去。" >&2
+    exit 1
+fi
+cd "$HV_REPO_ROOT" || {
+    echo "[build.sh][错误] 无法切换到仓库根目录：$HV_REPO_ROOT" >&2
+    exit 1
+}
 
 # 让 Maven 的中文提示按 UTF-8 输出，避免 Windows 默认 GBK 下乱码。
 # 不覆盖用户已有的 MAVEN_OPTS，只在后面追加缺失的编码参数。

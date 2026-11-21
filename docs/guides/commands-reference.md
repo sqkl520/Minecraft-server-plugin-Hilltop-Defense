@@ -1,3 +1,5 @@
+[English](commands-reference-EN.md) | 简体中文
+
 # 完整命令参考
 
 本文由 README 对应章节下移而来，README 侧保留摘要与入口链接。

@@ -1,3 +1,5 @@
+[English](shop-customization-EN.md) | 简体中文
+
 # 村民商店自定义（shop.yml 全字段）
 
 本文由 README 对应章节下移而来，README 侧保留摘要与入口链接。

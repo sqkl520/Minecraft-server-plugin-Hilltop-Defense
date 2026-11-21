@@ -1,64 +1,59 @@
-# Security Policy
+[English](SECURITY-EN.md) | 简体中文
 
-## Reporting a vulnerability
+# 安全策略
 
-**Please do not open a public issue, pull request or discussion for a security
-problem.** A public report gives everyone running a server the same window to be
-exploited before a fix ships.
+## 报告漏洞
 
-Use one of these private channels:
+**请不要为安全问题创建公开的 issue、pull request 或 discussion。** 公开报告会让所有运行该
+服务器的服主在补丁发布前都暴露在同一个被利用窗口里。
 
-1. **GitHub private advisory** (preferred) —
+请使用以下私密渠道之一：
+
+1. **GitHub 私密安全公告**（推荐）——
+   在本仓库的
    [Security → Report a vulnerability](https://github.com/sqkl520/Minecraft-server-plugin-Hilltop-Defense/security/advisories/new)
-   on this repository. This keeps the report, the discussion and the eventual fix
-   private until a patched release is published.
-2. **Email** — `sqkl520soap@gmail.com`, with `[Hilltop Village security]` in the
-   subject line, if you cannot use GitHub advisories.
+   提交。在补丁版本发布之前，报告、讨论与最终修复都会保持私密。
+2. **电子邮件** —— `sqkl520soap@gmail.com`，主题行请包含 `[Hilltop Village security]`，
+   适用于无法使用 GitHub 安全公告的情况。
 
-Please include:
+请一并提供：
 
-- the plugin version (`/hilltop status` shows it, or check the JAR filename),
-- the Paper version and any other plugins that are relevant,
-- what an attacker can do and what preconditions are needed,
-- reproduction steps, or a proof of concept if you have one.
+- 插件版本（`/hilltop status` 会显示，或查看 JAR 文件名），
+- Paper 版本以及任何相关插件，
+- 攻击者能做什么、需要哪些前置条件，
+- 复现步骤，或如果你已有的话，一个概念验证。
 
-## What to expect
+## 预期响应
 
-| Stage | Target |
+| 阶段 | 目标 |
 |---|---|
-| Acknowledgement that the report was received | within **7 days** |
-| Initial assessment (is it reproducible, is it in scope) | within **14 days** |
-| Fix or mitigation in a published release | best effort; depends on severity and complexity |
+| 确认收到报告 | **7 天**内 |
+| 初步评估（是否可复现、是否在范围内） | **14 天**内 |
+| 修复或缓解措施随发布版上线 | 尽力而为；取决于严重程度与复杂度 |
 
-This is a single-maintainer hobby project, so these are honest targets rather than
-a contractual SLA. If a report is going to take longer than a month to fix, you
-will be told rather than left waiting.
+这是一个单人维护的业余项目，所以上述是诚实的预期目标，而非合同意义上的 SLA。
+如果某份报告需要超过一个月才能修复，你会被告知，而不是被干等。
 
-## Scope
+## 范围
 
-In scope — anything that lets a player on a server running this plugin:
+在范围内 —— 任何能让玩家在运行本插件的服务器上：
 
-- break out of the game rules the plugin enforces (for example obtain items that
-  should be protected, or damage villagers and nodes that should be immune),
-- escalate privileges beyond the permissions they were granted,
-- corrupt server state or data files they should not be able to reach,
-- crash the server, or leak data belonging to other players.
+- 突破插件所强制的游戏规则（例如获取本应受保护的物品，或伤害本应免疫的村民与节点），
+- 将权限提升到超出其被授予的范围，
+- 破坏本不应能访问的服务器状态或数据文件，
+- 使服务器崩溃，或泄露属于其他玩家的数据。
 
-Out of scope — reports that depend on:
+不在范围内 —— 依赖以下前提的报告：
 
-- the server owner editing configuration to something unsafe and then expecting
-  the plugin to defend against it,
-- other plugins, the server software itself, or the client,
-- features that are documented limitations (for example the tab list has no way to
-  hide health numbers — that is a Bukkit API limitation, not a vulnerability).
+- 服主把配置改成不安全的设置，然后期望插件去防御它，
+- 其他插件、服务器软件本身，或客户端，
+- 已记录为已知限制的特性（例如 tab 列表无法隐藏血量数字 —— 那是 Bukkit API 的限制，不是漏洞）。
 
-## Supported versions
+## 支持的版本
 
-Only the **latest published release** receives security fixes. Pre-release
-(`-SNAPSHOT`) builds on the `main` branch are development snapshots and are not
-supported for production servers.
+只有**最新的已发布版本**会获得安全修复。`main` 分支上的预发布（`-SNAPSHOT`）构建是开发
+快照，不支持用于生产服务器。
 
-## Disclosure
+## 漏洞披露
 
-Once a fix is released, the advisory is published with credit to the reporter
-unless you ask to stay anonymous.
+修复发布后，安全公告会公开，并注明报告者（除非你要求匿名）。

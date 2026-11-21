@@ -1,3 +1,5 @@
+[简体中文](config-reference.md) | English
+
 # Configuration Reference (File by File)
 
 > Moved from the English README. The README keeps a summary and links here.
