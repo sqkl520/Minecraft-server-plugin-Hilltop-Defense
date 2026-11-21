@@ -188,14 +188,16 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
         setItem(36, Material.IRON_CHESTPLATE, lang.getFor(admin, "config.menu.monsters.armor-wear"),
                 lang.getFor(admin, "config.menu.monsters.armor-wear-desc"));
 
+        // S03-F2：每件护甲必须用**自己那一套**循环表。旧实现四个槽位共用一份「全头盔」数组，
+        // 点胸甲槽会写进 LEATHER_HELMET，且装备部位被换成头盔后再也循环不回胸甲。
         addArmorSlot(37, lang.getFor(admin, "config.menu.monsters.helmet"), mc.getHelmet(), v -> mc.setHelmet(v),
-                lang.getFor(admin, "config.menu.monsters.cycle-helmet"));
+                HELMET_CYCLE, lang.getFor(admin, "config.menu.monsters.cycle-helmet"));
         addArmorSlot(38, lang.getFor(admin, "config.menu.monsters.chestplate"), mc.getChestplate(), v -> mc.setChestplate(v),
-                lang.getFor(admin, "config.menu.monsters.cycle-chestplate"));
+                CHESTPLATE_CYCLE, lang.getFor(admin, "config.menu.monsters.cycle-chestplate"));
         addArmorSlot(39, lang.getFor(admin, "config.menu.monsters.leggings"), mc.getLeggings(), v -> mc.setLeggings(v),
-                lang.getFor(admin, "config.menu.monsters.cycle-leggings"));
+                LEGGINGS_CYCLE, lang.getFor(admin, "config.menu.monsters.cycle-leggings"));
         addArmorSlot(40, lang.getFor(admin, "config.menu.monsters.boots"), mc.getBoots(), v -> mc.setBoots(v),
-                lang.getFor(admin, "config.menu.monsters.cycle-boots"));
+                BOOTS_CYCLE, lang.getFor(admin, "config.menu.monsters.cycle-boots"));
 
         // ========== Unique skill params (Row 6: slots 45-52) ==========
         if (currentPage == Page.EXPLODE_BEETLE) {
@@ -271,7 +273,8 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
 
     /** Armor slot edit item: click to cycle preset material, Shift+Click for custom input. */
     private void addArmorSlot(int slot, String label, Material current,
-                               java.util.function.Consumer<Material> setter, String cycleHint) {
+                               java.util.function.Consumer<Material> setter, Material[] cycleList,
+                               String cycleHint) {
         String name = (current != null && current != Material.AIR) ? translateMaterial(current) : lang.getFor(admin, "config.menu.common.none");
         Material icon = (current != null && current != Material.AIR) ? current : Material.BARRIER;
 
@@ -294,7 +297,20 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
                                 },
                                 this::reopen, lang);
                     } else {
-                        Material next = cycleMaterial(current, ARMOR_CYCLE);
+                        // S03-F2：当前值不在**本槽位**的预设表里时（龟壳头盔、或手改/输入进来的
+                        // 异部位护甲、任意其它物品）**拒绝改动**，并提示改用 SHIFT 手动输入。
+                        // 旧实现会把 ARMOR_CYCLE[0] 直接写进去 —— 一次左键就删掉管理员有意配置的
+                        // 真实装备，且因为该材质不在表里，之后永远循环不回来（不可逆）。
+                        // 这里选择「不覆盖 + 明说」而不是「从第 1 档重新开始」：静默换档虽然可预测，
+                        // 但仍然是一次未经确认的真实数据修改；护甲是影响战斗数值的配置，
+                        // 必须由管理员显式决定，代价只是多点一次 SHIFT。
+                        Material next = nextArmorMaterial(current, cycleList);
+                        if (next == null) {
+                            admin.sendMessage(lang.getFor(admin,
+                                    "config.menu.monsters.armor-cycle-unknown",
+                                    current == null ? "-" : current.name()));
+                            return;
+                        }
                         setter.accept(next);
                         reopen();
                     }
@@ -386,6 +402,30 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
         return cycleList[0];
     }
 
+    /**
+     * S03-F2：护甲专用循环 —— 与 {@link #cycleMaterial} 的唯一差异是「未知值不兜底」。
+     *
+     * <p>武器/副手的「不在表里就回落到第 1 个」是可接受的：那些槽位的预设表覆盖了绝大多数
+     * 实际配置，且改动代价小。护甲不同 —— 预设表只有 6 档同部位装备，管理员很可能通过
+     * SHIFT 输入或手改 YAML 配了表外装备（龟壳头盔、皮革马铠以外的任意物品、模组材质）。
+     * 若照搬兜底，一次左键就把那份真实配置替换掉，而由于新值（表内）与旧值（表外）
+     * 不同部位或不同来源，管理员<b>无法靠继续左键循环回来</b>。</p>
+     *
+     * @return 下一个预设材质；{@code current} 非空且不在 {@code cycleList} 中时返回 {@code null}
+     *         （调用方据此提示「请用 SHIFT 手动输入」并<b>不改动</b>配置）
+     */
+    private Material nextArmorMaterial(Material current, Material[] cycleList) {
+        if (current == null || current == Material.AIR) {
+            return cycleList.length > 0 ? cycleList[0] : null;
+        }
+        for (int i = 0; i < cycleList.length; i++) {
+            if (cycleList[i] == current) {
+                return cycleList[(i + 1) % cycleList.length];
+            }
+        }
+        return null;
+    }
+
     // ---- Material cycle lists ----
     private static final Material[] WEAPON_CYCLE = {
         Material.DIAMOND_AXE, Material.DIAMOND_SWORD, Material.BOW,
@@ -397,9 +437,32 @@ public class MonsterSettingsMenu extends AbstractConfigMenu {
     private static final Material[] OFFHAND_CYCLE = {
         Material.SHIELD, Material.TOTEM_OF_UNDYING, Material.AIR
     };
-    private static final Material[] ARMOR_CYCLE = {
+
+    /*
+     * 四件护甲各一套循环表（S03-F2）。
+     *
+     * 档位顺序在四张表里刻意保持完全一致（皮革 → 锁链 → 铁 → 钻石 → 下界合金 → 金 → 空），
+     * 这样管理员在四个槽位上点同样次数的左键，得到的是同一档位的对应部位。
+     * 旧实现四槽共用一份「全头盔」表，点胸甲会写进 LEATHER_HELMET，装备部位被静默改掉。
+     */
+    private static final Material[] HELMET_CYCLE = {
         Material.LEATHER_HELMET, Material.CHAINMAIL_HELMET, Material.IRON_HELMET,
         Material.DIAMOND_HELMET, Material.NETHERITE_HELMET, Material.GOLDEN_HELMET,
+        Material.AIR
+    };
+    private static final Material[] CHESTPLATE_CYCLE = {
+        Material.LEATHER_CHESTPLATE, Material.CHAINMAIL_CHESTPLATE, Material.IRON_CHESTPLATE,
+        Material.DIAMOND_CHESTPLATE, Material.NETHERITE_CHESTPLATE, Material.GOLDEN_CHESTPLATE,
+        Material.AIR
+    };
+    private static final Material[] LEGGINGS_CYCLE = {
+        Material.LEATHER_LEGGINGS, Material.CHAINMAIL_LEGGINGS, Material.IRON_LEGGINGS,
+        Material.DIAMOND_LEGGINGS, Material.NETHERITE_LEGGINGS, Material.GOLDEN_LEGGINGS,
+        Material.AIR
+    };
+    private static final Material[] BOOTS_CYCLE = {
+        Material.LEATHER_BOOTS, Material.CHAINMAIL_BOOTS, Material.IRON_BOOTS,
+        Material.DIAMOND_BOOTS, Material.NETHERITE_BOOTS, Material.GOLDEN_BOOTS,
         Material.AIR
     };
 

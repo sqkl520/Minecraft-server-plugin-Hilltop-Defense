@@ -575,7 +575,12 @@ public class HilltopCommandHandler {
                     return true;
                 }
                 if (args.length >= 2 && args[1].equalsIgnoreCase("reload")) {
-                    plugin.getShopManager().reload();
+                    // S09-F1：reload() 现在返回 boolean（不再抛异常）。失败时必须如实播报，
+                    // 否则管理员看到「已重载（0 件）」会以为文件读进来了、只是自己写空了。
+                    if (!plugin.getShopManager().reload()) {
+                        sender.sendMessage(lang.getFor(player, "shop-reload-failed"));
+                        break;
+                    }
                     int itemCount = plugin.getShopManager().getShopConfig().getItems().size();
                     sender.sendMessage(lang.getFor(player, "shop-reloaded", String.valueOf(itemCount)));
                     break;
@@ -986,11 +991,16 @@ public class HilltopCommandHandler {
                     // 显示的 1 基编号直接可粘贴回本命令（此前跨界面差 1，会删错条目）。
                     int shownIndex = Integer.parseInt(args[2]);
                     int index = shownIndex - 1;
-                    if (deploy.removeSpawnPoint(index)) {
+                    // S05-F1：先自行校验序号。removeSpawnPoint 现在也会因写盘失败返回 false，
+                    // 不先校验就无法区分「序号不存在」与「写盘失败」—— 后者若也报「ID 不存在」
+                    // 会把管理员引向错误的排查方向（去数点位，而不是去看磁盘/权限）。
+                    if (index < 0 || index >= deploy.getSpawnPoints().size()) {
+                        admin.sendMessage(lang.getFor(admin, "deploy.delspawn-not-found", shownIndex));
+                    } else if (deploy.removeSpawnPoint(index)) {
                         admin.sendMessage(lang.getFor(admin, "deploy.delspawn-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delspawn-not-found", shownIndex));
+                        admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
@@ -1057,11 +1067,14 @@ public class HilltopCommandHandler {
                     // fix6 Y3-M-03：与 listmobspawns 显示口径统一为 1 基，内部索引转 0 基
                     int shownIndex = Integer.parseInt(args[2]);
                     int index = shownIndex - 1;
-                    if (deploy.removeMobSpawnPoint(index)) {
+                    // S05-F1：同 delspawn —— 序号校验前置，写盘失败不再伪装成「ID 不存在」
+                    if (index < 0 || index >= deploy.getMobSpawnPoints().size()) {
+                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-not-found", shownIndex));
+                    } else if (deploy.removeMobSpawnPoint(index)) {
                         admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-not-found", shownIndex));
+                        admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
@@ -1139,11 +1152,14 @@ public class HilltopCommandHandler {
                     // fix6 Y3-M-03：与 listvillagers 显示口径统一为 1 基（村民 GUI 本就 1 基），内部索引转 0 基
                     int shownIndex = Integer.parseInt(args[2]);
                     int index = shownIndex - 1;
-                    if (deploy.removeVillager(index)) {
+                    // S05-F1：同 delspawn —— 序号校验前置，写盘失败不再伪装成「ID 不存在」
+                    if (index < 0 || index >= deploy.getVillagers().size()) {
+                        admin.sendMessage(lang.getFor(admin, "deploy.delvillager-not-found", shownIndex));
+                    } else if (deploy.removeVillager(index)) {
                         admin.sendMessage(lang.getFor(admin, "deploy.delvillager-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.delvillager-not-found", shownIndex));
+                        admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));

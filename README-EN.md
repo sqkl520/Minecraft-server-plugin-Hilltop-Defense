@@ -136,7 +136,7 @@ shop:
 
 - Every item entry, price, name and durability is customizable in `shop.yml` — **server owners can freely add/remove items and change prices or slots**
 - `type` values: `HAMMER` (Sacred Hammer, always 1 regardless of amount) / `FIREBALL` / `REPAIR_ITEM` (World Tree Sap) / `MATERIAL` (any vanilla item, gives `amount` of `icon.material`) / `EQUIPMENT` (delivers 1 item of `icon.material`; `icon.material` is **required** = the delivered item material, `name` / `lore` are optional but are written onto the delivered item, `unbreakable` optional = unbreakable)
-- Run `/hilltop shop reload` (admin) after editing — no restart needed
+- Run `/hilltop shop reload` (admin) after editing — no restart needed; if `shop.yml` is blank or corrupt the command **reports the failure explicitly** and the shop keeps serving the previous items (or an empty list on first start), while **the plugin itself still enables normally** — a broken shop file never takes down arenas, worlds or commands
 - Anti-exploit: all clicks and drags inside the shop GUI are cancelled (icons can't be taken), and purchases have a 250ms cooldown against double-click double-charging
 - Currency anti-spoofing: Energy Crystals are identified by an item PDC tag, so **renaming a plain emerald to the currency name with an anvil/name tag will NOT count as money**. To hand out currency manually, use `/hilltop shop give <player> [amount]` (emeralds from vanilla `/give` lack the tag and are not accepted)
 

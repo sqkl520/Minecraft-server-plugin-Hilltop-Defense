@@ -508,10 +508,13 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
             // ---- Armor wear (Row 5: 36-40) ----
             setItem(36, Material.IRON_CHESTPLATE, lang.getFor(admin, "config.menu.monsters.armor-wear"));
 
-            addMaterialCycle(37, lang.getFor(admin, "config.menu.monsters.helmet"), mc.getHelmet(), mc::setHelmet, ARMOR_LIST, getArmorHint());
-            addMaterialCycle(38, lang.getFor(admin, "config.menu.monsters.chestplate"), mc.getChestplate(), mc::setChestplate, ARMOR_LIST, getArmorHint());
-            addMaterialCycle(39, lang.getFor(admin, "config.menu.monsters.leggings"), mc.getLeggings(), mc::setLeggings, ARMOR_LIST, getArmorHint());
-            addMaterialCycle(40, lang.getFor(admin, "config.menu.monsters.boots"), mc.getBoots(), mc::setBoots, ARMOR_LIST, getArmorHint());
+            // S03-F2：与 MonsterSettingsMenu 同一缺陷 —— 四件护甲此前共用一份「全头盔」表，
+            // 点胸甲槽会把 LEATHER_HELMET 写进 chestplate 字段。本类没有 SHIFT 自定义输入，
+            // 因此未知值的处理见 addArmorCycle 的注释。
+            addArmorCycle(37, lang.getFor(admin, "config.menu.monsters.helmet"), mc.getHelmet(), mc::setHelmet, HELMET_LIST);
+            addArmorCycle(38, lang.getFor(admin, "config.menu.monsters.chestplate"), mc.getChestplate(), mc::setChestplate, CHESTPLATE_LIST);
+            addArmorCycle(39, lang.getFor(admin, "config.menu.monsters.leggings"), mc.getLeggings(), mc::setLeggings, LEGGINGS_LIST);
+            addArmorCycle(40, lang.getFor(admin, "config.menu.monsters.boots"), mc.getBoots(), mc::setBoots, BOOTS_LIST);
 
             // ---- Unique skills (Row 6: 45-48) ----
             switch (monsterKey) {
@@ -635,6 +638,53 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
             return cycle[0];
         }
 
+        /**
+         * 护甲专用循环（S03-F2）。
+         *
+         * <p>与 {@link #addMaterialCycle} 的差异只有两点：①每个槽位传自己的循环表；
+         * ②当前值不在本槽位预设表里时<b>不改配置</b>，只提示。</p>
+         *
+         * <p><b>为什么这里「不动」而不是「回落到第 1 档」</b>：本菜单没有 SHIFT 自定义输入
+         * （武器/副手/护甲都只走循环），所以管理员在怪物属性页看到一件表外护甲
+         * （例如手改 monsters-config.yml 写入的 TURTLE_HELMET，或从完整菜单 SHIFT 输入的装备），
+         * 说明他本就打算保留它。旧实现把「不在表里」当成「按顺序第一个」，一次误点即覆盖，
+         * 且覆盖后表内值永远循环不到原值 —— 不可逆。这里的口径是
+         * <b>「预设表管不到的值，本页不碰」</b>，管理员要改它请用完整怪物属性菜单
+         * （{@code /hilltop config} → 怪物）的 SHIFT 输入。</p>
+         */
+        private void addArmorCycle(int slot, String name, Material current,
+                                    java.util.function.Consumer<Material> setter, Material[] cycle) {
+            String curName = (current != null && current != Material.AIR) ? translateMat(current) : lang.getFor(admin, "config.menu.common.none");
+            Material icon = (current != null && current != Material.AIR) ? current : Material.BARRIER;
+            List<String> loreLines = new ArrayList<>();
+            loreLines.add(lang.getFor(admin, "config.menu.common.current") + ChatColor.AQUA + curName);
+            loreLines.add("");
+            loreLines.add(lang.getFor(admin, "config.menu.common.click-cycle"));
+            loreLines.add(ChatColor.DARK_GRAY + getArmorHint());
+
+            setClickableItemWithData(slot, icon, ChatColor.GREEN + name, loreLines,
+                    ct -> {
+                        Material next = nextArmorMat(current, cycle);
+                        if (next == null) {
+                            admin.sendMessage(lang.getFor(admin,
+                                    "config.menu.monsters.armor-cycle-unknown",
+                                    current == null ? "-" : current.name()));
+                            return;
+                        }
+                        setter.accept(next);
+                        reopen();
+                    });
+        }
+
+        /** 同 {@code MonsterSettingsMenu#nextArmorMaterial}：表外值返回 null（调用方据此拒绝改动）。 */
+        private Material nextArmorMat(Material cur, Material[] cycle) {
+            if (cur == null || cur == Material.AIR) return cycle.length > 0 ? cycle[0] : null;
+            for (int i = 0; i < cycle.length; i++) {
+                if (cycle[i] == cur) return cycle[(i + 1) % cycle.length];
+            }
+            return null;
+        }
+
         private String fmtStep(double s) {
             return (s == Math.floor(s)) ? String.valueOf((int) s) : String.format("%.1f", s);
         }
@@ -650,6 +700,7 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
             return lang.getFor(admin, "config.menu.waves.prop-armor-cycle-hint");
         }
 
+        /** 武器循环表：与 {@code MonsterSettingsMenu.WEAPON_CYCLE} 前 9 项一致（本页无 SHIFT 输入，故不含长尾） */
         private static final Material[] WEAPON_LIST = {
             Material.DIAMOND_AXE, Material.DIAMOND_SWORD, Material.BOW,
             Material.TRIDENT, Material.NETHERITE_AXE, Material.NETHERITE_SWORD,
@@ -658,10 +709,30 @@ public class WaveSettingsMenu extends AbstractConfigMenu {
         private static final Material[] OFFHAND_LIST = {
             Material.SHIELD, Material.TOTEM_OF_UNDYING, Material.AIR
         };
-        private static final Material[] ARMOR_LIST = {
+        /*
+         * 四件护甲各一套（S03-F2）。档位顺序与 {@code MonsterSettingsMenu} 的四张表一致，
+         * 只是本页历来不含 CHAINMAIL 档（保持既有 UX，不在此顺手扩张预设）。
+         * 旧实现是单一一套「全头盔」表 ARMOR_LIST，四个槽位共用 → 点胸甲写进头盔。
+         */
+        private static final Material[] HELMET_LIST = {
             Material.LEATHER_HELMET, Material.IRON_HELMET,
             Material.DIAMOND_HELMET, Material.NETHERITE_HELMET,
             Material.GOLDEN_HELMET, Material.AIR
+        };
+        private static final Material[] CHESTPLATE_LIST = {
+            Material.LEATHER_CHESTPLATE, Material.IRON_CHESTPLATE,
+            Material.DIAMOND_CHESTPLATE, Material.NETHERITE_CHESTPLATE,
+            Material.GOLDEN_CHESTPLATE, Material.AIR
+        };
+        private static final Material[] LEGGINGS_LIST = {
+            Material.LEATHER_LEGGINGS, Material.IRON_LEGGINGS,
+            Material.DIAMOND_LEGGINGS, Material.NETHERITE_LEGGINGS,
+            Material.GOLDEN_LEGGINGS, Material.AIR
+        };
+        private static final Material[] BOOTS_LIST = {
+            Material.LEATHER_BOOTS, Material.IRON_BOOTS,
+            Material.DIAMOND_BOOTS, Material.NETHERITE_BOOTS,
+            Material.GOLDEN_BOOTS, Material.AIR
         };
     }
 }
