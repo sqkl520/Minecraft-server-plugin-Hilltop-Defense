@@ -1000,7 +1000,11 @@ public class HilltopCommandHandler {
                         admin.sendMessage(lang.getFor(admin, "deploy.delspawn-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
+                        // 序号已在上面校验过，走到这里的 false 只可能是写盘失败。
+                        // 必须走 reportDeploySaveFailure 而不是直接 sendMessage：它会**消费**
+                        // lastSaveFailed 标记。直接播报会留下标记不消费，于是下一次成功操作
+                        // 的 reportDeploySaveFailure 会再多播一条迟到的失败提示。
+                        reportDeploySaveFailure(admin, deploy);
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
@@ -1074,7 +1078,8 @@ public class HilltopCommandHandler {
                         admin.sendMessage(lang.getFor(admin, "deploy.delmobspawn-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
+                        // 同 delspawn：必须消费 lastSaveFailed 标记，见那里的注释。
+                        reportDeploySaveFailure(admin, deploy);
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
@@ -1159,7 +1164,8 @@ public class HilltopCommandHandler {
                         admin.sendMessage(lang.getFor(admin, "deploy.delvillager-deleted", shownIndex));
                         reportDeploySaveFailure(admin, deploy);   // fix5 锐评 C-01（N1 族补齐）
                     } else {
-                        admin.sendMessage(lang.getFor(admin, "deploy.save-failed"));
+                        // 同 delspawn：必须消费 lastSaveFailed 标记，见那里的注释。
+                        reportDeploySaveFailure(admin, deploy);
                     }
                 } catch (NumberFormatException e) {
                     admin.sendMessage(lang.getFor(admin, "deploy.delspawn-invalid-number"));
