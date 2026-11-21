@@ -5,6 +5,7 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyDouble;
+import static org.mockito.ArgumentMatchers.anyFloat;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doNothing;
@@ -23,19 +24,23 @@ import org.bukkit.Location;
 import org.bukkit.Particle;
 import org.bukkit.Sound;
 import org.bukkit.World;
+import org.bukkit.attribute.Attribute;
 import org.bukkit.entity.Mob;
 import org.bukkit.entity.Zombie;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.mockbukkit.mockbukkit.world.WorldMock;
 
 import com.hilltopvillage.config.ConfigManager;
 import com.hilltopvillage.config.GameConfig;
+import com.hilltopvillage.config.GameConfig.MonsterConfig;
 import com.hilltopvillage.core.GameManager;
 import com.hilltopvillage.core.WaveManager;
 import com.hilltopvillage.mechanics.NodeSystem;
 import com.hilltopvillage.testsupport.MockBukkitTestBase;
+import com.hilltopvillage.util.DisplayEntityManager;
 
 /**
  * {@link ExplodeBeetleGoal} 的「常驻 + 自毁出列」契约测试。
@@ -61,6 +66,7 @@ class ExplodeBeetleGoalTest extends MockBukkitTestBase {
     private GameManager gameManager;
     private NodeSystem nodeSystem;
     private WaveManager waveManager;
+    private ConfigManager configManager;
     private com.destroystokyo.paper.entity.Pathfinder pathfinder;
 
     @BeforeEach
@@ -78,6 +84,9 @@ class ExplodeBeetleGoalTest extends MockBukkitTestBase {
         doReturn(new Location(world, 100, 64, 100)).when(beetle).getLocation();
         doReturn(world).when(beetle).getWorld();
         doNothing().when(beetle).setGlowing(org.mockito.ArgumentMatchers.anyBoolean());
+        // spy 不会同步 MockBukkit 的 removal 标记；直接走真实 remove() 会抛
+        // 「Entity is not marked for removal」。自爆后的 remove 与 onMobDeath 仍分别验证。
+        doNothing().when(beetle).remove();
 
         nodeSystem = mock(NodeSystem.class);
         waveManager = mock(WaveManager.class);
@@ -90,6 +99,7 @@ class ExplodeBeetleGoalTest extends MockBukkitTestBase {
         ConfigManager configManager = mock(ConfigManager.class);
         when(configManager.getActiveConfig()).thenReturn(new GameConfig());
         when(gameManager.getConfigManager()).thenReturn(configManager);
+        this.configManager = configManager;
     }
 
     private NodeSystem.NodeData nodeAt(double x, double y, double z) {
@@ -99,6 +109,67 @@ class ExplodeBeetleGoalTest extends MockBukkitTestBase {
         when(node.getLocation()).thenAnswer(inv -> loc.clone());
         when(nodeSystem.isRegisteredActive(node)).thenReturn(true);
         return node;
+    }
+
+    @Test
+    @DisplayName("#6：爆炸威力不得复用节点伤害倍率；10 倍节点伤害仍是普通苦力怕威力")
+    void explosionPowerIsIndependentFromNodeDamageMultiplier() {
+        GameConfig cfg = new GameConfig();
+        MonsterConfig beetleCfg = cfg.getMonsters().get("explode-beetle");
+        beetleCfg.setExplodeDamageMultiplier(10.0);
+        beetleCfg.setBaseDamage(4.0);
+        beetleCfg.setEntityExplosion(true);
+        cfg.setNodeSelfDestructMultiplier(1.0);
+        when(configManager.getActiveConfig()).thenReturn(cfg);
+
+        when(gameManager.getNodeSearchRadius()).thenReturn(64);
+        NodeSystem.NodeData node = nodeAt(100, 64, 100);
+        when(nodeSystem.getNearestNode(any())).thenReturn(node);
+        when(gameManager.getDisplayEntityManager()).thenReturn(mock(DisplayEntityManager.class));
+        doReturn(null).when(beetle).getAttribute(Attribute.ATTACK_DAMAGE);
+        doReturn(false).when(world).createExplosion(
+                any(Location.class), anyFloat(), eq(false), eq(false), eq(beetle));
+
+        ExplodeBeetleGoal goal = new ExplodeBeetleGoal(beetle, gameManager);
+        goal.start();
+        goal.tick();
+
+        ArgumentCaptor<Float> power = ArgumentCaptor.forClass(Float.class);
+        verify(world).createExplosion(any(Location.class), power.capture(), eq(false), eq(false),
+                eq(beetle));
+        assertEquals(3.0f, power.getValue(), 1e-6,
+                "★ 节点倍率 10 只该放大 damageNode；createExplosion 的 power 必须是普通苦力怕的 3.0");
+        verify(nodeSystem).damageNode(any(Location.class), eq(40.0));
+    }
+
+    @Test
+    @DisplayName("#6：倍率 0 保持「无爆炸伤害」，固定威力不得把 0 变成普通苦力怕")
+    void zeroMultiplierKeepsExplosionPowerless() {
+        GameConfig cfg = new GameConfig();
+        MonsterConfig beetleCfg = cfg.getMonsters().get("explode-beetle");
+        beetleCfg.setExplodeDamageMultiplier(0.0);
+        beetleCfg.setEntityExplosion(true);
+        cfg.setNodeSelfDestructMultiplier(1.0);
+        when(configManager.getActiveConfig()).thenReturn(cfg);
+
+        when(gameManager.getNodeSearchRadius()).thenReturn(64);
+        NodeSystem.NodeData node = nodeAt(100, 64, 100);
+        when(nodeSystem.getNearestNode(any())).thenReturn(node);
+        when(gameManager.getDisplayEntityManager()).thenReturn(mock(DisplayEntityManager.class));
+        doReturn(null).when(beetle).getAttribute(Attribute.ATTACK_DAMAGE);
+        doReturn(false).when(world).createExplosion(
+                any(Location.class), anyFloat(), eq(false), eq(false), eq(beetle));
+
+        ExplodeBeetleGoal goal = new ExplodeBeetleGoal(beetle, gameManager);
+        goal.start();
+        goal.tick();
+
+        ArgumentCaptor<Float> power = ArgumentCaptor.forClass(Float.class);
+        verify(world).createExplosion(any(Location.class), power.capture(), eq(false), eq(false),
+                eq(beetle));
+        assertEquals(0.0f, power.getValue(), 1e-6,
+                "倍率 0 本来就是「纯节点 0 伤害」；若固定成 3.0 会凭空出现玩家伤害");
+        verify(nodeSystem).damageNode(any(Location.class), eq(0.0));
     }
 
     @Test

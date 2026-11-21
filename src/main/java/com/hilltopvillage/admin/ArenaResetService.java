@@ -11,8 +11,10 @@ import com.hilltopvillage.mechanics.MapRestoreManager;
 import com.hilltopvillage.mechanics.NodeSystem;
 import com.hilltopvillage.shop.NpcManager;
 import org.bukkit.Bukkit;
+import org.bukkit.Location;
 
 import java.io.File;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Consumer;
@@ -105,7 +107,13 @@ public final class ArenaResetService {
         CONFIG_DISABLED,
 
         /** 定义、核心、enabled 都正常，enableArena 却拒绝了 —— 非预期，需要排查 */
-        ENABLE_REJECTED
+        ENABLE_REJECTED,
+
+        /**
+         * 第 8 步失败后连节点回滚也失败 —— 此时绝不能重新启用，否则又回到
+         * 「可玩但 0 节点」的坏图；竞技场保持 DISABLED，等修好 nodes.yml 后手动 enable。
+         */
+        NODE_ROLLBACK_FAILED
     }
 
     /**
@@ -113,12 +121,14 @@ public final class ArenaResetService {
      *
      * @param arenaId             规范化后的竞技场 ID
      * @param dataCleared         部署数据（arenas.yml）是否已清空
-     * @param nodesCleared        节点清理是否成功完成（本来就没有节点也算成功）
+     * @param nodesCleared        重置结束后该世界的节点是否仍处于「已清空」状态（本来就没有节点也为 true）；
+     *                            第 8 步失败后若节点回滚成功则置 false
      * @param shopNpcCleared      是否确实清掉了一个「已配置的」商店 NPC（本来就没有 → false）
      * @param mapRestored         地图方块是否已完整回滚（含「本来就无需回滚」的情形）
      * @param mapRestoreSkipped   是否跳过了地图回滚（无需回滚，或世界未加载无法回滚）
      * @param reinstated          是否成功把竞技场重新放回启用队列。
-     *                            成功收尾与 nodes / deployment 中止都会尝试恢复，因此失败路径同样可能为 true
+     *                            成功收尾与 nodes / deployment 中止都会尝试恢复；但节点回滚失败时
+     *                            会主动保持 DISABLED，此时为 false
      * @param statusAfter         重置结束后的竞技场状态
      * @param blockedBy           非 {@link Gate#OK} 表示这次调用根本没开始（此时其余字段均为 false / 未尝试）
      * @param blocksPendingBefore 本次重置开始前该世界待回滚的方块数
@@ -130,9 +140,10 @@ public final class ArenaResetService {
      *                            地图回滚失败（failStep = {@code restore}）与 blockedBy != OK 这两条路径
      *                            压根没进入重启用判定，此时同样为 null —— 调用方应先看 blockedBy / failStep
      *                            判断整体成败，再用本字段为「重置成功但未启用」选择文案。</p>
-     *                            <p>{@code nodes}/{@code deployment} 中止<b>会</b>进入重启用判定（见 {@code abort}）：
+     *                            <p>{@code nodes}/{@code deployment} 中止<b>通常</b>会进入重启用判定（见 {@code abort}）：
      *                            恢复成功时本字段为 null 且 {@code reinstated == true}；恢复不了时
-     *                            本字段给出具体原因，GUI 据此补一句「竞技场仍是禁用状态 + 恢复方式」。</p>
+     *                            本字段给出具体原因，GUI 据此补一句「竞技场仍是禁用状态 + 恢复方式」。
+     *                            节点回滚也失败时走 {@link ReinstateSkip#NODE_ROLLBACK_FAILED}，不会再启用。</p>
      */
     public record Outcome(
             String arenaId,
@@ -276,7 +287,8 @@ public final class ArenaResetService {
 
         // 5. 一次落盘删除该世界在 nodes.yml 的全部条目（世界未加载也能做）
         File dataFolder = plugin.getDataFolder();
-        int expectedNodes = NodeSystem.readNodesForWorld(dataFolder, world).size();
+        List<Location> nodeBackup = NodeSystem.readNodesForWorld(dataFolder, world);
+        int expectedNodes = nodeBackup.size();
         int removedNodes = NodeSystem.clearNodesForWorld(dataFolder, world);
         plugin.getLogger().info(LOG + "nodes-cleared arena=" + arenaId + " count=" + removedNodes);
         // clearNodesForWorld 的返回值 0 有两种含义（没有条目 / 写入失败），用清点结果消歧
@@ -306,8 +318,25 @@ public final class ArenaResetService {
         boolean dataOk = definitions.clearDeploymentData(arenaId);
         if (dataOk) plugin.getLogger().info(LOG + "deployment-cleared arena=" + arenaId);
         if (!dataOk) {
-            abort(ctx, "deployment", "clearDeploymentData returned false (arena missing or arenas.yml write failed)",
-                    true, false, onDone);
+            // #4：第 5 步删节点不可逆，而 core 没被清掉 → abort 会把竞技场重新启用。
+            // 必须先按第 5 步前的快照把节点补回，否则重启用出来的是一张「可玩但 0 节点」的坏图。
+            boolean nodesRolledBack = true;
+            if (!nodeBackup.isEmpty()) {
+                nodesRolledBack = NodeSystem.restoreNodesForWorld(dataFolder, world, nodeBackup);
+                if (nodesRolledBack) {
+                    plugin.getLogger().info(LOG + "nodes-rolled-back arena=" + arenaId
+                            + " count=" + nodeBackup.size());
+                } else {
+                    plugin.getLogger().severe(LOG + "nodes-rollback-failed arena=" + arenaId
+                            + " count=" + nodeBackup.size()
+                            + " —— the arena will stay DISABLED to avoid a 0-node playable arena");
+                }
+            }
+            // nodesCleared 表达「删除是否仍然生效」：回滚成功 → false；回滚失败/无节点 → true。
+            abort(ctx, "deployment",
+                    "clearDeploymentData returned false (arena missing or arenas.yml write failed)"
+                            + (nodesRolledBack ? "; nodes restored" : "; NODE ROLLBACK FAILED"),
+                    !nodesRolledBack || nodeBackup.isEmpty(), false, nodesRolledBack, onDone);
             return;
         }
 
@@ -397,20 +426,37 @@ public final class ArenaResetService {
      *
      * <p><b>为什么中止必须恢复启用状态</b>：{@link #proceed} 在 nodes / deployment 两步之前就已
      * {@code disableArena}（第 4 步），而这两步失败时 {@code core} 与 {@code enabled} 都还没被改动 ——
-     * 竞技场是<b>完全可恢复</b>的。若中止就此收尾，它会永远停在 DISABLED，管理员只看得到一句
-     * 「Partially successful」，无从得知需要重新 enable。因此这里统一走
+     * 只要第 5 步的节点删除还能回滚，竞技场就是<b>完全可恢复</b>的。若中止就此收尾，它会永远停在
+     * DISABLED，管理员只看得到一句「Partially successful」，无从得知需要重新 enable。因此这里统一走
      * {@link #reinstateRestoring(ResetCtx)}：判定前置与成功路径的 {@link #reinstate(ResetCtx)} 完全相同，
      * 因此中止后竞技场会回到<b>重置前</b>的启用状态（本来启用过的 → 重新入队；本来就没启用的 → 保持禁用）。</p>
+     *
+     * <p><b>例外</b>：第 8 步失败且节点回滚也失败时，{@code nodes.yml} 已经补不回来。此时重新启用只会
+     * 得到一张 0 节点空图，因此调用方传 {@code tryReinstate=false}，竞技场保持 DISABLED，并通过
+     * {@link ReinstateSkip#NODE_ROLLBACK_FAILED} 告诉 GUI 先修文件再手动 enable。</p>
      *
      * <p>恢复失败时把跳过原因透出到 {@link Outcome#reinstateSkipped()}，GUI 才会补一句「竞技场仍是禁用
      * 状态 + 怎么恢复」；恢复成功时它为 null，{@code reinstated} 为 true。</p>
      */
     private void abort(ResetCtx ctx, String step, String reason, boolean nodesCleared, boolean dataCleared,
                        Consumer<Outcome> onDone) {
+        abort(ctx, step, reason, nodesCleared, dataCleared, true, onDone);
+    }
+
+    /**
+     * 中止的完整形态。
+     *
+     * @param tryReinstate false = 破坏性副作用无法回滚（节点补不回来），宁可保持 DISABLED
+     *                     也不能重新启用出一张 0 节点空图
+     */
+    private void abort(ResetCtx ctx, String step, String reason, boolean nodesCleared, boolean dataCleared,
+                       boolean tryReinstate, Consumer<Outcome> onDone) {
         plugin.getLogger().warning(LOG + "aborted arena=" + ctx.arenaId() + " step=" + step + " reason=" + reason);
         if (!releaseInFlight(ctx.arenaId())) return;
 
-        ReinstateSkip skip = reinstateRestoring(ctx);
+        ReinstateSkip skip = tryReinstate
+                ? reinstateRestoring(ctx)
+                : ReinstateSkip.NODE_ROLLBACK_FAILED;
         Outcome outcome = outcome(ctx, nodesCleared, dataCleared, false, false, skip == null, skip, null, step);
         logDone(ctx, outcome);
         deliver(onDone, outcome);

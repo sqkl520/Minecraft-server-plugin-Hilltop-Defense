@@ -229,6 +229,83 @@ class ConfigManagerTest extends MockBukkitTestBase {
         assertEquals(99, wave42.getInt("total-mobs"), "重新创建的波次必须写的是新值");
     }
 
+    // ---------------------------------------------------------------- ②b loadFromFile 返回值（#8）
+
+    @Test
+    @DisplayName("loadFromFile: 成功读到磁盘时返回 true（调用方才有资格宣告「已重载」）")
+    void loadFromFileReturnsTrueOnSuccess() {
+        BareHost host = loadBareHost();
+        ensureShippedSettings(host);
+        ConfigManager config = new ConfigManager(host);
+
+        assertTrue(config.loadFromFile(),
+                "出厂模板可用时必须返回 true —— 否则修好的服务器会被永久播报「未重载」");
+        assertFalse(config.getSettingsGate().isReadOnly(),
+                "成功读盘后闸门不应处于只读态（OK 会解闩）");
+    }
+
+    @Test
+    @DisplayName("loadFromFile: 文件不可用时返回 false，且内存值保持不变（#8 的核心契约）")
+    void loadFromFileReturnsFalseAndKeepsMemoryWhenSettingsUnusable() throws Exception {
+        BareHost host = loadBareHost();
+        ConfigManager config = new ConfigManager(host);
+        // 放一个与出厂值不同的内存值：失败时它必须原样保留。
+        config.getActiveConfig().setVictoryWaves(7);
+
+        MockBukkitTestBase.TestPaths.write(settingsFile(host), "   \n");
+
+        assertFalse(config.loadFromFile(),
+                "★ game-settings.yml 不可用时 loadFromFile() 必须返回 false —— "
+                        + "void 版本让 GUI 与 /hilltop reloadconfig 都无法区分成功/失败");
+        assertTrue(config.getSettingsGate().isReadOnly(),
+                "前置/结果校验：空文件必须让 settings 闸门锁定只读");
+        assertEquals(7, config.getActiveConfig().getVictoryWaves(),
+                "失败分支的语义是「读不到就不动内存」：拒绝重载后内存值必须保持 7");
+    }
+
+    @Test
+    @DisplayName("loadFromFile: 隔离后文件已不存在（ABSENT/usable）仍因只读闩返回 false")
+    void loadFromFileReturnsFalseWhenGateIsReadOnlyEvenIfFileIsAbsent() throws Exception {
+        BareHost host = loadBareHost();
+        ConfigManager config = new ConfigManager(host);
+
+        // 第一次：空文件 → SUSPECT → 隔离成 *.corrupt → 闸门锁定只读 → false
+        MockBukkitTestBase.TestPaths.write(settingsFile(host), "   \n");
+        assertFalse(config.loadFromFile(), "前置条件：空文件必须让第一次 loadFromFile() 返回 false");
+        assertTrue(config.getSettingsGate().isReadOnly(), "前置条件：隔离后闸门必须锁定只读");
+
+        // 第二次：文件已被挪走，YamlFiles 返回 ABSENT（usable=true）。只判 usable() 的实现
+        // 会在这里误判成功并把空配置当权威 —— 必须靠 isReadOnly() 继续拒绝。
+        assertFalse(config.getActiveConfig().getWaves().isEmpty(),
+                "夹具前提：内存在失败后仍保留构造器预置的波次（证明没有走重建）");
+        assertFalse(config.loadFromFile(),
+                "★ 文件不存在但闸门只读时仍必须返回 false；"
+                        + "这正是 loadFromFile 里 isReadOnly() 那一半条件的回归网");
+    }
+
+    @Test
+    @DisplayName("loadFromFile: 隔离后文件缺失且闸门被 reset，仍返回 false 而不是拿空配置洗掉内存")
+    void loadFromFileReturnsFalseWhenFileIsAbsentEvenAfterGateReset() throws Exception {
+        BareHost host = loadBareHost();
+        ConfigManager config = new ConfigManager(host);
+        config.getActiveConfig().setVictoryWaves(7);
+
+        // 第一次：空文件 → 隔离成 *.corrupt，文件从此不存在。
+        MockBukkitTestBase.TestPaths.write(settingsFile(host), "   \n");
+        assertFalse(config.loadFromFile(), "前置条件：空文件必须让第一次 loadFromFile() 返回 false");
+        assertFalse(settingsFile(host).exists(), "前置条件：SUSPECT 文件必须已被隔离（原路径不再存在）");
+
+        // /hilltop reloadconfig 的真实顺序：先 reset() 解闩，再 loadFromFile()。
+        // 此时 load() 只能得到 ABSENT（usable=true），若只判 usable/isReadOnly 就会漏过去，
+        // 用空配置重建内存并返回 true —— 管理员会看到「已重载」，配置却被洗成默认值。
+        config.getSettingsGate().reset();
+
+        assertFalse(config.loadFromFile(),
+                "★ reset 之后、文件仍缺失时 loadFromFile() 必须返回 false（ABSENT 不等于可重载）");
+        assertEquals(7, config.getActiveConfig().getVictoryWaves(),
+                "★ 文件缺失时内存值必须保持 7；若被空配置重建，这里会变成出厂默认 20");
+    }
+
     // ---------------------------------------------------------------- ③ 未知键告警
 
     @Test

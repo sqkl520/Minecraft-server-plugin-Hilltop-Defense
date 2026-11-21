@@ -13,3 +13,7 @@
 
 # 本地修复轮产物（不是发布内容）
 /repair-artifacts/
+
+# JVM 崩溃/回放日志（OOM 时由 JVM 自动生成，不属于源码）
+hs_err_pid*.log
+replay_pid*.log

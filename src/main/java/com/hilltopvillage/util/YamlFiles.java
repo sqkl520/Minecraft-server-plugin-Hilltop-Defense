@@ -131,14 +131,40 @@ public final class YamlFiles {
     }
 
     /**
+     * 该文件的隔离产物路径（{@code <name>.corrupt}），与 {@link #quarantine} 的命名保持一致。
+     */
+    public static File corruptFile(File file) {
+        return new File(file.getAbsoluteFile().getParentFile(), file.getName() + ".corrupt");
+    }
+
+    /**
+     * 「这个文件当前处于隔离态」——**磁盘与闸门两个信号缺一不可**。
+     *
+     * <p>为什么必须两个都看，而不是挑一个：</p>
+     * <ul>
+     *   <li><b>只看 {@code .corrupt}</b>：服主把坏文件挪走/删除、又没放回原文件时，
+     *       {@code !file.exists()} 为真，会被判成「首次安装」而重建出厂模板。</li>
+     *   <li><b>只看闸门</b>：{@link YamlFileGate} 的 {@code readOnly} 是实例级 volatile，
+     *       <b>重启即失效</b>；而 {@code .corrupt} 留在磁盘上。最坏的那条数据覆盖链
+     *       正发生在重启之后——重启后新 gate 是干净的，模板照样被写回去。</li>
+     * </ul>
+     *
+     * <p>这条判据的正确先例是 {@code ShopConfigLoader#isQuarantined}，
+     * 本方法把它提上来给所有配置文件共用。调用方在 {@code !file.exists()} 分支里
+     * 必须先问这个，再决定要不要 {@code saveResource}。</p>
+     */
+    public static boolean isQuarantined(File file, YamlFileGate gate) {
+        return (gate != null && gate.isReadOnly()) || corruptFile(file).exists();
+    }
+
+    /**
      * 把不可用的文件挪成 {@code *.corrupt}，并返回「不可用」的结论。
      *
      * <p>{@code REPLACE_EXISTING}：上一次的坏文件会被覆盖。刻意如此——保留「最新一次现场」比
      * 堆一串历史上更有用，日志里会打出被截断的原因。</p>
      */
     private static Loaded quarantine(File file, Status status, String detail, Logger logger) {
-        File parent = file.getAbsoluteFile().getParentFile();
-        File corrupt = new File(parent, file.getName() + ".corrupt");
+        File corrupt = corruptFile(file);
         try {
             Files.move(file.toPath(), corrupt.toPath(), StandardCopyOption.REPLACE_EXISTING);
             logger.severe(file.getName() + " is unusable (" + detail + "); renamed to "

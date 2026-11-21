@@ -507,6 +507,83 @@ public class NodeSystem {
     }
 
     /**
+     * 把一批属于指定世界的节点坐标追加回 {@code nodes.yml}。
+     *
+     * <p>#4 重置回滚专用：第 5 步 {@link #clearNodesForWorld} 是不可逆删除，若后续
+     * {@code clearDeploymentData} 失败并中止，竞技场会被重新启用但节点已空 ——
+     * 变成一张「可玩但 0 节点」的坏图。重置前先 {@link #readNodesForWorld} 备份坐标，
+     * 中止时用本方法恢复。节点的持久化格式只有 world/x/y/z（血量不落盘），因此
+     * {@link Location} 足以无损恢复。</p>
+     *
+     * <p>只追加目标世界的条目，保留其它世界；已存在的相同坐标会跳过，避免失败重试时
+     * 写出重复节点。世界未加载时 Location 的 world 为 null，本方法只用 x/y/z，安全。</p>
+     *
+     * @param dataFolder 插件数据目录
+     * @param worldName  目标世界名（恢复条目的 world 字段）
+     * @param locations  备份坐标；null / 空表示无需恢复，返回 true
+     * @return true = 无需恢复或已成功写入；false = 文件不可用 / 写盘失败
+     */
+    public static boolean restoreNodesForWorld(File dataFolder, String worldName,
+                                               List<Location> locations) {
+        if (locations == null || locations.isEmpty()) return true;
+        if (dataFolder == null || worldName == null || worldName.isBlank()) return false;
+
+        File nodesFile = new File(dataFolder, "nodes.yml");
+        YamlFiles.Loaded loaded = YamlFiles.load(nodesFile, YamlFiles.nodesValidator(), staticLogger());
+        if (!loaded.usable()) {
+            NODES_READ_ONLY.add(nodesFile.getAbsolutePath());
+            return false;
+        }
+        if (loaded.status() == YamlFiles.Status.OK) {
+            NODES_READ_ONLY.remove(nodesFile.getAbsolutePath());
+        }
+        YamlConfiguration config = loaded.config();
+
+        List<Map<String, Object>> all = new ArrayList<>();
+        Set<String> existingKeys = new HashSet<>();
+        for (Map<?, ?> nodeMap : config.getMapList("nodes")) {
+            all.add(copyNodeEntry(nodeMap));
+            if (worldName.equalsIgnoreCase(entryWorldName(nodeMap))) {
+                existingKeys.add(nodeKey(nodeMap.get("x"), nodeMap.get("y"), nodeMap.get("z")));
+            }
+        }
+
+        int restored = 0;
+        for (Location location : locations) {
+            if (location == null) continue;
+            Map<String, Object> nodeMap = new LinkedHashMap<>();
+            nodeMap.put("world", worldName);
+            nodeMap.put("x", location.getBlockX());
+            nodeMap.put("y", location.getBlockY());
+            nodeMap.put("z", location.getBlockZ());
+            if (!existingKeys.add(nodeKey(nodeMap.get("x"), nodeMap.get("y"), nodeMap.get("z")))) {
+                continue;
+            }
+            all.add(nodeMap);
+            restored++;
+        }
+
+        if (restored == 0) return true;
+        boolean written = writeNodes(nodesFile, config, all);
+        if (written) {
+            staticLogger().info("[HilltopVillage] Restored " + restored + " node(s) for world "
+                    + worldName + " after aborted reset");
+        }
+        return written;
+    }
+
+    private static String nodeKey(Object x, Object y, Object z) {
+        return coordinateKey(x) + "/" + coordinateKey(y) + "/" + coordinateKey(z);
+    }
+
+    /** YAML 里坐标可能是 Integer 或 Double；按整块坐标归一化，避免 100 与 100.0 被当两条。 */
+    private static String coordinateKey(Object value) {
+        return value instanceof Number
+                ? Long.toString(((Number) value).longValue())
+                : String.valueOf(value);
+    }
+
+    /**
      * 从 nodes.yml 删除属于该世界的第 index 条（按该世界过滤后的序号，从 0 开始）。
      *
      * @return true 表示删除并成功写回文件

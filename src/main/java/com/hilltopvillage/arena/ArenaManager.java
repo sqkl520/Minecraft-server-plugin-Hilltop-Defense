@@ -842,7 +842,13 @@ public final class ArenaManager {
         // 只读降级中**不得**从 JAR 模板重建：读盘不可用时文件已被隔离成 *.corrupt，
         // 若这里再 saveResource 一份出厂模板，下一次 gate.load() 就会读到「合法的新文件」
         // 并自动解封——降级被自己的重建动作绕过（正是 spec D1.5-③ 第 4 步要拦的路径）。
-        if (arenasGate != null && arenasGate.isReadOnly()) return;
+        //
+        // 判据必须是**双信号**（YamlFiles.isQuarantined）：闸门 readOnly 是实例级 volatile，
+        // 重启即失效，而 .corrupt 留在磁盘上——只看闸门时，重启后模板照样被写回去。
+        if (YamlFiles.isQuarantined(arenasFile, arenasGate)) {
+            if (arenasGate != null) arenasGate.lock();
+            return;
+        }
         if (!arenasFile.exists()) {
             plugin.saveResource("arenas.yml", false);
             if (!arenasFile.exists()) {

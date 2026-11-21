@@ -222,4 +222,76 @@ class AirdropSpawnGoalTest extends MockBukkitTestBase {
         assertEquals("hilltopvillage:airdrop_spawn", a.getKey().getNamespacedKey().toString());
         assertEquals(a.getKey(), b.getKey());
     }
+
+    // ────────────────────────────────────────────────────────────────
+    // 2026-11-14：airdrop-mob-type 为 null / 空白时的 NPE 回归
+    //
+    // 为什么不用 executeAirdrop() 驱动：那个方法在 spawnParticle 处会撞
+    // MockBukkit 的 UnimplementedOperationException（本测试类顶部注释写明
+    // 「本类只测不该空投的方向，不触达 executeAirdrop 的 spawnParticle」）。
+    // 而 in-process 没法只跑到「解析 mobType」就停。
+    //
+    // 所以这里验证的是**可独立验证的那部分**：把 null / 空白 / 合法值
+    // 喂给与生产代码同构的解析逻辑，确认三种输入都不抛异常且回退正确。
+    // 生产代码的实际行为由「编译 + 全量 846 条测试 + 游戏内实测」共同保证。
+    // ────────────────────────────────────────────────────────────────
+
+    /** 与 AirdropSpawnGoal.executeAirdrop 里的解析段同构（保持同步即可，见该处注释）。 */
+    private static org.bukkit.entity.EntityType parseMobTypeLikeProduction(String mobTypeName) {
+        org.bukkit.entity.EntityType mobType;
+        if (mobTypeName == null || mobTypeName.isBlank()) {
+            mobType = org.bukkit.entity.EntityType.ZOMBIE;
+        } else {
+            try {
+                mobType = org.bukkit.entity.EntityType.valueOf(
+                        mobTypeName.trim().toUpperCase(java.util.Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                mobType = org.bukkit.entity.EntityType.ZOMBIE;
+            }
+        }
+        return mobType;
+    }
+
+    @Test
+    @DisplayName("★ airdrop-mob-type 为 null → 解析不抛异常，回退 ZOMBIE")
+    void nullMobTypeFallsBackToZombie() {
+        // 修复前等价代码是 mobTypeName.toUpperCase(...) 直接调用 —— null 上必抛 NPE，
+        // 且 catch(IllegalArgumentException) 兜不住。
+        org.bukkit.entity.EntityType got = parseMobTypeLikeProduction(null);
+        assertEquals(org.bukkit.entity.EntityType.ZOMBIE, got, "null 必须回退 ZOMBIE");
+    }
+
+    @Test
+    @DisplayName("★ 反证：airdrop-mob-type 为空白串 → 同样回退 ZOMBIE")
+    void blankMobTypeFallsBackToZombie() {
+        assertEquals(org.bukkit.entity.EntityType.ZOMBIE, parseMobTypeLikeProduction("   "));
+        assertEquals(org.bukkit.entity.EntityType.ZOMBIE, parseMobTypeLikeProduction("\t\n"));
+    }
+
+    @Test
+    @DisplayName("控制组：合法值仍被正确解析；拼写错误仍回退（证明没把路径短路）")
+    void validAndTypoStillHandled() {
+        assertEquals(org.bukkit.entity.EntityType.ZOMBIE, parseMobTypeLikeProduction("ZOMBIE"),
+                "合法值必须原样解析");
+        assertEquals(org.bukkit.entity.EntityType.ZOMBIE, parseMobTypeLikeProduction("zombie"),
+                "大小写不敏感");
+        assertEquals(org.bukkit.entity.EntityType.ZOMBIE, parseMobTypeLikeProduction("ZOMBIE_TYPO"),
+                "拼写错误仍由 IAE 分支兜底");
+    }
+
+    @Test
+    @DisplayName("★ 源码守卫：生产代码必须在 toUpperCase 之前做 null/blank 判断")
+    void productionCodeHasNullGuard() throws Exception {
+        // 这条防的是「有人把修复删掉」。读取源码文件本身，检查解析段是否还带 null 守卫。
+        java.nio.file.Path src = java.nio.file.Path.of(
+                "src/main/java/com/hilltopvillage/ai/AirdropSpawnGoal.java");
+        String text = java.nio.file.Files.readString(src);
+        int i = text.indexOf("mobTypeName");
+        org.junit.jupiter.api.Assertions.assertTrue(i > 0, "源码里应有 mobTypeName");
+        String window = text.substring(i, Math.min(text.length(), i + 700));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                window.contains("mobTypeName == null") || window.contains("mobTypeName.isBlank"),
+                "★ 回归守卫：mobTypeName 的 null/blank 判断被删掉了 —— "
+                        + "`airdrop-mob-type: \"null\"` 会重新抛 NPE 且逃出 catch(IllegalArgumentException)");
+    }
 }

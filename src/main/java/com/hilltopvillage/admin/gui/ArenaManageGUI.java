@@ -843,6 +843,7 @@ public class ArenaManageGUI extends AbstractAdminMenu {
             case NOT_READY_BEFORE -> "manage.reset.done-not-ready-before";
             case CONFIG_DISABLED -> "manage.reset.done-not-reinstated";
             case ENABLE_REJECTED -> "manage.reset.done-enable-rejected";
+            case NODE_ROLLBACK_FAILED -> "manage.reset.done-node-rollback-failed";
         };
     }
 

@@ -220,13 +220,24 @@ public class NodeListener implements Listener {
                 return;
             }
 
+            // #1：修复结算必须按「实际缺口」算，而不是「配置一次扣几个，就只恢复一份」。
+            // cost 是上限：缺口 30 血、每物品 50 时只该扣 1 个，而不是扣满 5 个。
+            double deficit = Math.max(0.0, node.getMaxHealth() - node.getCurrentHealth());
+            RepairPlan plan = planRepair(deficit, repairAmount(), repairCostAmount(),
+                    item.getAmount());
+            if (plan.itemsConsumed() <= 0) {
+                // cost<=0 / 非法每物品恢复量：不消耗、不修复。正常载入已由 #7 钳到 >=1，
+                // 这里防的是直接 API 赋值与未来新增的配置入口。
+                return;
+            }
+
             boolean repaired = gameManager.getNodeSystem().repairNode(
-                    clickedBlock.getLocation(), player, repairAmount());
+                    clickedBlock.getLocation(), player, plan.healthRestored());
 
             if (repaired) {
-                int cost = repairCostAmount();
-                if (item.getAmount() > cost) {
-                    item.setAmount(item.getAmount() - cost);
+                int remaining = item.getAmount() - plan.itemsConsumed();
+                if (remaining > 0) {
+                    item.setAmount(remaining);
                 } else {
                     player.getInventory().setItemInMainHand(null);
                 }
@@ -252,6 +263,44 @@ public class NodeListener implements Listener {
         // D-3：PDC 为准（唯一口径）
         String kind = meta.getPersistentDataContainer().get(itemKindKey, PersistentDataType.STRING);
         return KIND_REPAIR.equals(kind);
+    }
+
+    /**
+     * #1 修复结算的纯函数：给定缺口、每物品恢复量、单次上限与持有量，算出本次应消耗几个、
+     * 实际恢复多少。
+     *
+     * <p><b>为什么不是「固定消耗 cost 个」：</b>{@code repair-cost-amount} 是单次最多消耗
+     * 几个物品，而 {@code repair-amount-per-cost} 是每物品恢复量。旧实现把两者同时当成
+     * 「恢复一份 + 扣满 cost 份」，于是 cost=5 时消耗 5 个只恢复 1 份；
+     * 节点只差 30 血也照扣 5 个。</p>
+     *
+     * <p>消耗量取 {@code ceil(deficit / perItem)}，再与配置上限、实际持有量取小；
+     * 恢复量按真正消耗的数量计算并封顶到缺口。非法输入（非有限值 / 0 / 负数）一律不动作，
+     * 避免「免费修复」或「物品反增」。</p>
+     */
+    static RepairPlan planRepair(double deficit, double perItem, int maxPerAction, int held) {
+        if (!(deficit > 0.0) || !Double.isFinite(deficit)
+                || !(perItem > 0.0) || !Double.isFinite(perItem)
+                || maxPerAction <= 0 || held <= 0) {
+            return RepairPlan.NONE;
+        }
+
+        int usableItems = Math.min(maxPerAction, held);
+        double neededExact = deficit / perItem;
+        // 用 ulp 吸收 30/0.1=300.00000000000006 这类浮点噪声，避免多扣一个物品。
+        double neededCeil = Math.ceil(neededExact - Math.ulp(neededExact));
+        int itemsNeeded = neededCeil >= usableItems ? usableItems : (int) neededCeil;
+        if (itemsNeeded <= 0) {
+            return RepairPlan.NONE;
+        }
+
+        double restored = Math.min(deficit, itemsNeeded * perItem);
+        return new RepairPlan(itemsNeeded, restored);
+    }
+
+    /** {@link #planRepair} 的结果；{@link #NONE} 表示本应不消耗也不修复。 */
+    record RepairPlan(int itemsConsumed, double healthRestored) {
+        static final RepairPlan NONE = new RepairPlan(0, 0.0);
     }
 
     public ItemStack createRepairItem(int amount) {

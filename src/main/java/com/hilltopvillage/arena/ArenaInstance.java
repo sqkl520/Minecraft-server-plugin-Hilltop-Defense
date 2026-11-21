@@ -1500,7 +1500,9 @@ public class ArenaInstance implements IArena {
         // List.add 与数组扩容。收益不算大，但改法零风险、语义完全一致。
         int removed = 0;
         for (org.bukkit.entity.Item item : world.getEntitiesByClass(org.bukkit.entity.Item.class)) {
-            // 跳过已付对价的商店掉落（ShopListener#PAID_DROP_KEY），避免「付了钱拿不到货」
+            // 跳过已付对价的商店掉落（ShopListener#PAID_DROP_KEY），避免「付了钱拿不到货」。
+            // 标记在 Item **实体**的 PDC 上（不是物品栈）：它只对地上这一件成立，捡起即失效。
+            // 原版并物会抹掉它，由 ShopListener#onItemMerge 在 ItemMergeEvent 里转移到存活实体。
             if (item.getPersistentDataContainer().has(
                     com.hilltopvillage.shop.ShopListener.PAID_DROP_KEY,
                     org.bukkit.persistence.PersistentDataType.BYTE)) {

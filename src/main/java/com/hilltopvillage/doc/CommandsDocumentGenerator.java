@@ -3,6 +3,12 @@ package com.hilltopvillage.doc;
 import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.AtomicMoveNotSupportedException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardCopyOption;
+import java.util.concurrent.locks.ReentrantLock;
+import java.util.function.Consumer;
 
 import org.bukkit.Bukkit;
 import org.bukkit.plugin.java.JavaPlugin;
@@ -16,10 +22,34 @@ import org.bukkit.plugin.java.JavaPlugin;
  */
 public class CommandsDocumentGenerator {
 
+    /**
+     * 串行化 {@code commands.md} 的整段写盘（建临时文件 → 写满 → 移动 → 清理）。
+     *
+     * <p>进程级 {@code static} 锁：写的是同一个数据目录下的同一个文件名，与实例无关。
+     * 用 {@link ReentrantLock} 而不是 {@code synchronized}，是为了让「临界区」在代码里
+     * 有明确的起止行，测试可以按行观察。</p>
+     */
+    private static final ReentrantLock WRITE_LOCK = new ReentrantLock();
+
     private final JavaPlugin plugin;
 
+    /**
+     * 本实例使用的原子移动实现。生产环境恒为 {@link #atomicMove}。
+     *
+     * <p>存在的唯一理由是让 {@code generate()} 这条<b>真实调用链</b>（含降级 WARNING 打到哪里）
+     * 能被端到端验证：否则「降级会记一条 WARNING」这句话只有读 javadoc 的人相信，
+     * 没有任何测试能证明它真的走到了插件的 logger。</p>
+     */
+    private final AtomicMover atomicMover;
+
     public CommandsDocumentGenerator(JavaPlugin plugin) {
+        this(plugin, CommandsDocumentGenerator::atomicMove);
+    }
+
+    /** 包内可见：供测试注入必然被拒的原子移动，以走完真实的降级分支。 */
+    CommandsDocumentGenerator(JavaPlugin plugin, AtomicMover atomicMover) {
         this.plugin = plugin;
+        this.atomicMover = atomicMover;
     }
 
     public void generate() {
@@ -186,7 +216,7 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop tps`\n");
-        md.append("- **注意事项**: 输出服务器与对局双层级诊断信息（TPS/MSPT、内存、在线/对局玩家、波次、怪物、节点、DisplayEntity 清理队列、各世界实体/区块计数）。MSPT 超过 50ms 时附排查建议。\n\n");
+        md.append("- **注意事项**: 输出服务器与对局双层级诊断信息（TPS/MSPT、内存、在线/对局玩家、波次、怪物、节点、各世界实体/区块计数）。MSPT 超过 50ms 时附排查建议。\n\n");
 
         md.append("### `/hilltop deploy`\n\n");
         md.append("- **功能**: 打开管理员部署菜单。\n");
@@ -433,16 +463,135 @@ public class CommandsDocumentGenerator {
         md.append("6. **多语言**: 使用 `/hilltop lang <en|zh>` 切换语言。所有消息文本可在 `plugins/HilltopVillage/messages.yml` 中自定义编辑。\n");
 
         final String content = md.toString();
+        final java.util.logging.Logger logger = plugin.getLogger();
         Bukkit.getScheduler().runTaskAsynchronously(plugin, () -> {
             try {
-                if (!docFile.getParentFile().exists()) {
-                    docFile.getParentFile().mkdirs();
-                }
-                java.nio.file.Files.write(docFile.toPath(), content.getBytes(StandardCharsets.UTF_8));
-                plugin.getLogger().info("Command reference generated: " + docFile.getAbsolutePath());
+                writeAtomically(docFile.toPath(), content.getBytes(StandardCharsets.UTF_8),
+                        (source, target) -> moveIntoPlace(source, target,
+                                atomicMover, logger::warning));
+                logger.info("Command reference generated: " + docFile.getAbsolutePath());
             } catch (IOException e) {
-                plugin.getLogger().warning("Failed to generate the command reference commands.md: " + e.getMessage());
+                logger.warning("Failed to generate the command reference commands.md: " + e.getMessage());
             }
         });
+    }
+
+    /**
+     * 原子写：同目录临时文件 + {@code ATOMIC_MOVE}（唯一降级路径是 {@link AtomicMoveNotSupportedException}）。
+     *
+     * <p>为什么不能直接写目标文件：{@code Files.write} 会先截断再写，崩溃、磁盘满、权限变化或
+     * 并发读取都会看到空文件/半截文档；而本类只在启动时生成一次，没有重试，也没有旧版本可回退。</p>
+     *
+     * <p><b>保证的边界（诚实版，不要在这里写「失败一律保留旧目标」）：</b></p>
+     * <ul>
+     *   <li><b>主路径（{@code ATOMIC_MOVE} 成功）</b>：确实要么是完整的旧文档，要么是完整的新文档，
+     *       中途失败不会留下半截内容。</li>
+     *   <li><b>降级路径（文件系统不支持原子替换）</b>：降级用的是<b>非原子</b>的
+     *       {@code Files.move(REPLACE_EXISTING)}。在 Windows 上它的实现是
+     *       <b>先删除目标、再改名</b>（JDK {@code sun/nio/fs/WindowsFileCopy.move}：
+     *       {@code DeleteFile(targetPath)} 之后才 {@code MoveFileEx(..., 0)}），
+     *       所以改名一旦失败，<b>旧文档已经没了</b>——这条路径<b>不保留旧目标</b>。</li>
+     * </ul>
+     *
+     * <p>降级路径只在临时文件与目标同目录、但该文件系统仍不支持原子替换时出现
+     * （SMB 网络盘、FUSE / VirtualBox 共享目录、部分 NFS 等；本地 NTFS / ext4 / APFS 上不可达）。
+     * 由于它一旦发生就可能丢旧文件，降级会记一条 WARNING 点名 {@code ATOMIC_MOVE} 不受支持，
+     * 让运维能从日志判断「这份文档所在的位置不适合原子替换」。之所以不在此处做
+     * 「备份旧目标 → 失败则还原」：在不支持原子替换的文件系统上，还原本身也只能靠非原子写，
+     * 那个窗口无法真正关闭；而 {@code commands.md} 是每次启动都会重新生成的可再生产物，
+     * 丢失的代价是「某次启动没有文档」，不是数据损失。真实保证靠日志暴露，不靠这段还原假象。</p>
+     *
+     * <p><b>并发</b>：本方法对同一 JVM 内的调用是串行的（{@link #WRITE_LOCK}）。
+     * 没有它，两个线程会各自 {@code createTempFile}、各自 {@code move}：主路径上后移动者
+     * 静默覆盖先移动者；降级路径（先删目标再改名）上两次移动重叠会真的丢文件。
+     * 锁覆盖「建临时文件 → 写满 → 移动 → 清理」整段，而不只是 {@code move} 那一行。
+     * 临时文件在 {@code finally} 里清理。</p>
+     */
+    static void writeAtomically(Path target, byte[] content) throws IOException {
+        // 这条重载没有插件 logger 可用，但绝不能因此把降级告警吞掉（那会让「降级一定会被记录」
+        // 这条 javadoc 承诺在最容易被人顺手调用的入口上失效）。用类名 logger 兜底。
+        writeAtomically(target, content, (source, destination) -> moveIntoPlace(source, destination,
+                CommandsDocumentGenerator::atomicMove,
+                java.util.logging.Logger.getLogger(CommandsDocumentGenerator.class.getName())::warning));
+    }
+
+    /**
+     * 包内可见的移动接缝：只为故障注入（测试）存在，生产路径始终走
+     * {@link #moveIntoPlace}（含真实的降级分支）。
+     */
+    static void writeAtomically(Path target, byte[] content, MoveStep moveStep) throws IOException {
+        WRITE_LOCK.lock();
+        try {
+            Path absoluteTarget = target.toAbsolutePath();
+            Path parent = absoluteTarget.getParent();
+            if (parent != null && !Files.isDirectory(parent)) {
+                Files.createDirectories(parent);
+            }
+            Path tmp = Files.createTempFile(parent, absoluteTarget.getFileName() + ".", ".tmp");
+            try {
+                Files.write(tmp, content);
+                moveStep.move(tmp, absoluteTarget);
+            } finally {
+                try {
+                    Files.deleteIfExists(tmp);
+                } catch (IOException cleanupFailure) {
+                    // 清理失败也必须是可观测的：为了一个 IO 失败去调 DeleteOnExitHook 会在
+                    // 类初始化里再取一次锁（JDK DeleteOnExitHook 的 add() 是 synchronized），
+                    // 而临时文件本身已被删掉/被搬走的情况下这个附加动作几乎没有价值。
+                    java.util.logging.Logger.getLogger(CommandsDocumentGenerator.class.getName())
+                            .warning("Could not delete the temporary command-document file " + tmp
+                                    + ": " + cleanupFailure.getMessage());
+                }
+            }
+        } finally {
+            WRITE_LOCK.unlock();
+        }
+    }
+
+    /**
+     * 把暂存文件搬到最终位置：先试原子移动，文件系统不支持时降级为非原子移动。
+     *
+     * <p>抽成包内可见的独立方法是为了让<b>降级分支本身</b>可被直接执行。
+     * 此前它藏在 {@code private} 方法里，测试只能替换整个 {@link MoveStep} 接缝，
+     * 异常在删除任何文件之前就抛出，于是这段生产逻辑从未被任何测试执行过。</p>
+     *
+     * @param atomicMove   真正执行原子移动的一步；测试注入一个必然抛
+     *                     {@link AtomicMoveNotSupportedException} 的实现，用来把控制流
+     *                     推进下面的 catch 分支。<b>被跳过的只有「原子移动」这一步，
+     *                     catch 分支里的逻辑全部是生产代码。</b>
+     * @param warningSink 降级告警的接收端（生产环境是插件 logger 的 WARNING）
+     */
+    static void moveIntoPlace(Path source, Path target, AtomicMover atomicMove,
+            Consumer<String> warningSink) throws IOException {
+        try {
+            atomicMove.move(source, target);
+        } catch (AtomicMoveNotSupportedException fallback) {
+            // 到这里的代价必须让运维看得见：下面这次移动在 Windows 上是「先删目标、再改名」，
+            // 改名失败就是旧文档已经没了（见 writeAtomically 的 javadoc）。
+            warningSink.accept("The file system at " + target
+                    + " does not support ATOMIC_MOVE; falling back to a NON-atomic replace."
+                    + " On Windows this deletes the previous file before renaming, so a failure"
+                    + " there leaves no commands.md behind (it is regenerated on the next start)."
+                    + " Cause: " + fallback.getMessage());
+            Files.move(source, target, StandardCopyOption.REPLACE_EXISTING);
+        }
+    }
+
+    /** 真正的一次原子移动；单独成方法以便 {@link #moveIntoPlace} 可被注入替换。 */
+    private static void atomicMove(Path source, Path target) throws IOException {
+        Files.move(source, target,
+                StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /** 原子移动接缝：只被 {@link #moveIntoPlace} 使用，测试用它注入「文件系统不支持」。 */
+    @FunctionalInterface
+    interface AtomicMover {
+        void move(Path source, Path target) throws IOException;
+    }
+
+    /** 移动接缝：{@link IOException} 原样上抛，由 {@code generate()} 的 catch 记 WARNING。 */
+    @FunctionalInterface
+    interface MoveStep {
+        void move(Path source, Path target) throws IOException;
     }
 }

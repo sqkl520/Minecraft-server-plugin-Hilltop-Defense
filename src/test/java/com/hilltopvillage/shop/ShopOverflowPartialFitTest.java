@@ -119,6 +119,7 @@ class ShopOverflowPartialFitTest extends MockBukkitTestBase {
     }
 
     private static boolean isPaidDrop(Item item) {
+        // 标记在 Item **实体**的 PDC 上（与 ArenaInstance.clearDroppedItems 的口径一致）。
         return item.getPersistentDataContainer()
                 .has(ShopListener.PAID_DROP_KEY, PersistentDataType.BYTE);
     }

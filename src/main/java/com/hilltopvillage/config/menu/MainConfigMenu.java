@@ -146,10 +146,19 @@ public class MainConfigMenu extends AbstractConfigMenu {
         setClickableItem(bottomRow + 4, Material.CRAFTING_TABLE,
                 lang.getFor(admin, "config.menu.main.reload"),
                 ct -> {
-                    configManager.loadFromFile();
-                    admin.sendMessage(lang.getFor(admin, "config.menu.main.reloaded-msg"));
-                    admin.playSound(admin.getLocation(),
-                            org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
+                    // #8：loadFromFile() 在 game-settings.yml 不可用/只读时会保留内存值并提前返回，
+                    // 且不抛异常。丢弃返回值就会在磁盘什么都没读到的情况下宣告「已重新加载」。
+                    boolean reloaded = configManager.loadFromFile();
+                    if (reloaded) {
+                        admin.sendMessage(lang.getFor(admin, "config.menu.main.reloaded-msg"));
+                        admin.playSound(admin.getLocation(),
+                                org.bukkit.Sound.BLOCK_NOTE_BLOCK_PLING, 1.0f, 1.0f);
+                    } else {
+                        // 与 save-failed 同款对照音：成功是 PLING，失败是沉重的铁砧落地。
+                        admin.sendMessage(lang.getFor(admin, "config.menu.main.reload-failed"));
+                        admin.playSound(admin.getLocation(),
+                                org.bukkit.Sound.BLOCK_ANVIL_LAND, 1.0f, 0.8f);
+                    }
                     reopen();
                 },
                 lang.getFor(admin, "config.menu.main.reload-lore1"),

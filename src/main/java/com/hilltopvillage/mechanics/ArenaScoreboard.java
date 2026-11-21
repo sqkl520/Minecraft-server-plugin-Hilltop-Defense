@@ -83,11 +83,45 @@ public class ArenaScoreboard {
     /** 分隔线字符（全角破折号，客户端字体下宽度与旧版 {@code ---------------} 接近）。 */
     private static final String SEPARATOR_CHAR = "─";
 
+    /**
+     * 关闭期间「等待开关被改回 true」的探针周期（tick，20 = 1 秒）。
+     *
+     * <p>刻意与 {@code display.yml: scoreboard.refresh-ticks} 解耦：探针的任务体只有
+     * 「读一次开关」这一件事，把刷新周期调到 1 tick 也不该让它在关闭期间变成 20 Hz 轮询。
+     * 1 秒的延迟对「管理员敲完 reloadconfig」完全不构成感受差异。</p>
+     */
+    private static final int RE_ENABLE_PROBE_TICKS = 20;
+
     private final HilltopVillagePlugin plugin;
     private final ArenaInstance arena;
     private final LanguageManager lang;
     private final Map<UUID, BoardState> boards = new ConcurrentHashMap<>();
     private BukkitTask updateTask;
+
+    /**
+     * 上一次观察到的有效开关值，用于判定 {@code false → true} 翻转（S08-F2）。
+     *
+     * <p>只用于「恢复」这一侧：关闭时把所有人拆板并停掉刷新任务之后，
+     * 任务已死、{@link #refreshAll()} 再也不会被调用，因此不可能靠它发现开关被改回 true。
+     * 本字段配合 {@link #reEnableProbeTask} 保证「关闭 → 重新打开」只重建一次板，
+     * 而不是每 tick 重建（{@code show()} 每次都新建 scoreboard 并重发整帧）。</p>
+     */
+    private boolean lastEnabled;
+
+    /**
+     * 关闭期间等待开关恢复的轻量探针任务（S08-F2）。
+     *
+     * <p>为什么需要它：开关一旦关闭，{@link #refreshAll()} 会把所有板拆掉并在
+     * {@code boards} 空后 {@link #stopTask()}，此后没有任何一条路径会再回到本类
+     * ——管理员重新打开开关时，已经在对局里的玩家会永久失去侧边栏（节点 / 村民 /
+     * 波次没有任何其它常驻显示通道），只能靠离场重进、重连或下一局才恢复。</p>
+     *
+     * <p>为什么不选「每帧轮询」：刷新任务已停，只能另起一条。本探针的周期固定为
+     * {@link #RE_ENABLE_PROBE_TICKS}（1 秒）而不是 {@code refresh-ticks}，任务体只有
+     * 「读一次布尔值」；开关一旦恢复（或无人在场）立即自取消，
+     * 因此稳态下不存在任何额外轮询。</p>
+     */
+    private BukkitTask reEnableProbeTask;
 
     /**
      * 帧计数器，单位是 <b>Minecraft tick</b>（不是刷新次数）。
@@ -236,7 +270,13 @@ public class ArenaScoreboard {
 
     /** 为玩家创建并显示侧边栏 */
     public void show(Player player) {
-        if (!plugin.getConfigManager().isScoreboardEffectivelyEnabled()) return;
+        if (!plugin.getConfigManager().isScoreboardEffectivelyEnabled()) {
+            // S08-F2：关闭期间入场也要挂上恢复探针。否则管理员重新打开开关后，
+            // 这名玩家与对局中的其它成员一样，要等离场重进 / 重连 / 下一局才有侧边栏：
+            // 关闭期间 show() 全程早退，boards 里没有任何条目能触发重建。
+            ensureReEnableProbeRunning();
+            return;
+        }
         if (!player.isOnline()) return;
 
         Scoreboard board = Bukkit.getScoreboardManager().getNewScoreboard();
@@ -311,6 +351,9 @@ public class ArenaScoreboard {
         }
         boards.clear();
         stopTask();
+        // S08-F2：重置同样收掉恢复探针。重置后成员集合已清空，探针下一 tick 也会自取消；
+        // 显式收掉省掉那一次空转，也让 clear() 的语义保持「本实例回到初始态」。
+        stopReEnableProbe();
     }
 
     private void ensureTaskRunning() {
@@ -330,6 +373,101 @@ public class ArenaScoreboard {
         if (updateTask != null) {
             updateTask.cancel();
             updateTask = null;
+        }
+    }
+
+    /**
+     * 确保「开关恢复」探针在运行（S08-F2，幂等）。
+     *
+     * <p>只在关闭态被调用：{@link #refreshAll()} 的关闭分支与关闭期间的 {@link #show()}。
+     * 两处都要挂，因为关闭分支跑完之后刷新任务已被取消 —— 那是本类最后一次被外部驱动，
+     * 不在这里另起一条，恢复就再没有触发点了。</p>
+     */
+    private void ensureReEnableProbeRunning() {
+        // 与 ensureTaskRunning 同一判据：任务体若抛未捕获异常会被 CraftScheduler 静默取消，
+        // 只判 null 会永远认为探针还活着。
+        if (reEnableProbeTask != null && !reEnableProbeTask.isCancelled()) return;
+        reEnableProbeTask = null;
+        // 插件禁用阶段不允许再调度 Bukkit 任务
+        if (!plugin.isEnabled()) return;
+        reEnableProbeTask = Bukkit.getScheduler().runTaskTimer(
+                plugin, this::probeReEnable, RE_ENABLE_PROBE_TICKS, RE_ENABLE_PROBE_TICKS);
+    }
+
+    private void stopReEnableProbe() {
+        if (reEnableProbeTask != null) {
+            reEnableProbeTask.cancel();
+            reEnableProbeTask = null;
+        }
+    }
+
+    /**
+     * 关闭期间的探针任务体：每 {@link #RE_ENABLE_PROBE_TICKS} 读一次开关。
+     *
+     * <p>三个出口：</p>
+     * <ul>
+     *   <li>开关仍是 false 且场上已无在线成员 → 自取消（没人需要恢复，下次 {@code show()} 会重挂）；</li>
+     *   <li>开关翻回 true → 自取消并重建全部在线成员的侧边栏；</li>
+     *   <li>抛异常 → 自取消，避免「抛错 → 每帧再抛」的刷屏循环（与 {@link #refreshAll} 的 catch 同理由）。</li>
+     * </ul>
+     */
+    private void probeReEnable() {
+        try {
+            if (plugin.getConfigManager().isScoreboardEffectivelyEnabled()) {
+                stopReEnableProbe();
+                // 兜底：正常路径下 lastEnabled 已在关闭分支被置 false，
+                // 这里再判一次是为了挡住「关闭与恢复之间没有经过 refreshAll 关闭分支」的极端时序
+                //（例如配置在两次 tick 之间被改回来），避免重复 show() 把整帧重发一遍。
+                if (lastEnabled) return;
+                restoreBoardsAfterReEnable();
+                return;
+            }
+            lastEnabled = false;
+            // 无在线成员：没有人需要恢复。离线成员（重连窗口内）不该在这里被重建 ——
+            // 他们重连时 ArenaInstance#rejoin 会自己调 show()。
+            if (arena.getPlayers().isEmpty()) stopReEnableProbe();
+        } catch (RuntimeException fatal) {
+            stopReEnableProbe();
+            plugin.getLogger().log(java.util.logging.Level.SEVERE,
+                    "Sidebar re-enable probe failed for arena " + arena.getArenaId()
+                            + "; it will be re-created on the next show()", fatal);
+        }
+    }
+
+    /**
+     * 开关从 false 翻回 true 时重建侧边栏（S08-F2）。
+     *
+     * <p>只遍历<b>在线竞技场成员</b>（{@link ArenaInstance#getPlayers()}）：它已经过滤掉离线玩家，
+     * 而 {@code boards} 此刻是空的 —— 按 UUID 集合重建会顺手把早已离场的人拉回来。</p>
+     *
+     * <p>观战者不特殊处理：入场路径（{@code ArenaInstance#addPlayer}）对所有人一视同仁地调
+     * {@link #show}，观战态只影响行可见性（{@code when: spectator}），所以这里复刻同一入口即可。</p>
+     */
+    private void restoreBoardsAfterReEnable() {
+        lastEnabled = true;
+        int attempted = 0;
+        int restored = 0;
+        for (Player player : arena.getPlayers()) {
+            // show() 会对每名玩家新建 board 并立即渲染一帧，单个人失败不应连累其他人
+            attempted++;
+            try {
+                show(player);
+                restored++;
+            } catch (RuntimeException perPlayer) {
+                plugin.getLogger().log(java.util.logging.Level.WARNING,
+                        "Failed to restore the sidebar for " + player.getName()
+                                + " after scoreboard re-enable (arena " + arena.getArenaId() + ")", perPlayer);
+            }
+        }
+        // 只要有成员被尝试过就确保刷新任务在跑：show() 内部已经调过 ensureTaskRunning，
+        // 但那条路径受 isOnline / 开关二次判定影响，这里再兜一次（该方法幂等）。
+        // 一个都没挂上时任务是空转的，下一帧的 boards 空判会把它停掉，不会留下空转 ticker。
+        if (attempted > 0) {
+            ensureTaskRunning();
+        }
+        if (restored > 0) {
+            plugin.getLogger().info("Scoreboard re-enabled for arena " + arena.getArenaId()
+                    + "; restored the sidebar for " + restored + " player(s)");
         }
     }
 
@@ -361,6 +499,9 @@ public class ArenaScoreboard {
     private void refreshAll() {
         try {
             if (!plugin.getConfigManager().isScoreboardEffectivelyEnabled()) {
+                // S08-F2：关闭态必须记进 lastEnabled，并挂上恢复探针 —— 本方法是任务被取消前
+                // 最后一个会跑到这里的入口，不在这里埋监视点，「重新打开」就永远没有触发者。
+                lastEnabled = false;
                 for (UUID uuid : new ArrayList<>(boards.keySet())) {
                     Player player = Bukkit.getPlayer(uuid);
                     if (player != null) {
@@ -370,8 +511,13 @@ public class ArenaScoreboard {
                     }
                 }
                 if (boards.isEmpty()) stopTask();
+                ensureReEnableProbeRunning();
                 return;
             }
+            // 开关为 true 且任务活着：走过一次正常帧就说明当前是「开」态，
+            // 让 false → true 的判定基准始终跟着真实开关走（含首帧初始化）。
+            lastEnabled = true;
+            stopReEnableProbe();
             if (boards.isEmpty()) {
                 stopTask();
                 return;

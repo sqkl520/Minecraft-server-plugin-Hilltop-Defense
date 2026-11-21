@@ -120,7 +120,19 @@ public class TabListManager {
     private BukkitTask refreshTask;
     /** 当前任务的周期；-1 表示没有任务。用于识别 {@code display.yml} 热重载后的周期变化。 */
     private int scheduledPeriod = -1;
-    /** 动画帧所需的单调 tick 计数（只在刷新任务里自增，不依赖系统时钟）。 */
+    /**
+     * 动画帧所需的单调 tick 计数（只在刷新任务里推进，不依赖系统时钟）。
+     *
+     * <p><b>按真实时间累加</b>（每轮 {@code += 刷新周期}），不是每轮 {@code +1}：
+     * {@code display.yml} 里 {@code frame-ticks} 的单位是 <b>Minecraft tick</b>
+     * （出厂注释写的是「20 tick = 1 秒」）。若按「每次刷新 +1」累加，出厂配置
+     * {@code tab.refresh-ticks: 20} 配 {@code frame-ticks: 20} 的动画会变成
+     * 每 20 次刷新（= 400 tick = 20 秒）才换一帧，比配置慢 20 倍，
+     * 而同一个 {@code frame-ticks} 在侧边栏（{@code ArenaScoreboard#tickCounter}
+     * 同样按周期累加）上却是正确速度——同一个值两边观感不一致就是这个 bug。
+     * 按周期累加后，动画速度与 {@code refresh-ticks} 解耦，管理员调刷新频率
+     * 只会改变动画的时间分辨率，不会连带改变节奏。</p>
+     */
     private long tick;
     /** 掉线程告警只打一次，避免一旦误用就刷屏。 */
     private boolean warnedOffThread;
@@ -147,9 +159,12 @@ public class TabListManager {
             return;
         }
         int period = tab.refreshTicks() > 0 ? tab.refreshTicks() : DisplayConfig.DEFAULT_TAB_REFRESH_TICKS;
-        // 除周期比对还须查 isCancelled：任务体抛未捕获异常时 CraftScheduler 会静默取消它，
-        // 而 refreshTask 字段仍非 null、scheduledPeriod 也还是原值——只判这两个会让 start()
-        // 永远早退，之后玩家加入、reloadconfig 都救不回来（见 refreshAll 的 try/catch 注释）。
+        // 除周期比对还须查 isCancelled：stop() / restoreAll() 会主动 cancel 任务，
+        // 此时 refreshTask 字段虽已置空、但若有人绕过来调用也会命中；而 Error（catch RuntimeException
+        // 抓不到）导致的异常会让 CraftScheduler 走到「异常→重新入队」分支的 finally，
+        // 状态可能不一致。isCancelled 是最省事的一致性判据。
+        // 注意：**不要**指望「任务抛异常后 CraftScheduler 会取消它」——
+        // 反编译 paper-1.21.4-232 的 mainThreadHeartbeat 证实它不会（详见 refreshAll 的注释）。
         if (refreshTask != null && !refreshTask.isCancelled() && period == scheduledPeriod) return;
         stopTask();
         scheduledPeriod = period;
@@ -198,14 +213,27 @@ public class TabListManager {
     /**
      * 插件关闭：把每个在线玩家的名字、排序、头尾恢复成「本插件从未接管过」的样子。
      *
-     * <p>顺序无关紧要，但要<b>逐人</b>发：头/尾是单包单收件人，
-     * 名字与排序虽然广播，也以「按目标逐个还原」为口径，避免漏掉某个刚进服的人。</p>
-     *
      * <p><b>只还原本插件真正碰过的玩家</b>（T5.1）：遍历名单取四张缓存的 keySet 并集，
      * 而不是全部在线玩家。理由：若 {@code tab.enabled: false}，本进程从未发过任何 tab 包；
      * 若某玩家一直处于被关闭的上下文（例如 {@code tab.lobby: false}，大厅交给别的插件管），
      * 本插件也没碰过他。按「全部在线玩家」还原会把别的插件的 tab 布局一并抹掉。
      * 缓存为空时连遍历都省掉。</p>
+     *
+     * <p><b>三项必须按人分别判定，不能一律复位</b>（D3）：四张缓存的「写入时机」不同——
+     * {@link #lastHeader}/{@link #lastFooter} 在旧实现里对<b>每个在线观看者每帧</b>都写过，
+     * 而 {@link #lastName}/{@link #lastOrder} 只在真正调用过 {@code playerListName} /
+     * {@code setPlayerListOrder} 时才写。把并集里的每个人都做「名字+排序+头尾」三件事，
+     * 等于给「本插件明确声明不接管」的玩家也清了名字与分带，正好又是一次覆盖别的插件。</p>
+     *
+     * <p>所以这里是逐个玩家分项判断：</p>
+     * <ul>
+     *   <li><b>名字</b>：仅当 {@link #lastName} 有该 UUID（本插件真的设过）时才复位成 {@code null}。</li>
+     *   <li><b>排序</b>：仅当 {@link #lastOrder} 有该 UUID 时才复位成 0。</li>
+     *   <li><b>头/尾</b>：仅当 {@link #lastHeader}/{@link #lastFooter} 有该 UUID 时才发一次空值。</li>
+     * </ul>
+     *
+     * <p>顺序无关紧要，但要<b>逐人</b>发：头/尾是单包单收件人，
+     * 名字与排序虽然广播，也以「按目标逐个还原」为口径，避免漏掉某个刚进服的人。</p>
      */
     public void restoreAll() {
         if (!ensureMainThread("restoreAll")) return;
@@ -217,11 +245,20 @@ public class TabListManager {
         for (UUID id : touched) {
             Player player = Bukkit.getPlayer(id);
             if (player == null || !player.isOnline()) continue;
-            // null = 恢复客户端默认名（不是空名字）；显式转型是为了让「这是 Component 重载、
-            // 不是已废弃的 String 版 setPlayerListName」在调用点一眼可见
-            player.playerListName((Component) null);
-            player.setPlayerListOrder(0);
-            player.sendPlayerListHeaderAndFooter(Component.empty(), Component.empty());
+            // 分项判：缓存条目存在 = 本插件真的在该项上动过手。用 remove 而不是 get，
+            // 顺便把「已经还原过」这件事写进缓存状态，避免重复路径二次复位。
+            if (lastName.remove(id) != null) {
+                // null = 恢复客户端默认名（不是空名字）；显式转型是为了让「这是 Component 重载、
+                // 不是已废弃的 String 版 setPlayerListName」在调用点一眼可见
+                player.playerListName((Component) null);
+            }
+            if (lastOrder.remove(id) != null) {
+                player.setPlayerListOrder(0);
+            }
+            // 头/尾是单人单值：只有本插件发过才擦，否则会抹掉别的插件设的内容
+            if (lastHeader.remove(id) != null || lastFooter.remove(id) != null) {
+                player.sendPlayerListHeaderAndFooter(Component.empty(), Component.empty());
+            }
         }
         clearCaches();
         stop();
@@ -283,20 +320,32 @@ public class TabListManager {
      * 但也不做任何取配置以外的动作。每个玩家访问前都过 {@code isOnline()}——
      * 这一轮迭代途中可能有人退出，而 {@code getOnlinePlayers()} 的快照不保证这一点。</p>
      *
-     * <p><b>为什么整段包 try/catch（T6.1）：</b>{@code CraftScheduler} 对抛未捕获异常的
-     * 重复任务会记录一次并<b>静默取消它</b>。若不兜住，任意一次 {@code legacy.deserialize}
-     * 或 {@code lang.getFor} 抛异常就会让 tab 的头尾/名字/排序整局不再更新，且
-     * {@code refreshTask} 字段仍指向那个已被取消的句柄。这里置空句柄而非立即重建：
-     * 立即重建会掩盖根因，而下一帧 {@link #start()} 的 {@code isCancelled()} 判定可自然恢复。</p>
+     * <p><b>为什么整段包 try/catch（T6.1）：</b>渲染一帧里的任何一处抛异常，
+     * 都不该让日志刷屏或中断后续玩家的处理。这里兜住并记一条 SEVERE。</p>
+     *
+     * <p><b>为什么 catch 里<b>不</b>清空句柄与周期（2026-11-14 修正）：</b>
+     * 原实现写的是「置空句柄 + 周期归 -1，下一帧 start() 自然重建」，理由是
+     * 「{@code CraftScheduler} 对抛未捕获异常的重复任务会静默取消它」。那个前提是<b>错的</b>——
+     * 反编译 {@code paper-1.21.4-232} 的 {@code CraftScheduler.mainThreadHeartbeat()} 可见，
+     * 任务体抛异常后走的分支是：记 WARNING → 发 {@code ServerExceptionEvent} → 清 currentTask →
+     * <b>与正常路径汇合</b> → 因 {@code period > 0} 而 {@code pending.add(task)} 重新入队。
+     * 全程没有 {@code cancel()}。所以周期任务抛异常后会按时继续执行。</p>
+     *
+     * <p>既然旧任务从未被取消，把它置空就等于制造一个无人持有的孤儿：
+     * 下一帧 {@link #start()} 看到 {@code refreshTask == null} 会新建一条，
+     * 而旧的那条还在跑 → 两条（以及每异常一次再加一条）并行，
+     * {@link #refreshAllUnchecked()} 里的相位推进也就按倍数进行，动画双倍速。</p>
+     *
+     * <p>保留句柄才是正确语义：异常已经被这个 catch 吃掉，任务本身是健康的，
+     * 下一个周期照常执行，导致失败的条件消失后自然恢复。同样的写法见
+     * {@code ArenaScoreboard} 的 catch 分支。</p>
      */
     private void refreshAll() {
         try {
             refreshAllUnchecked();
         } catch (RuntimeException e) {
             plugin.getLogger().log(java.util.logging.Level.SEVERE,
-                    "Tab list refresh failed; the task will be re-created on the next refresh", e);
-            refreshTask = null;
-            scheduledPeriod = -1;
+                    "Tab list refresh failed; the task stays scheduled and will retry next period", e);
         }
     }
 
@@ -325,7 +374,11 @@ public class TabListManager {
             return;
         }
 
-        tick++;
+        // 按真实时间推进动画相位（D1）：frame-ticks 的单位是 tick，不是「刷新次数」。
+        // 此处 scheduledPeriod 必然 > 0 —— 上面刚比对过 period != scheduledPeriod，
+        // 而 period 已经过 `> 0 ? : DEFAULT` 夹取；仍取 max(1, …) 只是防止将来有人
+        // 改动上面那段夹取而在这里退化成「相位不推进」。
+        tick += Math.max(1, scheduledPeriod);
 
         // 第一遍：头/尾（观看者私有）。第二遍：名字/排序（目标属性，广播）。
         // 拆成两遍不是洁癖：头/尾循环里会采竞技场快照，名字/排序只需要玩家自身状态，
@@ -380,9 +433,25 @@ public class TabListManager {
     /**
      * 按观看者的上下文渲染并发送头/尾。
      *
-     * <p>上下文开关关掉时发的是 {@link Component#empty()} 而不是「跳过」：跳过会留下
-     * 上一次发出去的文字，玩家从关闭的上下文回到开启的上下文之间会看到一段不属于自己
-     * 处境的提示。空 Component 只发一次（缓存后相等即跳过），不会每秒发包。</p>
+     * <p><b>上下文未接管时只「擦一次」，之后不再发包</b>（D2）：Bukkit 的
+     * {@code sendPlayerListHeaderAndFooter} 是<b>每个玩家唯一一份</b>值，没有「谁设的」
+     * 这一维度。原实现在未接管的上下文里照样发 {@link Component#empty()}，
+     * 于是管理员把 {@code tab.contexts.lobby} 关掉、把大厅 tab 交给别的插件管时，
+     * 本插件每秒都会把对方的头/尾抹成空白——关闭某个上下文的本意是「这块我不碰」，
+     * 而不是「这块必须是空的」。</p>
+     *
+     * <p>但反过来「完全不发」也会留下上一个已接管上下文里的旧文字（玩家从对局回到大厅会
+     * 看到对局期间的提示）。两种错都得避，所以按缓存状态区分：</p>
+     * <ul>
+     *   <li>缓存里<b>还留着本插件发过的值</b>（{@link #lastHeader}/{@link #lastFooter} 有该
+     *       UUID 条目）→ 说明是「刚刚从接管变成不接管」，发<b>恰好一次</b>空值把旧文字擦掉，
+     *       并删掉缓存条目。下一次刷新时缓存已空，就不再发包。</li>
+     *   <li>缓存里<b>没有</b>该 UUID 条目 → 本插件在这个上下文里从未发过任何东西，
+     *       直接返回。这里正是不该碰别的插件内容的那条路径。</li>
+     * </ul>
+     *
+     * <p>删缓存这一步不能省：留着旧值会让「未接管」分支永远判定为「刚从接管变过来」而每秒发包，
+     * 而且等到上下文重新被接管时，第一帧会拿旧值比对而误判「没变化」，头/尾再也不更新。</p>
      */
     private void pushHeaderFooter(Player viewer, DisplayConfig.Tab tab) {
         Context context = contextOf(viewer);
@@ -392,18 +461,24 @@ public class TabListManager {
             case SPECTATOR -> tab.spectator();
         };
 
-        Component header;
-        Component footer;
-        if (managed) {
-            View view = viewOf(viewer);
-            header = buildBlock(tab.header(), viewer, view);
-            footer = buildBlock(tab.footer(), viewer, view);
-        } else {
-            header = Component.empty();
-            footer = Component.empty();
+        UUID id = viewer.getUniqueId();
+        if (!managed) {
+            // 只在「本插件确实在这里留下过内容」时擦一次；否则一个包都不发，
+            // 把这块让给别的插件（头/尾是单人单值，多发一个空值就是抹别人的屏）
+            boolean hadHeader = lastHeader.remove(id) != null;
+            boolean hadFooter = lastFooter.remove(id) != null;
+            if (hadHeader || hadFooter) {
+                if (viewer.isOnline()) {
+                    viewer.sendPlayerListHeaderAndFooter(Component.empty(), Component.empty());
+                }
+            }
+            return;
         }
 
-        UUID id = viewer.getUniqueId();
+        View view = viewOf(viewer);
+        Component header = buildBlock(tab.header(), viewer, view);
+        Component footer = buildBlock(tab.footer(), viewer, view);
+
         // Component 是不可变树，equals 是结构比较；这里比的是「即将发的」与「上次发的」，
         // 与服务端缓存无关（服务端只缓存 header/footer 字段，没有相等性检查）
         if (header.equals(lastHeader.get(id)) && footer.equals(lastFooter.get(id))) return;

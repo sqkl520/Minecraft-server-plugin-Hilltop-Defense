@@ -412,18 +412,29 @@ class ShopConfigLoaderTest extends MockBukkitTestBase {
         }
 
         @Test
-        @DisplayName("缺 icon 段的非 EQUIPMENT 条目回落到 BARRIER 图标（保留商品）")
-        void missingIconFallsBackToBarrier() throws IOException {
+        @DisplayName("MATERIAL 缺 icon.material 时保留商品、图标回落 BARRIER，并留下 warning")
+        void missingMaterialIconKeepsItemFallingBackToBarrier() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
             ShopConfig config = load(singleItem("""
                     slot: 0
                     price: 1
                     type: MATERIAL
                     """));
 
+            // 这三条断言是本类第七行的既有契约：缺图标只是「没配好」，不应把商品整条丢掉。
+            // fix3 一度把它改成「跳过」，等于让 GUI 少一格 + 服主只能从一行日志里察觉。
             assertEquals(1, config.getItems().size(),
-                    "非 EQUIPMENT 条目缺图标时只是外观问题，不应整条丢掉");
+                    "MATERIAL 缺图标是外观/发货缺陷，不应整条丢掉 —— 丢弃会让 GUI 少一格："
+                            + config.getItems().stream().map(ShopItem::getId).toList());
             assertEquals(Material.BARRIER, config.getItems().get(0).getIcon(),
-                    "缺省图标是 BARRIER（明确可见的「没配好」提示，而不是 AIR 隐形槽位）");
+                    "缺省图标是 BARRIER（游戏内可见的「这一格没配好」提示，而不是 AIR 隐形槽位）");
+            assertTrue(logs.anyContains("MATERIAL item 'probe'"),
+                    "保留必须仍然告警并点名条目：修复缺陷不能以「无声」为代价：" + logs.lines());
+            assertTrue(logs.anyContains("is missing icon.material"),
+                    "告警必须说明缺的是 icon.material：" + logs.lines());
+            assertFalse(logs.anyContains("skipped"),
+                    "既然保留商品，告警就不能再说 skipped —— 否则服主会去 GUI 里找一件仍在的商品："
+                            + logs.lines());
         }
 
         @Test
@@ -585,15 +596,30 @@ class ShopConfigLoaderTest extends MockBukkitTestBase {
         }
 
         @Test
-        @DisplayName("缺 price 键默认 1")
-        void missingPriceDefaultsToOne() throws IOException {
+        @DisplayName("缺 price 键仍默认 1（既有契约），但必须告警说明是按默认值计价")
+        void missingPriceDefaultsToOneWithWarning() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
             ShopConfig config = load(singleItem("""
                     slot: 0
                     type: MATERIAL
                     icon:
                       material: BOW
                     """));
-            assertEquals(1, config.getItems().get(0).getPrice());
+
+            // 既有契约：getInt(path + ".price", 1) 的默认值 1 是明确的代码意图。
+            // 「所有商品都卖 1 个水晶」是合法的极简店铺，把缺键判成非法并丢弃 = 把合法配置判成非法。
+            assertEquals(1, config.getItems().size(),
+                    "缺 price 仍是合法配置（默认 1），不得整条丢弃："
+                            + config.getItems().stream().map(ShopItem::getId).toList());
+            assertEquals(1, config.getItems().get(0).getPrice(),
+                    "缺键时 price 必须取既有默认值 1");
+            assertTrue(logs.anyContains("missing price"),
+                    "F3 真正该修的是「服主不知道自己漏写了」—— 保留默认值的同时必须告警："
+                            + logs.lines());
+            assertTrue(logs.anyContains("defaulting to 1"),
+                    "告警必须说明实际采用的默认值，否则服主无法判断该不该补 price：" + logs.lines());
+            assertFalse(logs.anyContains("skipped"),
+                    "商品被保留，告警就不能说 skipped：" + logs.lines());
         }
 
         @Test
@@ -656,6 +682,208 @@ class ShopConfigLoaderTest extends MockBukkitTestBase {
             assertEquals(3, item.getAmount());
             assertEquals(7, item.getPrice());
             assertEquals(Material.DIAMOND_SWORD, item.getIcon());
+        }
+    }
+
+    // ================================================================ amount 作用域
+
+    @Nested
+    @DisplayName("amount 校验（F4：仅限真正使用 amount 的类型）")
+    class Amounts {
+
+        @Test
+        @DisplayName("amount: 0 在 MATERIAL 上被拒并告警（deliverItem 会钳成 1 却按整价扣费）")
+        void zeroAmountOnMaterialIsRejected() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            ShopConfig config = load(singleItem("""
+                    slot: 0
+                    price: 10
+                    amount: 0
+                    type: MATERIAL
+                    icon:
+                      material: BOW
+                    """));
+
+            assertTrue(config.getItems().isEmpty(),
+                    "MATERIAL 的发货数量来自 amount，0 会让 deliverItem 钳成 1 却仍按整价扣费 —— "
+                            + "必须拒单：" + config.getItems().stream().map(ShopItem::getId).toList());
+            assertTrue(logs.anyContains("invalid amount 0"),
+                    "拒单必须点名非法值：" + logs.lines());
+        }
+
+        @Test
+        @DisplayName("负 amount 在 FIREBALL 上被拒并告警")
+        void negativeAmountOnFireballIsRejected() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            ShopConfig config = load(singleItem("""
+                    slot: 0
+                    price: 10
+                    amount: -3
+                    type: FIREBALL
+                    icon:
+                      material: STONE
+                    """));
+
+            assertTrue(config.getItems().isEmpty(),
+                    "FIREBALL 走 asQuantity(amount)，非正数量必须拒单："
+                            + config.getItems().stream().map(ShopItem::getId).toList());
+            assertTrue(logs.anyContains("invalid amount -3"),
+                    "拒单必须点名非法值：" + logs.lines());
+        }
+
+        @Test
+        @DisplayName("amount: 0 在 REPAIR_ITEM 上被拒并告警")
+        void zeroAmountOnRepairItemIsRejected() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            ShopConfig config = load(singleItem("""
+                    slot: 0
+                    price: 10
+                    amount: 0
+                    type: REPAIR_ITEM
+                    icon:
+                      material: STONE
+                    """));
+
+            assertTrue(config.getItems().isEmpty(),
+                    "REPAIR_ITEM 走 createRepairItem(amount)，非正数量必须拒单："
+                            + config.getItems().stream().map(ShopItem::getId).toList());
+            assertTrue(logs.anyContains("invalid amount 0"),
+                    "拒单必须点名非法值：" + logs.lines());
+        }
+
+        @Test
+        @DisplayName("回归：amount: 0 在 HAMMER 上无害（deliverItem 固定发 1），不得因此删掉商品")
+        void zeroAmountOnHammerKeepsTheItem() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            ShopConfig config = load(singleItem("""
+                    slot: 0
+                    price: 10
+                    amount: 0
+                    type: HAMMER
+                    icon:
+                      material: NETHERITE_AXE
+                    """));
+
+            assertEquals(1, config.getItems().size(),
+                    "ShopManager#deliverItem 对 HAMMER 固定发 1 个、完全忽略 amount，"
+                            + "所以 amount: 0 是冗余无害键，不该把商品判成非法："
+                            + config.getItems().stream().map(ShopItem::getId).toList());
+            assertFalse(logs.anyContains("invalid amount"),
+                    "HAMMER 不消费 amount，不应报 amount 非法：" + logs.lines());
+        }
+
+        @Test
+        @DisplayName("回归：amount: 0 在 EQUIPMENT 上无害（deliverItem 固定发 1），不得因此删掉商品")
+        void zeroAmountOnEquipmentKeepsTheItem() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            ShopConfig config = load(singleItem("""
+                    slot: 0
+                    price: 10
+                    amount: 0
+                    type: EQUIPMENT
+                    icon:
+                      material: IRON_SWORD
+                    """));
+
+            assertEquals(1, config.getItems().size(),
+                    "ShopManager#createEquipment 固定 new ItemStack(icon, 1)，amount 不参与发货 —— "
+                            + "amount: 0 在 EQUIPMENT 上无害：" + config.getItems().stream()
+                            .map(ShopItem::getId).toList());
+            assertFalse(logs.anyContains("invalid amount"),
+                    "EQUIPMENT 不消费 amount，不应报 amount 非法：" + logs.lines());
+        }
+
+        @Test
+        @DisplayName("缺 amount 默认 1（既有契约），且不报非法")
+        void missingAmountDefaultsToOne() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            ShopConfig config = load(singleItem("""
+                    slot: 0
+                    price: 10
+                    type: MATERIAL
+                    icon:
+                      material: BOW
+                    """));
+
+            assertEquals(1, config.getItems().get(0).getAmount(),
+                    "未写 amount 时取既有默认值 1");
+            assertFalse(logs.anyContains("invalid amount"),
+                    "缺键是合法配置，不应报非法：" + logs.lines());
+        }
+    }
+
+    // ================================================================ 汇总可见性
+
+    @Nested
+    @DisplayName("保留类问题的汇总行（服主可见性）")
+    class WarningSummary {
+
+        @Test
+        @DisplayName("只保留商品的问题会汇总成一行 info，点名条目 id")
+        void keptItemWarningsAreSummarized() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            ShopConfig config = load("""
+                    shop:
+                      gui:
+                        size: 54
+                      items:
+                        no_icon:
+                          slot: 0
+                          price: 1
+                          type: MATERIAL
+                        no_price:
+                          slot: 1
+                          type: MATERIAL
+                          icon: { material: BOW }
+                    """);
+
+            assertEquals(2, config.getItems().size(),
+                    "两件商品都只有「保留类」问题，必须全部留在商店里："
+                            + config.getItems().stream().map(ShopItem::getId).toList());
+            assertTrue(logs.anyContains("configuration warning(s)"),
+                    "加载末尾必须有一行汇总，否则单条 warning 会被启动日志的其他输出淹没："
+                            + logs.lines());
+            assertTrue(logs.anyContains("'no_icon'"),
+                    "汇总必须点名缺图标的条目：" + logs.lines());
+            assertTrue(logs.anyContains("'no_price'"),
+                    "汇总必须点名缺 price 的条目：" + logs.lines());
+        }
+
+        @Test
+        @DisplayName("控制组：干净的配置不产生汇总行")
+        void cleanConfigurationProducesNoSummary() throws IOException {
+            LogCapture logs = attachLogCapture(host.getLogger());
+            load(singleItem("""
+                    slot: 0
+                    price: 1
+                    type: MATERIAL
+                    icon:
+                      material: BOW
+                    """));
+
+            assertFalse(logs.anyContains("configuration warning(s)"),
+                    "完全合法的配置不能报汇总，否则服主会学会忽略这一行：" + logs.lines());
+        }
+
+        @Test
+        @DisplayName("汇总行是每次 load 重算的，不会跨次累积")
+        void summaryDoesNotAccumulateAcrossLoads() throws IOException {
+            load(singleItem("""
+                    slot: 0
+                    price: 1
+                    type: MATERIAL
+                    """));
+            LogCapture logs = attachLogCapture(host.getLogger());
+            load(singleItem("""
+                    slot: 0
+                    price: 1
+                    type: MATERIAL
+                    icon:
+                      material: BOW
+                    """));
+
+            assertFalse(logs.anyContains("configuration warning(s)"),
+                    "第二次加载已无问题，汇总列表必须在 load() 开头清空：" + logs.lines());
         }
     }
 

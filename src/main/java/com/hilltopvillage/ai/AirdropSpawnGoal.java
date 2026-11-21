@@ -132,8 +132,16 @@ public class AirdropSpawnGoal implements Goal<Mob> {
         dropper.setVelocity(dir.multiply(MOVE_SPEED));
 
         if (dropperLoc.distanceSquared(flyTarget) <= ARRIVAL_DISTANCE_SQ) {
-            executeAirdrop();
-            targetDropLocation = null;
+            // 2026-11-14：清理放进 finally。
+            // 原实现是 executeAirdrop(); targetDropLocation = null; —— 只要 executeAirdrop 抛出
+            // 任何 RuntimeException，清空那行就执行不到，于是 shouldStayActive() 继续为真，
+            // 下一 tick 再次到达投放点、再次抛出，形成无界重试风暴。
+            // 现在无论成功与否，本 tick 的目标都算已消费；失败只损失一次空投，不会卡住 goal。
+            try {
+                executeAirdrop();
+            } finally {
+                targetDropLocation = null;
+            }
         }
     }
 
@@ -233,10 +241,19 @@ public class AirdropSpawnGoal implements Goal<Mob> {
         int count = monsterCfg != null ? monsterCfg.getAirdropMobCount() : 3;
         String mobTypeName = monsterCfg != null ? monsterCfg.getAirdropMobType() : "ZOMBIE";
         EntityType mobType;
-        try {
-            mobType = EntityType.valueOf(mobTypeName.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
+        // 2026-11-14：null / 空白必须先挡掉。
+        // 实测（YamlConfiguration + JUnit）：`airdrop-mob-type: "null"`（带引号）会让
+        // ConfigManager.getString() 返回 Java null，而 contains() 仍为 true —— 两者不互斥。
+        // 于是 :237 的 null.toUpperCase() 抛 NPE，而 :238 只 catch IllegalArgumentException，
+        // 兜不住，异常一路逃出（清理已由上面的 finally 兜住）。
+        if (mobTypeName == null || mobTypeName.isBlank()) {
             mobType = EntityType.ZOMBIE;
+        } else {
+            try {
+                mobType = EntityType.valueOf(mobTypeName.trim().toUpperCase(Locale.ROOT));
+            } catch (IllegalArgumentException e) {
+                mobType = EntityType.ZOMBIE;
+            }
         }
 
         world.playSound(dropLoc, Sound.ENTITY_PHANTOM_SWOOP, 1.0f, 0.3f);
