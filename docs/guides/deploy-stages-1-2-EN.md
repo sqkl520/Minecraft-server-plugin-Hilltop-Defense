@@ -109,7 +109,7 @@ arenas:
       wave-interval-seconds: 30
 ```
 
-> To apply: **restart the server**. `/hilltop reloadconfig` does not re-read arenas.yml (exception: per-arena params changed via the management GUI take effect immediately — see arena-lifecycle.md)
+> To apply: run `/hilltop reloadconfig` (it re-reads arenas.yml; matches already in progress keep the settings they started with). Exception: per-arena params changed via the management GUI take effect immediately — see arena-lifecycle.md
 
 ## Phase 2.5: Enter the arena world
 

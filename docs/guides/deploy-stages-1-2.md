@@ -112,7 +112,7 @@ arenas:
       wave-interval-seconds: 30
 ```
 
-> 生效方式：**重启服务器**（`/hilltop reloadconfig` 不重读 arenas.yml；例外：管理 GUI 改 per-arena 参数即时生效，见 arena-lifecycle.md）。
+> 生效方式：执行 `/hilltop reloadconfig`（会重新读取 arenas.yml，进行中的对局仍沿用开局时的设置）。例外：管理 GUI 改 per-arena 参数即时生效，见 arena-lifecycle.md。
 
 ## 阶段 2.5：进入竞技场世界
 

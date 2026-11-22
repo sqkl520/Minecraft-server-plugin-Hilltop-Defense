@@ -391,7 +391,7 @@ public class CommandsDocumentGenerator {
         md.append("- **权限**: `hilltopvillage.admin`\n");
         md.append("- **参数**: 无。\n");
         md.append("- **使用示例**: `/hilltop reloadconfig`\n");
-        md.append("- **注意事项**: 同时从 `game-settings.yml`（波次配置、怪物基础属性、锤子参数、节点设置等）与 `monsters-config.yml`（怪物实体类型、攻击伤害、装备与模型）重新加载配置，无需重启服务器即可使修改生效。竞技场参数来自 `arenas.yml`，需重启服务器才能生效。\n\n");
+        md.append("- **注意事项**: 同时从 `game-settings.yml`（波次配置、怪物基础属性、锤子参数、节点设置等）与 `monsters-config.yml`（怪物实体类型、攻击伤害、装备与模型）重新加载配置，并重新读取 `arenas.yml` 的竞技场定义，无需重启服务器即可使修改生效。进行中的对局仍沿用开局时的设置；若 `arenas.yml` 此前损坏被隔离、本次已修好，本命令会把竞技场定义读回来（必要时按 `settings.auto-start-arenas` 重新启用），无需重启。\n\n");
 
         md.append("### `/hilltop shop reload`\n\n");
         md.append("- **功能**: 重载商店配置文件 `shop.yml`。\n");

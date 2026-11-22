@@ -33,7 +33,7 @@ arenas:
       wave-interval-seconds: 30
 ```
 
-> Note: manually editing `arenas.yml` requires a server restart; `/hilltop reloadconfig` reloads game-settings.yml + monsters-config.yml + messages.yml + display.yml. See the `/hilltop reloadconfig` row in `commands-reference.md` in the same directory, and "Parameter edits need no restart" in `arena-lifecycle.md`.
+> Note: manually editing `arenas.yml` takes effect after `/hilltop reloadconfig` (matches already in progress keep the settings they started with); the same command also reloads game-settings.yml + monsters-config.yml + messages.yml + display.yml. See the `/hilltop reloadconfig` row in `commands-reference.md` in the same directory, and "Parameter edits need no restart" in `arena-lifecycle.md`.
 
 ## game-settings.yml — game parameters
 

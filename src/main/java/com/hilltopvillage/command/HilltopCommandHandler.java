@@ -417,6 +417,32 @@ public class HilltopCommandHandler {
                         .ifPresent(gm -> gm.getNodeSystem().resetReadOnlyGates());
                 // 成功提示必须放在所有重载步骤之后：早发会让后续步骤抛出时管理员看到假成功。
                 try {
+                    // 诊断用：重载前 registry 是否为空。只在「空 → 非空」这一个方向上做启用恢复，
+                    // 见下方 enableAllConfiguredArenas 的调用条件。
+                    int arenasBefore = arenaManager.getDefinitionManager().getRegistry().size();
+                    // arenas.yml 的定义必须在闸门 reset() 之后真的重读一遍。
+                    // 少了这一步，被隔离过的 arenas.yml 会出现「闸门已解封、文件可写，但 registry 仍是空集」
+                    // 的三态并存：玩家 join 报 no-arenas-available、管理员 enable 报 arena-not-found，
+                    // 唯一出路是重启——而 YamlFileGate 的恢复指引恰好告诉管理员 reloadconfig 就够了。
+                    // reloadDefinitions 只重建定义、不重建活动实例，见其 javadoc 的安全性说明。
+                    int loadedArenas = arenaManager.reloadDefinitions();
+                    // 死局恢复：本进程此前一个定义都没有（arenas.yml 被隔离 → registry 被清空），
+                    // 现在读回来了。只重建 registry 玩家仍然 join 不到任何场（joinArena 查的是
+                    // 活动实例），所以要按重启时的同一套语义把 enabled 的竞技场重新入队。
+                    // 条件里的 arenasBefore == 0 是安全闸：日常 reloadconfig（registry 本来就是非空）
+                    // 绝不会把管理员运行期 /hilltop disable 掉的竞技场悄悄打开。
+                    if (arenasBefore == 0 && loadedArenas > 0
+                            && arenaManager.getActiveArenas().isEmpty()
+                            && arenaManager.getEnableQueue().isEmpty()) {
+                        if (arenaManager.isAutoStartArenas()) {
+                            plugin.getLogger().info("Arena registry was empty before this reload; re-queueing"
+                                    + " the enabled arenas exactly as a server start would");
+                            arenaManager.enableAllConfiguredArenas();
+                        } else {
+                            plugin.getLogger().info("Arena registry was empty before this reload;"
+                                    + " settings.auto-start-arenas is false, so use /hilltop enable to start arenas");
+                        }
+                    }
                     // #8：loadFromFile() 失败不抛异常（保留内存值并提前 return），所以这里必须
                     // 消费返回值；否则下面的 catch 永远不会触发，config-reloaded 照发。
                     boolean configReloaded = plugin.getConfigManager().loadFromFile();
@@ -443,7 +469,16 @@ public class HilltopCommandHandler {
                         sender.sendMessage(lang.getFor(player, "config-reload-failed"));
                     }
                     sender.sendMessage(lang.getFor(player, "messages-reloaded"));
-                    // 竞技场参数来自 arenas.yml，无法热重载，明确告知管理员需重启
+                    // 竞技场定义本次是否真的读到，必须如实播报：count 为 0 说明 arenas.yml 仍不可用
+                    // （闸门刚被 reset，真读盘已经重判过一次），此时只发「已重载」会让管理员
+                    // 以为竞技场回来了。运行中的对局仍用开局时的定义快照，见 reloadDefinitions 的 javadoc。
+                    if (loadedArenas > 0) {
+                        sender.sendMessage(lang.getFor(player, "config.arenas-reloaded",
+                                String.valueOf(loadedArenas)));
+                    } else {
+                        sender.sendMessage(lang.getFor(player, "config.arenas-reload-empty"));
+                    }
+                    // 参数编辑的常规指引（GUI 参数页 / 手改文件后 reloadconfig）
                     sender.sendMessage(lang.getFor(player, "config.reload-arena-notice"));
                 } catch (RuntimeException ex) {
                     plugin.getLogger().log(Level.SEVERE, "Config reload failed (/hilltop reloadconfig)", ex);
