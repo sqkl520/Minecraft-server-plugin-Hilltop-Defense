@@ -303,6 +303,77 @@ public class SetupWizard implements Listener {
     /** 向导总步骤数（1 世界 → 2 核心 → 3 生成点 → 4 节点 → 5 村民 → 6 商店 → 7 预览 → 8 完成） */
     private static final int TOTAL_STEPS = 8;
 
+    /**
+     * 步骤守卫判定（纯函数，可单测）：子命令在 {@code step} 是否可用。
+     *
+     * <p>抽成静态方法是为了让「哪些按钮在哪些步骤有效」这条合同可以被单元测试钉住 ——
+     * 它正是本次缺陷的症结所在：按钮在聊天历史里永远可点，是否真正执行完全取决于这个判定。</p>
+     *
+     * @param step         当前步骤
+     * @param requiredStep 该子命令所属的步骤
+     * @return true = 可用
+     */
+    static boolean stepAllows(int step, int requiredStep) {
+        return step == requiredStep;
+    }
+
+    /**
+     * 等待区按钮的步骤判定（纯函数，可单测）。
+     *
+     * <p>与其它按钮不同：[设为等待区] 只写 {@code waiting-location}，<b>不推进步骤、不碰核心</b>，
+     * 是一次幂等的独立写操作，因此在世界确认之后（{@code step >= 2}）任一步骤都允许补点。
+     * 这正是用户报告的诉求：「先设核心，再回头设等待区」。</p>
+     *
+     * @param step 当前步骤
+     * @return true = 可以设置等待区
+     */
+    static boolean waitingSettableAt(int step) {
+        return step >= 2 && step <= TOTAL_STEPS;
+    }
+
+    /** 过期按钮的回程命令（纯函数，可单测）：跳到该按钮所属的步骤 */
+    static String recoveryCommand(int requiredStep) {
+        return "/hilltop setup goto " + requiredStep;
+    }
+
+    /**
+     * 统一的步骤守卫：按钮所属步骤与当前步骤不符时，播报「这行按钮已过期」并附可点击的跳转入口。
+     *
+     * <p><b>为什么需要它</b>：向导的按钮全部是 {@code ClickEvent.runCommand}，它们被点过一次之后
+     * <b>仍留在聊天历史里、仍然可点</b>。第 2 步的 [设为核心] 会推进到第 3 步，于是同一行里
+     * 紧挨着的 [设为等待区] 变成了过期按钮；管理员点它时，旧实现只回一句
+     * {@code setup.unknown}（「未知的部署命令。」）—— 管理员并没有打错命令，他点的是<b>自己刚收到的
+     * 那行按钮</b>，却被指责「命令未知」，既误导又堵死了他唯一想做的事。</p>
+     *
+     * <p>本方法把「过期」如实说出来，并给出<b>一键跳转</b>：{@code [跳到第 N 步]} 执行
+     * {@code /hilltop setup goto N}，回到该按钮所属的步骤重新操作（{@code goto} 不改任何数据，
+     * 只换视图与步骤指针，因此可以放心一键跳回）。</p>
+     *
+     * <p>跳转入口刻意做成「回到该步再点一次才写盘」：过期按钮本身<b>不产生任何副作用</b>，
+     * 因此管理员不会因为手滑点到一行几小时前的旧按钮，就把脚下位置的坐标悄悄写进 arenas.yml
+     * —— 尤其是 [设为核心] 的旧按钮，若照旧执行会把核心（重生点 / 村民生成点）搬到管理员
+     * 此刻站着的地方。旧按钮的写盘语义一律保留在 {@code goto} 回去后的原按钮上。</p>
+     *
+     * <p>为什么不直接建议 {@code /hilltop deploy setwaiting}：该命令要求目标竞技场已有<b>运行实例</b>
+     * （{@code HilltopCommandHandler.handleDeployCommand} 在 {@code deployArena == null} 时直接回
+     * 「竞技场未部署」），而向导进行到第 3~7 步时竞技场尚未 enable，此刻跑它必然失败。
+     * 因此跳转只指向向导内一定可用的 {@code goto}。</p>
+     *
+     * @param requiredStep 该按钮所属的步骤号
+     * @return true = 步骤不符，已发送提示（调用方须立即 break）；false = 步骤相符，调用方继续
+     */
+    private boolean rejectStaleStep(Player player, SetupSession s, int requiredStep) {
+        if (stepAllows(s.step, requiredStep)) return false;
+        player.sendMessage(LegacyComponentSerializer.legacySection().deserialize(
+                lang.getFor(player, "setup.stale-step", String.valueOf(s.step),
+                        String.valueOf(TOTAL_STEPS), String.valueOf(requiredStep))));
+        List<Button> buttons = new ArrayList<>();
+        buttons.add(new Button(lang.getFor(player, "setup.btn-back-to-step", String.valueOf(requiredStep)),
+                recoveryCommand(requiredStep)));
+        sendButtonLine(player, buttons);
+        return true;
+    }
+
     private void showStep(Player player, SetupSession s) {
         // 预览村民只服务于第 5 步村民管理：一旦离开该步就立即移除，
         // 避免它们残留到后续步骤、部署完成乃至开局（与开局生成的真村民混淆）。
@@ -1234,10 +1305,7 @@ public class SetupWizard implements Listener {
         switch (token.toLowerCase(Locale.ROOT)) {
             case "confirm-world":
                 // P2-1：步骤守卫（此前任意步骤可执行：聊天历史里点旧的 [确认] 就清核心并推进一步）
-                if (s.step != 1) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 1)) break;
                 // M-02：世界守卫（确认世界本身也要求身处竞技场世界）
                 if (blockedByWorldGuard(player, s)) break;
                 // P2-4：仅当核心本就为空（未部署场）时才置空；已部署场重设向导时保留 core 到第 2 步
@@ -1252,10 +1320,7 @@ public class SetupWizard implements Listener {
                 break;
             case "confirm-core":
                 // P2-1：步骤守卫
-                if (s.step != 2) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 2)) break;
                 // M-02：世界守卫（防在非竞技场世界把别世界坐标写为核心 → 开局/复活跨世界传送）
                 if (blockedByWorldGuard(player, s)) break;
                 // P2-10：写盘失败由随后的 autoSave 经 consumeSaveFailure 统一播报 setup.save-failed
@@ -1267,32 +1332,55 @@ public class SetupWizard implements Listener {
                 showStep(player, s);
                 break;
             case "confirm-waiting":
-                // 第 2 步内的可选按钮：把当前位置设为等待区（玩家 /hilltop join 后、开局前的落点）。
-                // 步骤守卫 / 世界守卫 / 反馈与 confirm-core 同口径，唯一的差别是**不推进步骤**：
-                // 管理员点完 [设为等待区] 仍停在第 2 步，可以继续点 [设为核心] 进第 3 步。
-                if (s.step != 2) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
+                // 第 2 步的可选按钮：把当前位置设为等待区（玩家 /hilltop join 后、开局前的落点）。
+                //
+                // **不推进步骤**使它成为一枚幂等的独立写操作（只写 arenas.<id>.waiting-location，
+                // 不碰步骤指针、不碰核心），因此这里刻意不套「必须停在第 2 步」：
+                // 管理员的常见路径是「点 [设为核心] 进了第 3 步 → 想起还没设等待区 → 回头点聊天历史里
+                // 同一行的 [设为等待区]」。旧实现在此回「未知的部署命令。」——既说错了话（他没打错命令，
+                // 点的是自己刚收到的按钮），又把唯一想做的事堵死（第 3 步没有任何入口回到等待区）。
+                // 现在只要已确认世界（step >= 2）就允许补点，与 /hilltop deploy setwaiting 等价，
+                // 但复用同一条写盘 + 失败播报链。
+                if (!waitingSettableAt(s.step)) {
+                    // 第 1 步尚未确认世界：保守拒绝，但仍然说人话 + 给可点击的跳转按钮
+                    rejectStaleStep(player, s, 2);
                     break;
                 }
                 // M-02：世界守卫（等待区坐标同样取自 player.getLocation()，异世界坐标会被落盘成错误位置）
                 if (blockedByWorldGuard(player, s)) break;
+                // 对局进行中拒绝：与 /hilltop deploy setwaiting 同一保护口径 —— 等待区只影响之后
+                // 加入的玩家，对局里改没有即时效果却会让管理员误以为在挪动场内玩家。此前本分支
+                // 只在第 2 步可达（尚未开局），放宽到后续步骤后必须补上这道守卫。
+                if (isTargetArenaInGame(player)) {
+                    player.sendMessage(lang.getFor(player, "deploy.setwaiting-in-game"));
+                    break;
+                }
                 // P2-10：写盘失败由随后的 autoSave 经 consumeSaveFailure 统一播报 setup.save-failed
                 deploy(player).setWaitingLocation(player.getLocation());
                 player.getWorld().spawnParticle(Particle.HAPPY_VILLAGER, player.getLocation().add(0, 1, 0), 15, 0.5, 0.5, 0.5, 0);
                 player.playSound(player.getLocation(), Sound.BLOCK_NOTE_BLOCK_PLING, 1f, 1.5f);
-                // 刻意不 advance：等待区是可选设置，本步的「前进」仍由 [设为核心] 负责
+                // 刻意不 advance：等待区是可选设置，步骤的「前进」仍由各步自己的推进按钮负责
                 autoSave(player);
                 player.sendMessage(LegacyComponentSerializer.legacySection()
                         .deserialize(lang.getFor(player, "setup.waiting-set")));
-                // 重发两个按钮，方便接着点 [设为核心]
-                sendCoreButtons(player);
+                if (s.step == 2) {
+                    // 仍在第 2 步：重发两个按钮，方便接着点 [设为核心]
+                    sendCoreButtons(player);
+                } else if (s.step < TOTAL_STEPS) {
+                    // 从后续步骤补点：第 2 步的那两个按钮此刻都已过期，重发只会制造新的死按钮。
+                    // 改为给一枚「继续第 N 步」的按钮（走 goto，只重绘当前步骤、不改数据），
+                    // 让管理员一键回到他原本在做的那一步，继续手上有按钮可用。
+                    sendButtonLine(player, Collections.singletonList(new Button(
+                            lang.getFor(player, "setup.btn-resume-step", String.valueOf(s.step)),
+                            recoveryCommand(s.step))));
+                }
+                // step == TOTAL_STEPS（第 8 步）什么都不补发：goto 8 会重跑完成收尾与启用流程，
+                // 不能因为补设一次等待区就重放一遍完成横幅。正常流程里第 8 步的会话已被移除
+                // （handle 早退），此处纯属防御。
                 break;
             case "confirm-shop":
                 // 聊天按钮入口：记录商店村民位置并立即生成（限步骤 6 使用）
-                if (s.step != 6) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 6)) break;
                 // M-02：世界守卫（商店坐标同样取自 player.getLocation()）
                 if (blockedByWorldGuard(player, s)) break;
                 // 对局进行中拒绝（P2-23）：set 会先 despawn 旧实体再生成新实体，对局中移动
@@ -1337,10 +1425,7 @@ public class SetupWizard implements Listener {
                 break;
             case "clear-shop":
                 // 聊天按钮入口：清除商店位置与 NPC 实体（限步骤 6 使用；清除后留在本步）
-                if (s.step != 6) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 6)) break;
                 if (deploy(player).getShopNpcLocation() == null) {
                     player.sendMessage(lang.getFor(player, "setup.shop-clear-none"));
                     sendShopButtons(player);
@@ -1373,20 +1458,14 @@ public class SetupWizard implements Listener {
                 break;
             case "showshopparticles":
                 // F-7：商店位置预览（限步骤 6 使用；提示由预览方法统一发送）
-                if (s.step != 6) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 6)) break;
                 deploy(player).showShopParticles(player, lang);
                 // 重新发送按钮行，与生成点/刷怪点 GUI 的预览行为对齐
                 sendShopButtons(player);
                 break;
             case "addspawn":
                 // 聊天按钮入口：添加玩家当前位置为生成点（限步骤3使用）
-                if (s.step != 3) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 3)) break;
                 // M-02：世界守卫（saveexit 回大厅后聊天历史按钮仍可点，大厅坐标不得写入竞技场配置）
                 if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addSpawnPoint(player.getLocation());
@@ -1403,10 +1482,7 @@ public class SetupWizard implements Listener {
                 break;
             case "addnode":
                 // 聊天按钮入口：手动添加节点（检查脚下方块）
-                if (s.step != 4) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 4)) break;
                 // M-02：世界守卫（防别世界重生锚注册进本竞技场 NodeSystem）
                 if (blockedByWorldGuard(player, s)) break;
                 int result = gameManager(player).getNodeSystem().addNode(player.getLocation());
@@ -1435,18 +1511,12 @@ public class SetupWizard implements Listener {
                     s.step = 4;
                     sessions.put(player.getUniqueId(), s);
                 }
-                if (s.step != 4) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 4)) break;
                 showStepNodesGui(player, s);
                 break;
             case "confirm-nodes":
                 // 聊天按钮入口：完成节点设置
-                if (s.step != 4) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 4)) break;
                 // P2-3：节点 ≥1 校验 —— 0 节点的场任意玩家阵亡会立即判全队失败且无法复活
                 // （复活依赖修复活跃节点，0 节点时这句指引是死路），必须拦截
                 if (gameManager(player).getNodeSystem().getTotalCount() < 1) {
@@ -1476,10 +1546,7 @@ public class SetupWizard implements Listener {
                     s.step = 3;
                     sessions.put(player.getUniqueId(), s);
                 }
-                if (s.step != 3) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 3)) break;
                 showStepSpawnsGui(player, s);
                 break;
             case "overview":
@@ -1491,35 +1558,23 @@ public class SetupWizard implements Listener {
                     s.step = 3;
                     sessions.put(player.getUniqueId(), s);
                 }
-                if (s.step != 3) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 3)) break;
                 showStepSpawnsOverview(player);
                 break;
             case "show-particles":
                 // GUI 按钮入口：显示所有生成点的粒子效果（限步骤3使用）
-                if (s.step != 3) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 3)) break;
                 deploy(player).showSpawnPointParticles(player, lang);
                 break;
             case "spawns-done":
                 // 聊天按钮入口：完成生成点设置（F-9 起收敛到 tryFinishSpawnsStep，与总览 [完成] 同一路径；
                 // README 已标注该命令仅向后兼容保留）
-                if (s.step != 3) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 3)) break;
                 tryFinishSpawnsStep(player, s);
                 break;
             case "addmobspawn":
                 // 聊天按钮入口：添加玩家当前位置为怪物刷怪点（限步骤3使用）
-                if (s.step != 3) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 3)) break;
                 // M-02：世界守卫
                 if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addMobSpawnPoint(player.getLocation());
@@ -1533,18 +1588,12 @@ public class SetupWizard implements Listener {
                 break;
             case "mobspawngui":
                 // 聊天按钮入口：打开怪物刷怪点管理 GUI（限步骤3使用）
-                if (s.step != 3) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 3)) break;
                 showStepMobSpawnsGui(player, s);
                 break;
             case "villagers-done":
                 // 聊天按钮入口：完成村民设置，进入商店步骤（强制至少 1 个村民）
-                if (s.step != 5) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 5)) break;
                 if (deploy(player).getVillagers().isEmpty()) {
                     player.sendMessage(lang.getFor(player, "setup.villagers-required"));
                     sendVillagerButtons(player);
@@ -1556,10 +1605,7 @@ public class SetupWizard implements Listener {
                 break;
             case "addvillager":
                 // 聊天按钮入口：登记当前位置为村民（限步骤 5 使用）
-                if (s.step != 5) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 5)) break;
                 // M-02：世界守卫（村民生成到大厅是 L02-01 的后果之一）
                 if (blockedByWorldGuard(player, s)) break;
                 deploy(player).addVillager(player.getLocation());
@@ -1574,10 +1620,7 @@ public class SetupWizard implements Listener {
                 break;
             case "villagersgui":
                 // 打开村民管理 GUI（限步骤 5 使用）
-                if (s.step != 5) {
-                    player.sendMessage(lang.getFor(player, "setup.unknown"));
-                    break;
-                }
+                if (rejectStaleStep(player, s, 5)) break;
                 showVillagersGui(player, s);
                 break;
             case "preview":

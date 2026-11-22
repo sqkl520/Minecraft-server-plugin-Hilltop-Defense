@@ -44,7 +44,7 @@ Step 2 sends two buttons in chat: `[Set as Core]` and `[Set as Waiting Area] (op
 | Button | Command | Writes | Advances? |
 |--------|---------|--------|-----------|
 | `[Set as Core]` | `/hilltop setup confirm-core` | `arenas.<id>.core` | ✅ goes to step 3 |
-| `[Set as Waiting Area]` | `/hilltop setup confirm-waiting` | `arenas.<id>.waiting-location` (`x/y/z/yaw/pitch`) | ❌ stays on step 2 |
+| `[Set as Waiting Area]` | `/hilltop setup confirm-waiting` | `arenas.<id>.waiting-location` (`x/y/z/yaw/pitch`) | ❌ never advances |
 
 - **What the waiting area is**: where players stand after `/hilltop join` while the start countdown runs
   (`ArenaDefinition.getWaitingLocation()`, which backs `ArenaInstance.getLobbySpawn()`). When it is not set,
@@ -52,9 +52,25 @@ Step 2 sends two buttons in chat: `[Set as Core]` and `[Set as Waiting Area] (op
 - **The two buttons are independent and order-free**: waiting-then-core and core-then-waiting are both just
   two separate writes. After `[Set as Waiting Area]` the button row is re-sent so you can still click
   `[Set as Core]`.
+- **The reverse order works too (fixed 2026-11-23)**: `confirm-waiting` only writes the waiting area, never
+  advances the step and never touches the core, so it is an idempotent standalone write. Its step guard only
+  requires the world to be confirmed (`step >= 2`). After you click `[Set as Core]` and move on to step 3, the
+  same `[Set as Waiting Area]` button still works from your chat history; it then appends a
+  `[Show step N again]` button that puts you back on the step you were working on. Step 1 (world not
+  confirmed) is still rejected, and mid-match is rejected at every step (same rule as
+  `/hilltop deploy setwaiting`).
+- **Stale buttons no longer say "unknown command"**: wizard buttons are clickable chat components and stay
+  clickable forever. Clicking a button that belongs to step X while on step N now emits `setup.stale-step`
+  ("this button belongs to step X, you are on step N, nothing was changed") plus a `[Go to step X]` button
+  that runs `goto` (no side effects). The unified guard replaces 18 of the 19 former step-guard sites (the 19th is `confirm-waiting` itself, see above), including
+  the old `[Set as Core]` button — so clicking a stale core button will not move your core. (`confirm-waiting`
+  is the exception: it no longer has a step-2-only guard, see the previous bullet.)
 - **Optional, never blocking**: at step 8 a `setup.done-no-waiting` reminder is appended when the waiting area
   is unset or identical to the core (click it to run `/hilltop setup goto 2`). Deployment still completes.
-- **Equivalent entry point**: `/hilltop deploy setwaiting` from anywhere (refused while a match is running).
+- **Equivalent entry point**: `/hilltop deploy setwaiting` once the arena is deployed (refused while a match
+  is running). Do **not** use it mid-wizard: it requires a live arena instance, and an arena is not enabled
+  until the wizard finishes, so it only reports `arena-not-deployed` there. Inside the wizard the
+  `[Set as Waiting Area]` button or `goto 2` are the working paths.
 - **"Restore initial state" does not clear it**: `waiting-location` is deliberately absent from
   `ArenaManager.DEPLOYMENT_KEYS`, on the same level as `world` / `enabled` — resetting an arena keeps it
   (if you delete it yourself, the runtime falls back to the new core).
@@ -92,7 +108,7 @@ Available while the wizard is in progress (normally triggered via clickable chat
 |------|------|
 | `confirm-world` | Confirm game world (Step 1) |
 | `confirm-core` | Set current location as village core (Step 2; advances to Step 3) |
-| `confirm-waiting` | Set current location as the waiting area (Step 2, **optional**; stays on Step 2, does not advance) |
+| `confirm-waiting` | Set current location as the waiting area (**optional**; never advances the step. On Step 2 the wizard stays put; after the world is confirmed (Steps 2–8) the same button in your chat history still works) |
 | `addspawn` | Add current location as player spawn point (Step 3, feedback includes index) |
 | `overview` | Open the Spawn Points Overview GUI (Step 3 hub: counts/status of both sets + two sub-manager entries + the single [Done]) |
 | `spawngui` | Open player spawn point manager GUI (Step 3, direct; [Back to Overview] returns to the hub) |
