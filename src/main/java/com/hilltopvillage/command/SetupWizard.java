@@ -2326,4 +2326,31 @@ public class SetupWizard implements Listener {
         int villagerPage = 0;  // 村民管理 GUI 当前页码
         void advance() { step++; }
     }
+
+    /* ========== 测试接缝 ========== */
+
+    /**
+     * 包可见的会话注入点，只供同包测试使用。
+     *
+     * <p><b>为什么需要它</b>：{@link SetupSession} 虽为 public static，但字段与方法全是包可见，
+     * 而 sessions 是私有表。测试若只能调 start(player) 建会话，就必须依赖「玩家站在哪个世界、
+     * arena1 是否已启用、config.yml 里有没有残留 step 指针」这一整串环境条件，
+     * 任何一环变化都会让测试变成环境测试而不是行为测试。</p>
+     *
+     * <p><b>它不是生产路径</b>：{@link #handle(Player, String)} 是本类唯一的生产入口，
+     * 本方法只写会话表，不发送任何消息、不落盘、不推进步骤。测试拿到会话之后再调
+     * handle(player, "confirm-core") 走的仍然是与游戏内点击完全相同的代码路径。</p>
+     *
+     * @param player  目标玩家
+     * @param step    初始步骤（1..TOTAL_STEPS）
+     * @param arenaId 目标竞技场 ID，可为 null
+     * @return 注入的会话，便于测试继续读取 step 断言实际推进结果
+     */
+    SetupSession injectSessionForTest(Player player, int step, String arenaId) {
+        SetupSession session = new SetupSession();
+        session.step = step;
+        session.arenaId = arenaId;
+        sessions.put(player.getUniqueId(), session);
+        return session;
+    }
 }
