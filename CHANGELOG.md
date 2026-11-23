@@ -38,6 +38,11 @@
 
 - **objective 名从裸的 `hilltop` 改为 `hv_sidebar`，并抽成 `ArenaScoreboard.OBJECTIVE_NAME`**：`DisplaySlot.SIDEBAR` 一次只能挂一个 objective，而 objective 名在同一块 board 上是唯一的 —— 裸名与别的插件相撞时 `registerNewObjective` 会抛 `IllegalArgumentException`。抽成包可见常量是因为测试要往自建 board 上注册同名 objective 来模拟真实状态，两边必须用同一份字面量，否则改了一处另一处会静默失配。`registerNewObjective` 前的 `getObjective` 预检保留下来并注明「当前不可达，为将来复用玩家已有 board 时准备」，不写声称覆盖它的测试
 
+### Changed（2026-11-23 — 首次部署与让渡的提示文案）
+
+- **`nodes.yml` 缺失的提示从单行 INFO 改为多行 WARN，并点名下一步动作**：首次装插件时这行是管理员唯一会看到的「为什么没东西可玩」，而单行 INFO 在启动期的其它日志里会被冲掉。现改为 `nodes.yml not found, starting with an empty node list. This arena has no energy nodes, so it cannot be played yet. Run /hilltop setup to place them interactively, or copy nodes.yml from a server that is already configured.` 措辞特意把「这个竞技场没有节点」与「竞技场本身不存在」区分开 —— 后者由 `arenas.yml` 决定，混为一谈会让管理员去改错文件
+- **`display.yml` 的 `header` / `footer` 段补让渡说明**：`header-footer-mode: auto` 且检测到 TAB-Bridge 时这两段**完全不生效**（表头/表尾由代理侧 TAB 渲染，本插件一个包都不发），但配置文件里仍写着内容，运维改了没反应会以为配置坏了。现于段前注明只在 `always` 或未装 TAB-Bridge 时才生效，并说明「改了没反应先看 header-footer-mode」。同时给 `player-name` 补一句反向说明：让渡的只有头/尾，名字与排序一直由本插件管理，不受该开关影响
+
 ### Changed（2026-11-23 — `plugin.yml` 软依赖）
 
 - **`softdepend: []` 改为 `[TAB-Bridge, PlaceholderAPI]`**：需求稿写的 `[TAB, PlaceholderAPI]` 里 `TAB` 这一条是错的 —— 子服永远没有名为 `TAB` 的插件（TAB 是代理插件），留着它会让运维以为「要在这个子服装一份 TAB」，而 TAB 6.x 的 Bukkit 端根本不支持 1.21.4。留一个指向错误解法的声明比空着更糟。`softdepend` 只影响加载顺序、不影响探测（探测走运行时 `isPluginEnabled`，Bridge 晚于本插件 enable 也能在下一轮刷新里被探到）；`PlaceholderAPI` 那条是功能性的，它的 expansion 注册发生在自身 enable 期间，`softdepend` 保证它先 enable。已验证 `plugin.yml` 经 Maven filtering 后 `softdepend` 正确进 JAR

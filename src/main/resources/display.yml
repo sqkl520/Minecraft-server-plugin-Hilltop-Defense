@@ -183,6 +183,13 @@ tab:
     spectator: true
 
   # 头/尾：与侧边栏同一套行 schema，最终用换行符拼成一个整体，各最多 8 行
+  #
+  # ⚠️ 下面两段在 header-footer-mode: auto 且检测到 TAB-Bridge 时**完全不生效** ——
+  #    那时表头/表尾由代理侧 TAB 渲染，本插件一个包都不发（这是刻意的让渡）。
+  #    只在两种情况下会真的显示出来：
+  #      · header-footer-mode: always
+  #      · 没装 TAB-Bridge（单机服）
+  #    所以「改了 header 却没反应」先看 header-footer-mode，不是配置坏了。
   header:
     - key: tab.header.title
     - key: tab.header.arena
@@ -194,6 +201,10 @@ tab:
 
   # 玩家名字格式：值必须是 messages.yml 里的 i18n 键，不是字面量文本。
   # 文本里的 {0} 由 messages.yml 的占位符替换器填充（当前实现传入玩家原名）。
+  #
+  # 注意：player-name **不受** header-footer-mode 影响 —— 让渡的只有头/尾，
+  # 名字与排序一直由本插件管理（代理侧 TAB 在 Velocity 上会覆盖 UPDATE_DISPLAY_NAME，
+  # 所以两边设名字不会打架，本插件设的那份输不掉任何东西）。
   player-name:
     alive: tab.name.alive
     dead: tab.name.dead
