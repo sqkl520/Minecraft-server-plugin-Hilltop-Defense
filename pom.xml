@@ -32,9 +32,22 @@
             <id>papermc</id>
             <url>https://repo.papermc.io/repository/maven-public/</url>
         </repository>
+        <!-- PlaceholderAPI 的发布仓库（不在 Maven Central）。 -->
+        <repository>
+            <id>placeholderapi</id>
+            <url>https://repo.extendedclip.com/releases/</url>
+        </repository>
     </repositories>
 
     <dependencies>
+        <!-- PlaceholderAPI：provided，不进 JAR。运行时由服务器上的 PAPI 提供；
+             缺席时 PlaceholderResolver 安静降级（见该类 javadoc）。 -->
+        <dependency>
+            <groupId>me.clip</groupId>
+            <artifactId>placeholderapi</artifactId>
+            <version>2.11.6</version>
+            <scope>provided</scope>
+        </dependency>
         <dependency>
             <groupId>io.papermc.paper</groupId>
             <artifactId>paper-api</artifactId>

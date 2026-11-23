@@ -6,7 +6,22 @@
 > 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷，
 > 外加 TAB / 代理共存的第一批改造（让渡头/尾、objective 改名、软依赖声明）。
 > 本版不引入新功能，只修复已报告的问题，并把每条修复补上可执行回归测试。
-> 测试套件 991 → 1026 项（Failures 0 / Errors 0 / Skipped 1）。
+### Added（2026-11-23 — PlaceholderAPI 集成）
+
+- **`display.yml` 与 `messages.yml` 的文本现在支持 PlaceholderAPI 占位符**：此前插件里**没有任何一行**引用 PAPI，`player-name` 只能指向一个 i18n 键，所以玩家无法在 Hilltop 的名字里显示自己的 UserPrefix 前缀 —— 别的服靠 TAB-Bridge 把前缀桥到代理 TAB，但本插件的 `player-name` 走自己的渲染路径，那条链在这里是断的。现新增 `util/PlaceholderResolver`，在三个渲染点解析：`TabListManager.nameText`（即 `playerListName`）、`TabListManager.renderLine`、`ArenaScoreboard.renderLine`
+- **解析用的「上下文玩家」按位置不同，这是最容易搞错的地方**：`nameText` 用**被渲染的那名玩家** —— 不是「选了 target 而不是 viewer」，而是 `pushName(Player target, ...)` 本来就只有 target 一个参数（`playerListName` 是目标的全局属性，不存在观看者维度）；而 `renderLine` 两处用**观看者/持有者本人**，因为那是他自己屏幕上显示的内容
+- **PAPI 类型只在嵌套静态类里触碰，且只在「已安装」分支首次引用**：PAPI 以 `provided` 引入、不打包。若在外层类的 `<clinit>` 或无条件分支引用 `me.clip.placeholderapi.PlaceholderAPI`，PAPI 缺席时会在**类加载期**抛 `NoClassDefFoundError`，把持有它的整个 `TabListManager` 一起炸掉，而不是安静降级。已验证构建产物里 `me/clip` 类为零
+- **「装了 PAPI」不等于「能解析」**：PAPI 对未注册的 expansion 标识符**原样返回**输入串，所以装了 PAPI 却没装 UserPrefix 时 `%UserPrefix_prefix%` 会原封不动回到结果里。残留按「返回值仍含 `%identifier%` 形状」判定，命中则**剔除**（只删这一种形状，`100%` 这类正常文本不受影响）并告警，**绝不退回原文** —— 原文里就是那个占位符，退回等于什么都没做
+- **告警按 `(来源文本, token)` 去重**：这段代码跑在每条刷新周期的渲染路径上，不去重的话一个没装 UserPrefix 的服会每帧刷一条同样的 WARN，把控制台冲满、反而掩盖真正的问题。文案指向解法（「注册这个占位符的插件没装」）而不是现象
+- **无占位符时完全不调用 PAPI**：`resolve` 先扫 `%` 再决定，出厂 `messages.yml` 一个 `%` 都没有，所以默认部署下 PAPI 一次都不会被调到
+- **测试**：新增 `PlaceholderResolverTest` 10 项（无 PAPI 时逐字原样返回且不告警 / `100%` 不被误伤 / null 与空串不抛 / 只剔除占位符形状 / 同一文本重复渲染只告警一次 / 不同 token 各报一次 / 无残留不告警）；两个变异已实测 —— 去掉去重会让「只告警一次」变红（1 → 5），跳过剔除会让「只剔占位符形状」变红（裸露的 `%UserPrefix_prefix%` 到达客户端）。**未覆盖**：PAPI 在场且解析成功的分支，本测试环境装不了真的 PlaceholderAPI，已在 commit 中如实说明
+- **`display.yml` 注释块**补 PAPI 一节：哪些字段支持、两种上下文玩家的区别、只装 PAPI 不足以解析 `%UserPrefix_prefix%`（必须另装 UserPrefix）、以及残留占位符的**实际**处置方式（剔除 + 告警，而不是原样发出）
+
+### Changed（2026-11-23 — `auto` 让渡时的日志给出路）
+
+- **`header-footer-mode: auto` 让渡时多打一行说明「这个假设可能不成立」与自愈开关**：`auto` 的让渡判据只是「TAB-Bridge 在场」，它证明的是「本子服属于一个代理侧可能跑 TAB 的群组」，**不**证明代理侧真的在管这个服的头/尾。假设不成立时玩家看到的是空白头/尾，而旧的单行 INFO 只说「已交给代理管理」，运维无从分辨「刻意的让渡」与「配置坏了」，也不知道一个配置值就能恢复。现补一行点名 `header-footer-mode: always` 是出路。只改文案，`shouldDeferHeaderFooter` 与 `updateHeaderFooterPolicy` 的结构未动
+
+> 测试套件 991 → 1036 项（Failures 0 / Errors 0 / Skipped 1）。
 
 
 ### Fixed（2026-11-23 — 向导第 2 步「过期按钮」缺陷，1 项）
@@ -38,9 +53,18 @@
 
 - **objective 名从裸的 `hilltop` 改为 `hv_sidebar`，并抽成 `ArenaScoreboard.OBJECTIVE_NAME`**：`DisplaySlot.SIDEBAR` 一次只能挂一个 objective，而 objective 名在同一块 board 上是唯一的 —— 裸名与别的插件相撞时 `registerNewObjective` 会抛 `IllegalArgumentException`。抽成包可见常量是因为测试要往自建 board 上注册同名 objective 来模拟真实状态，两边必须用同一份字面量，否则改了一处另一处会静默失配。`registerNewObjective` 前的 `getObjective` 预检保留下来并注明「当前不可达，为将来复用玩家已有 board 时准备」，不写声称覆盖它的测试
 
+### Changed（2026-11-23 — 首次部署与让渡的提示文案）
+
+- **`nodes.yml` 缺失的提示从单行 INFO 改为多行 WARN，并点名下一步动作**：首次装插件时这行是管理员唯一会看到的「为什么没东西可玩」，而单行 INFO 在启动期的其它日志里会被冲掉。现改为 `nodes.yml not found, starting with an empty node list. This arena has no energy nodes, so it cannot be played yet. Run /hilltop setup to place them interactively, or copy nodes.yml from a server that is already configured.` 措辞特意把「这个竞技场没有节点」与「竞技场本身不存在」区分开 —— 后者由 `arenas.yml` 决定，混为一谈会让管理员去改错文件
+- **`display.yml` 的 `header` / `footer` 段补让渡说明**：`header-footer-mode: auto` 且检测到 TAB-Bridge 时这两段**完全不生效**（表头/表尾由代理侧 TAB 渲染，本插件一个包都不发），但配置文件里仍写着内容，运维改了没反应会以为配置坏了。现于段前注明只在 `always` 或未装 TAB-Bridge 时才生效，并说明「改了没反应先看 header-footer-mode」。同时给 `player-name` 补一句反向说明：让渡的只有头/尾，名字与排序一直由本插件管理，不受该开关影响
+
 ### Changed（2026-11-23 — `plugin.yml` 软依赖）
 
 - **`softdepend: []` 改为 `[TAB-Bridge, PlaceholderAPI]`**：需求稿写的 `[TAB, PlaceholderAPI]` 里 `TAB` 这一条是错的 —— 子服永远没有名为 `TAB` 的插件（TAB 是代理插件），留着它会让运维以为「要在这个子服装一份 TAB」，而 TAB 6.x 的 Bukkit 端根本不支持 1.21.4。留一个指向错误解法的声明比空着更糟。`softdepend` 只影响加载顺序、不影响探测（探测走运行时 `isPluginEnabled`，Bridge 晚于本插件 enable 也能在下一轮刷新里被探到）；`PlaceholderAPI` 那条是功能性的，它的 expansion 注册发生在自身 enable 期间，`softdepend` 保证它先 enable。已验证 `plugin.yml` 经 Maven filtering 后 `softdepend` 正确进 JAR
+
+### Changed（2026-11-24 — 让渡 header/footer 时补上自愈出路）
+
+- **`updateHeaderFooterPolicy` 在 `auto` 下让渡时，INFO 日志补第二行：点明这是一个假设，并给出 `header-footer-mode: always` 这个开关**：原日志只说「已交给 TAB-Bridge / 由代理管理」，读者据此会以为代理侧一定在管。实际上 `auto` 的判据只是「TAB-Bridge 在场」这个弱信号 —— 它证明不了代理侧真的配了管理本服。假阳性时玩家看到的是空白头/尾，而日志里没有开关名，运维只能翻文档才知道怎么自愈。现追加 `NOTE: this assumes the proxy-side TAB is configured to manage this server. If you see empty header/footer in game, set header-footer-mode: always.`。**只改这两行日志文本**，`shouldDeferHeaderFooter` 的真值与 `updateHeaderFooterPolicy` 的结构一个字都没动（用户明确要求该实现保持原样）
 
 
 

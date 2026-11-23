@@ -183,6 +183,13 @@ tab:
     spectator: true
 
   # 头/尾：与侧边栏同一套行 schema，最终用换行符拼成一个整体，各最多 8 行
+  #
+  # ⚠️ 下面两段在 header-footer-mode: auto 且检测到 TAB-Bridge 时**完全不生效** ——
+  #    那时表头/表尾由代理侧 TAB 渲染，本插件一个包都不发（这是刻意的让渡）。
+  #    只在两种情况下会真的显示出来：
+  #      · header-footer-mode: always
+  #      · 没装 TAB-Bridge（单机服）
+  #    所以「改了 header 却没反应」先看 header-footer-mode，不是配置坏了。
   header:
     - key: tab.header.title
     - key: tab.header.arena
@@ -194,6 +201,27 @@ tab:
 
   # 玩家名字格式：值必须是 messages.yml 里的 i18n 键，不是字面量文本。
   # 文本里的 {0} 由 messages.yml 的占位符替换器填充（当前实现传入玩家原名）。
+  #
+  # 注意：player-name **不受** header-footer-mode 影响 —— 让渡的只有头/尾，
+  # 名字与排序一直由本插件管理（代理侧 TAB 在 Velocity 上会覆盖 UPDATE_DISPLAY_NAME，
+  # 所以两边设名字不会打架，本插件设的那份输不掉任何东西）。
+  #
+  # ── PlaceholderAPI ──
+  # 本文件的全部文本字段（scoreboard.title / lines 的 key、tab.header / footer、
+  # player-name 指向的 i18n 值）在渲染前都会过一遍 PlaceholderAPI，所以可以在
+  # messages.yml 里写 %player_name%、%vault_eco_balance% 这类占位符。
+  #
+  # PAPI 解析用的「上下文玩家」按位置不同：
+  #   · player-name  → 被渲染的那名玩家本人（playerListName 是目标的全局属性，没有观看者）
+  #   · 侧边栏 / 头 / 尾 → 看这份内容的那名玩家（他自己的屏幕上显示什么）
+  #
+  # ⚠️ 只装 PlaceholderAPI **不足以**让 %UserPrefix_prefix% 工作 —— 那是 UserPrefix
+  #    插件注册的扩展，必须在同一台子服上另装 UserPrefix（并让它与代理侧共用同一套
+  #    LuckPerms 数据）。PAPI 对未注册的扩展原样返回输入串，所以「装了 PAPI 还是没解析」
+  #    不是 bug，是缺了对应扩展。
+  #
+  # ⚠️ 没写占位符时，本插件不会调用 PAPI（先扫 % 再决定）；写了但没解析成功时，
+  #    残留的 %xxx% 会被**剔除**并在控制台告警一次（不是原样发给客户端，也不是每帧刷屏）。
   player-name:
     alive: tab.name.alive
     dead: tab.name.dead

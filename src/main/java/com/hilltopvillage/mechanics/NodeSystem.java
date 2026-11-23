@@ -136,7 +136,14 @@ public class NodeSystem {
                 return;
             }
             invalidateAndClearNodes();
-            gameManager.getPlugin().getLogger().info("nodes.yml not found, starting with empty node list.");
+            // 首次装插件时这行是管理员唯一会看到的「为什么没东西可玩」。
+            // 单行 INFO 会被启动期的其它日志冲掉，所以点名下一步动作而不是只陈述事实。
+            // 注意措辞：nodes.yml 缺失只影响「这个竞技场有没有节点」，不影响竞技场本身是否存在
+            // （后者由 arenas.yml 决定）——把两者混在一起会让管理员去改错文件。
+            gameManager.getPlugin().getLogger().warning("nodes.yml not found, starting with an empty node list."
+                    + " This arena has no energy nodes, so it cannot be played yet."
+                    + " Run /hilltop setup to place them interactively,"
+                    + " or copy nodes.yml from a server that is already configured.");
             return;
         }
 

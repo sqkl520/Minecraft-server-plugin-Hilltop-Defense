@@ -107,6 +107,8 @@ public class ArenaScoreboard {
     private final HilltopVillagePlugin plugin;
     private final ArenaInstance arena;
     private final LanguageManager lang;
+    /** PAPI 软集成：未安装时 resolve 原样返回。 */
+    private final com.hilltopvillage.util.PlaceholderResolver placeholders;
     private final Map<UUID, BoardState> boards = new ConcurrentHashMap<>();
     private BukkitTask updateTask;
 
@@ -170,6 +172,7 @@ public class ArenaScoreboard {
         this.plugin = plugin;
         this.arena = arena;
         this.lang = plugin.getLanguageManager();
+        this.placeholders = new com.hilltopvillage.util.PlaceholderResolver(plugin.getLogger());
         resolveLayout();
     }
 
@@ -773,21 +776,31 @@ public class ArenaScoreboard {
      * @return 该行文本；{@code null} 表示该行应当被跳过（动画帧列表异常，加载器本应已拦住）
      */
     private String renderLine(Player player, DisplayConfig.Line line, Snapshot snapshot, PlayerData data) {
+        String rendered;
         switch (line.kind()) {
             case SEPARATOR:
-                return separatorPrefix(player) + SEPARATOR_CHAR.repeat(Math.max(1, line.separatorWidth()));
+                rendered = separatorPrefix(player) + SEPARATOR_CHAR.repeat(Math.max(1, line.separatorWidth()));
+                break;
             case BLANK:
-                return "";
+                rendered = "";
+                break;
             case ANIM: {
                 List<String> frames = line.animFrames();
                 if (frames.isEmpty()) return null;
                 int frame = (int) ((tickCounter / Math.max(1, line.frameTicks())) % frames.size());
-                return lang.getFor(player, frames.get(frame), (Object[]) resolveArgs(line, snapshot, data, player));
+                rendered = lang.getFor(player, frames.get(frame),
+                        (Object[]) resolveArgs(line, snapshot, data, player));
+                break;
             }
             case STATIC:
             default:
-                return lang.getFor(player, line.i18nKey(), (Object[]) resolveArgs(line, snapshot, data, player));
+                rendered = lang.getFor(player, line.i18nKey(),
+                        (Object[]) resolveArgs(line, snapshot, data, player));
+                break;
         }
+        // 侧边栏是「这名玩家自己屏幕上的东西」，所以 PAPI 上下文是 player 本人，
+        // 与他看别人时的上下文无关。分隔线与空行没有文本，resolve 会短路。
+        return placeholders.resolve(player, rendered);
     }
 
     /**
