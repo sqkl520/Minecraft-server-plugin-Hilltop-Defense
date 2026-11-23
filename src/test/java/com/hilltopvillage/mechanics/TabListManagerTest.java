@@ -1018,4 +1018,100 @@ class TabListManagerTest extends MockBukkitTestBase {
             assertFalse(TabListManager.shouldDeferHeaderFooter(null, false));
         }
     }
+
+    /**
+     * 让渡<b>真的接进了发包路径</b>，而不只是纯函数算得对。
+     *
+     * <p><b>为什么必须单开一组</b>：`shouldDeferHeaderFooter` 的真值表只能证明「算得对」。
+     * 实测变异证实过：把 `pushHeaderFooter` 里的 `&& !headerFooterDeferred` 摘掉
+     * （功能完全没接上，让渡永远是死代码），真值表六行<b>依然全绿</b>。
+     * 这与「只测纯谓词不测调用点」是同一个毛病，必须用真正驱动发包路径的用例堵住。</p>
+     */
+    @Nested
+    @DisplayName("让渡接进发包路径（不是只测纯函数）")
+    class DeferralIsWiredIn {
+
+        private int headerSends;
+        private Component sentHeader;
+
+        private PlayerMock recordingPlayer(String name) {
+            PlayerMock p = new PlayerMock(server, name) {
+                @Override
+                public void sendPlayerListHeaderAndFooter(Component header, Component footer) {
+                    headerSends++;
+                    sentHeader = header;
+                }
+            };
+            server.addPlayer(p);
+            return p;
+        }
+
+        /** 让玩家落在大厅上下文，从而 tab.lobby() 决定 managed 的基准值。 */
+        private void enterLobby(PlayerMock p) throws ReflectiveOperationException {
+            when(arenas.getPlayerArena(p)).thenReturn(null);
+        }
+
+        @Test
+        @DisplayName("★ 让渡标志为 true → pushHeaderFooter 一个包都不发")
+        void deferredSendsNothing() throws Exception {
+            PlayerMock p = recordingPlayer("Deferred");
+            enterLobby(p);
+            setField("headerFooterDeferred", Boolean.TRUE);
+            setField("lastHeader", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+            setField("lastFooter", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+
+            invokePushHeaderFooter(p);
+
+            assertEquals(0, headerSends,
+                    "让渡期间必须一个包都不发；这里若为 1，说明 headerFooterDeferred 没接进 managed");
+            assertNull(sentHeader, "连空值都不该发——缓存本来就是空的，没有东西要擦");
+        }
+
+        @Test
+        @DisplayName("★ 让渡标志为 false → pushHeaderFooter 正常发包（防止让渡把功能永久关死）")
+        void notDeferredSends() throws Exception {
+            PlayerMock p = recordingPlayer("NotDeferred");
+            enterLobby(p);
+            setField("headerFooterDeferred", Boolean.FALSE);
+            setField("lastHeader", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+            setField("lastFooter", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+
+            invokePushHeaderFooter(p);
+
+            assertEquals(1, headerSends,
+                    "不让渡时必须发包；这里若为 0，说明让渡标志恒真或 managed 判定被改坏");
+            assertNotNull(sentHeader, "发出的头不该是 null");
+        }
+
+        @Test
+        @DisplayName("★ 从接管翻到让渡 → 只擦一次，之后静默")
+        void deferralWipesOnceThenGoesQuiet() throws Exception {
+            PlayerMock p = recordingPlayer("FlipToDefer");
+            enterLobby(p);
+            java.util.concurrent.ConcurrentHashMap<UUID, Component> headers =
+                    new java.util.concurrent.ConcurrentHashMap<>();
+            java.util.concurrent.ConcurrentHashMap<UUID, Component> footers =
+                    new java.util.concurrent.ConcurrentHashMap<>();
+            setField("lastHeader", headers);
+            setField("lastFooter", footers);
+
+            // 第 1 帧：接管，写进缓存
+            setField("headerFooterDeferred", Boolean.FALSE);
+            invokePushHeaderFooter(p);
+            assertEquals(1, headerSends, "接管时应当发一次");
+            assertTrue(headers.containsKey(p.getUniqueId()), "缓存里应留下本插件发过的值");
+
+            // 第 2 帧：翻成让渡 —— 必须发恰好一次空值把旧文字擦掉
+            setField("headerFooterDeferred", Boolean.TRUE);
+            invokePushHeaderFooter(p);
+            assertEquals(2, headerSends, "从接管翻让渡时必须擦一次");
+            assertEquals(Component.empty(), sentHeader, "擦除包必须是空值");
+            assertFalse(headers.containsKey(p.getUniqueId()), "擦完必须删缓存");
+
+            // 第 3 帧：缓存已空，一个包都不该再发
+            invokePushHeaderFooter(p);
+            assertEquals(2, headerSends,
+                    "缓存已空时让渡必须完全静默；多发一次空值就是在抹别人的屏");
+        }
+    }
 }

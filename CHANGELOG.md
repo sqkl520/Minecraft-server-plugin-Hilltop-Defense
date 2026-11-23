@@ -5,7 +5,7 @@
 
 > 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷，
 > 外加 TAB / 代理共存的第一批改造（让渡头/尾、objective 改名、软依赖声明）。
-> 测试套件 991 → 1003 项（Failures 0 / Errors 0 / Skipped 1）。
+> 测试套件 991 → 1006 项（Failures 0 / Errors 0 / Skipped 1）。
 
 ### Fixed（2026-11-23 — 与代理侧 TAB 争 header/footer）
 
@@ -14,7 +14,7 @@
 - **探测结果只在三个「每周期一次」的点重算**：`start()`、`refreshAllUnchecked()` 开头、`forcePush()` 入口。刻意**不放进 `pushHeaderFooter`** —— 那条路径是「每个观看者每帧一次」，探测是一次 `PluginManager` 查表。也刻意**不在 `restoreAll()` 里探测**：关服时插件按依赖倒序 disable，Bridge 可能先于本插件消失，若因此重新接管并在 shutdown 流程里发包，等于给玩家留一块无人认领的文本
 - **weak signal 的取舍写在代码里**：`AUTO` 下 Bridge 在场只证明「本子服属于一个代理侧可能有 TAB 的群组」，不证明代理侧真在管头/尾。仍然按它让渡，因为两个方向的代价不对称 —— 假阳性得到「头/尾变空白」（可见、可解释、改一行 `always` 自愈）；假阴性得到「每秒整块覆盖」（不可解释、无配置可自愈）
 - **新增 `HeaderFooterMode` 枚举与 `shouldDeferHeaderFooter` 纯函数**：真值表六种组合全部单测，且断言的是结果而不是「没抛异常」。`AUTO + 无 Bridge` 必须接管（单机服上 `auto` 恒等于 `always`，出厂默认不能伤到不用代理的部署）；`NEVER` 恒让渡，不能因为探不到 Bridge 又偷偷开始发
-- **测试**：`TabListManagerTest` 新增 9 项（真值表六行 / null 模式按 auto 处理 / 出厂模板确实写出 auto 且零告警）；`DisplayConfigLoaderTest` 新增 5 项（三个合法值 / 大小写与空格不敏感 / 缺席回退 AUTO 且不告警 / 写错回退 AUTO 并告警 / 出厂模板显式写 auto）；本项 +10 项
+- **测试**：`TabListManagerTest` 新增 12 项 —— 真值表五组（auto+Bridge 让渡 / auto 无 Bridge 必须接管 / always 恒接管 / never 恒让渡且不看探测结果 / null 按 auto）、**接线三组**（让渡为 true 时一个包都不发 / 为 false 时正常发包 / 从接管翻让渡只擦一次之后静默）；`DisplayConfigLoaderTest` 新增 5 项（三个合法值 / 大小写与空格不敏感 / 缺席回退 AUTO 且不告警 / 写错回退 AUTO 并告警 / 出厂模板显式写 auto）；本项 +13 项。**接线三组是变异测试逼出来的**：把 `pushHeaderFooter` 里的 `&& !headerFooterDeferred` 摘掉（整个特性变成死代码，而所有配置值仍能正常解析）时，真值表六行依然全绿 —— 这与「只测纯谓词不测调用点」是同一个毛病，必须用真正驱动发包路径并断言包数的用例堵住
 
 ### Changed（2026-11-23 — 侧边栏 objective 改名）
 
