@@ -292,7 +292,9 @@ Go to the **arena world** (see Phase 2.5) and run:
 
 > **Required items**: player spawn points, mob spawn points, villagers and the shop location — all four are mandatory. If any is missing, clicking [Confirm & Save] is rejected and the wizard jumps back to the corresponding step.
 
-> **Waiting area (optional)**: step 2 also has a [Set as Waiting Area] button next to [Set as Core] — it writes your position to `arenas.<id>.waiting-location`, the spot where players gather after `/hilltop join` and before the match starts (**no extra step — the wizard stays at 8 steps**). Clicking it does **not** advance, so you can still click [Set as Core]. Skipping it is fine: players then wait on the core respawn point, and step 8 prints a non-blocking reminder in that case. You can change it at any time with `/hilltop deploy setwaiting`.
+> **Waiting area (optional)**: step 2 also has a [Set as Waiting Area] button next to [Set as Core] — it writes your position to `arenas.<id>.waiting-location`, the spot where players gather after `/hilltop join` and before the match starts (**no extra step — the wizard stays at 8 steps**). Clicking it does **not** advance, so you can still click [Set as Core]. **The other order works too**: after you click [Set as Core] and move on to step 3, that same [Set as Waiting Area] button in your chat history still works (once the world is confirmed, steps 2–8 all accept it); it then offers a [Show step N again] button to put you back on the step you were working on. Skipping it is fine: players then wait on the core respawn point, and step 8 prints a non-blocking reminder in that case. Once the arena is deployed you can also use `/hilltop deploy setwaiting` (refused mid-match).
+
+> **Clicked a stale button?** Wizard buttons are clickable chat components and stay clickable in your chat history forever. If you click a button that belongs to an earlier step, the wizard no longer says "unknown setup command" — it tells you which step the button belongs to, which step you are on, and that nothing was changed, with a [Go to step N] button. Clicking that only re-renders the step; it changes no data.
 
 ### Phase 4: Tune the game settings
 
@@ -642,7 +644,7 @@ Available while the wizard is in progress (normally triggered via clickable chat
 |------|------|
 | `confirm-world` | Confirm game world (Step 1) |
 | `confirm-core` | Set current location as village core (Step 2; advances to Step 3) |
-| `confirm-waiting` | Set current location as the waiting area (Step 2, **optional**; stays on Step 2, does not advance) |
+| `confirm-waiting` | Set current location as the waiting area (**optional**; never advances the step. On Step 2 the wizard stays put; after the world is confirmed (Steps 2–8) the same button in your chat history still works, so you can set the core first and come back to the waiting area) |
 | `addspawn` | Add current location as player spawn point (Step 3, feedback includes index) |
 | `overview` | Open the Spawn Points Overview GUI (Step 3 hub: counts/status of both sets + two sub-manager entries + the single [Done]) |
 | `spawngui` | Open player spawn point manager GUI (Step 3, direct; [Back to Overview] returns to the hub) |

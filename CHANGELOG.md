@@ -1,6 +1,19 @@
 # Changelog
 
 
+## [1.1.1] - 2026-11-23
+
+> 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷。
+> 本版不引入新功能，只修复已报告的问题并把两条修复补上可执行回归测试。
+> 测试套件 991 → 1009 项（Failures 0 / Errors 0 / Skipped 1）。
+
+### Fixed（2026-11-23 — 向导第 2 步「过期按钮」缺陷，1 项）
+
+- **【P2】第 2 步 [设为等待区] 不再在推进后变成「未知的部署命令」**：`sendCoreButtons` 把 [设为核心] 与 [设为等待区] 渲染在**同一聊天行**，点 [设为核心] 会 `advance()` 到第 3 步，而那一行仍留在聊天历史里可点——再点其中的 [设为等待区] 就撞上 `if (s.step != 2)` 守卫，回一句 `setup.unknown`（「未知的部署命令。」）。管理员并没有打错命令，且第 3 步没有任何入口能回去设等待区（`/hilltop deploy setwaiting` 要求竞技场已有运行实例，向导未完成时必然失败）。修复两条腿：①`confirm-waiting` 的守卫放宽为 `waitingSettableAt(step)`（`step >= 2` 即放行，因为它只写 `waiting-location`、不推进步骤、不碰核心，是幂等独立写操作），并补上「对局进行中拒绝」这道原本只在第 2 步隐式成立的守卫；②其余 18 处步骤守卫（`confirm-core` 自身也在内）全部改走统一的 `rejectStaleStep(...)`，播报新增的 `setup.stale-step`（说清「这是第 N 步的按钮、你现在在第 M 步、没有改动任何设置」）并附可点击的 `[跳到第 N 步]`（走 `goto`，不产生任何副作用）。点两次旧的 [设为核心] 不会再悄悄把核心搬到脚下
+- **新增 3 个双语 i18n 键**：`setup.stale-step` / `setup.btn-back-to-step` / `setup.btn-resume-step`
+- **测试**：新增 `SetupWizardStaleStepTest` 11 项（`stepAllows` 全步骤矩阵 / `waitingSettableAt` 边界 / `recoveryCommand` 一一对应 / 三个新键 en+zh 齐全且占位符与调用点一致 / 源码确实引用新键）；本项 +11 项，Failures 0 / Errors 0 / Skipped 1
+- **测试（补强）**：`SetupWizardStaleStepTest` 只测三个 static 纯谓词，实测钉不住任何行为 —— 把 `confirm-waiting` 的守卫改回旧的 `if (s.step != 2)`（用户报告的 bug 原样复活），或把 `rejectStaleStep` 整个改成 `if (true) return false;`（特性完全失效），套件依然全绿。新增 `SetupWizardClickPathTest` 5 项直接驱动 `handle(...)`，与游戏内 `run_command` 点击走同一条生产路径，同时断言守卫决定与实际写盘结果，让「放行但什么都不做」的实现也无法通过；两条修复现在都有可执行回归测试
+
 ## [1.1.0-SNAPSHOT-fix3] - 2026-11-11
 
 > 1.1.0 的第三个修复版：计分板与 Tab 栏改造轮 + round5 深入审计轮的合并交付。
