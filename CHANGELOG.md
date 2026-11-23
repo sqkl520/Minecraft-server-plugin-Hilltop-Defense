@@ -1,6 +1,31 @@
 # Changelog
 
 
+## [1.1.1] - 2026-11-23
+
+> 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷，
+> 外加 TAB / 代理共存的第一批改造（让渡头/尾、objective 改名、软依赖声明）。
+> 测试套件 991 → 1003 项（Failures 0 / Errors 0 / Skipped 1）。
+
+### Fixed（2026-11-23 — 与代理侧 TAB 争 header/footer）
+
+- **【P1】群组服上不再与代理侧 TAB 抢表头/表尾**：`sendPlayerListHeaderAndFooter` 在协议层是「每个玩家唯一一份值，没有作者概念」，谁后发谁生效。代理侧装 TAB 的群组服上，TAB 默认开了动画（`animations.yml` 的 `change-interval: 100`），约每 100ms 重发一次自己的表头，而本插件每 20 tick 发一次 —— 玩家看到的是表头每秒整块替换、两层内容互相覆盖。关键事实是**不能指望 TAB 挡掉别人**：TAB 的反覆盖（block 其它插件的 header/footer）按官方说明在 Velocity 安装下**不可用**，所以本插件发出的每一个包都真的到达客户端。现新增 `display.yml` 的 `tab.header-footer-mode`（三态 `auto` / `always` / `never`，出厂 `auto`）：`auto` 在检测到 TAB-Bridge 时完全不发，并把此前发过的擦掉一次。探测目标是 **TAB-Bridge** 而不是 TAB —— TAB 是代理插件，子服上永远没有它；判据用 `isPluginEnabled` 而非 `getPlugin() != null`，因为被禁用的 Bridge 不产生任何代理侧效果，那时让渡等于白白丢掉本插件的功能
+- **让渡复用现有「未接管」分支，不新增擦屏代码**：`pushHeaderFooter` 的未接管分支本来就是「缓存里还留着本插件发过的值 → 发一次空值 → 删缓存；缓存为空 → 一个包都不发」。这恰好是让渡所需：接管转让渡时第一帧擦一次再静默，让渡转接管时缓存必然为空所以第一帧正常重发。**只清缓存不发空值会把旧表头永久冻结在玩家屏幕上**（那正是需求原稿 P0-4 的写法会引入的 bug）。`pushHeaderFooter` 的唯一改动是把现有的 `managed` 判定与新的让渡标志合成；`isManaged(...)` 刻意不动 —— 它还服务名字与排序，而让渡头/尾时继续管名字是对的（代理侧 TAB 在 Velocity 上会强制覆盖 `UPDATE_DISPLAY_NAME`，本插件设的名字输不掉任何东西）
+- **探测结果只在三个「每周期一次」的点重算**：`start()`、`refreshAllUnchecked()` 开头、`forcePush()` 入口。刻意**不放进 `pushHeaderFooter`** —— 那条路径是「每个观看者每帧一次」，探测是一次 `PluginManager` 查表。也刻意**不在 `restoreAll()` 里探测**：关服时插件按依赖倒序 disable，Bridge 可能先于本插件消失，若因此重新接管并在 shutdown 流程里发包，等于给玩家留一块无人认领的文本
+- **weak signal 的取舍写在代码里**：`AUTO` 下 Bridge 在场只证明「本子服属于一个代理侧可能有 TAB 的群组」，不证明代理侧真在管头/尾。仍然按它让渡，因为两个方向的代价不对称 —— 假阳性得到「头/尾变空白」（可见、可解释、改一行 `always` 自愈）；假阴性得到「每秒整块覆盖」（不可解释、无配置可自愈）
+- **新增 `HeaderFooterMode` 枚举与 `shouldDeferHeaderFooter` 纯函数**：真值表六种组合全部单测，且断言的是结果而不是「没抛异常」。`AUTO + 无 Bridge` 必须接管（单机服上 `auto` 恒等于 `always`，出厂默认不能伤到不用代理的部署）；`NEVER` 恒让渡，不能因为探不到 Bridge 又偷偷开始发
+- **测试**：`TabListManagerTest` 新增 9 项（真值表六行 / null 模式按 auto 处理 / 出厂模板确实写出 auto 且零告警）；`DisplayConfigLoaderTest` 新增 5 项（三个合法值 / 大小写与空格不敏感 / 缺席回退 AUTO 且不告警 / 写错回退 AUTO 并告警 / 出厂模板显式写 auto）；本项 +10 项
+
+### Changed（2026-11-23 — 侧边栏 objective 改名）
+
+- **objective 名从裸的 `hilltop` 改为 `hv_sidebar`，并抽成 `ArenaScoreboard.OBJECTIVE_NAME`**：`DisplaySlot.SIDEBAR` 一次只能挂一个 objective，而 objective 名在同一块 board 上是唯一的 —— 裸名与别的插件相撞时 `registerNewObjective` 会抛 `IllegalArgumentException`。抽成包可见常量是因为测试要往自建 board 上注册同名 objective 来模拟真实状态，两边必须用同一份字面量，否则改了一处另一处会静默失配。`registerNewObjective` 前的 `getObjective` 预检保留下来并注明「当前不可达，为将来复用玩家已有 board 时准备」，不写声称覆盖它的测试
+
+### Changed（2026-11-23 — `plugin.yml` 软依赖）
+
+- **`softdepend: []` 改为 `[TAB-Bridge, PlaceholderAPI]`**：需求稿写的 `[TAB, PlaceholderAPI]` 里 `TAB` 这一条是错的 —— 子服永远没有名为 `TAB` 的插件（TAB 是代理插件），留着它会让运维以为「要在这个子服装一份 TAB」，而 TAB 6.x 的 Bukkit 端根本不支持 1.21.4。留一个指向错误解法的声明比空着更糟。`softdepend` 只影响加载顺序、不影响探测（探测走运行时 `isPluginEnabled`，Bridge 晚于本插件 enable 也能在下一轮刷新里被探到）；`PlaceholderAPI` 那条是功能性的，它的 expansion 注册发生在自身 enable 期间，`softdepend` 保证它先 enable。已验证 `plugin.yml` 经 Maven filtering 后 `softdepend` 正确进 JAR
+
+
+
 ## [1.1.0-SNAPSHOT-fix3] - 2026-11-11
 
 > 1.1.0 的第三个修复版：计分板与 Tab 栏改造轮 + round5 深入审计轮的合并交付。
