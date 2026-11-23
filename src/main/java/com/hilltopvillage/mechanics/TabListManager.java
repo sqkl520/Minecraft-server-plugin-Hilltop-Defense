@@ -107,6 +107,8 @@ public class TabListManager {
     private final MultiArenaManager arenas;
     /** 全项目统一的 {@code §} 字符串 → Component 转换器（与 {@code DeployMenuSender} 同一用法）。 */
     private final LegacyComponentSerializer legacy = LegacyComponentSerializer.legacySection();
+    /** PAPI 软集成：未安装时 resolve 原样返回。 */
+    private final com.hilltopvillage.util.PlaceholderResolver placeholders;
 
     /** 观看者 → 上次发出的头。 */
     private final Map<UUID, Component> lastHeader = new ConcurrentHashMap<>();
@@ -217,6 +219,7 @@ public class TabListManager {
         this.plugin = plugin;
         this.lang = plugin.getLanguageManager();
         this.arenas = plugin.getMultiArenaManager();
+        this.placeholders = new com.hilltopvillage.util.PlaceholderResolver(plugin.getLogger());
     }
 
     /* ========== 生命周期 ========== */
@@ -628,7 +631,7 @@ public class TabListManager {
      * @return {@code null} 表示跳过该行（动画帧列表异常；加载器本应已拦住）
      */
     private String renderLine(Player viewer, DisplayConfig.Line line, View view) {
-        return switch (line.kind()) {
+        String rendered = switch (line.kind()) {
             case SEPARATOR -> separatorPrefix(viewer) + SEPARATOR_CHAR.repeat(Math.max(1, line.separatorWidth()));
             case BLANK -> "";
             case ANIM -> {
@@ -639,6 +642,9 @@ public class TabListManager {
             }
             case STATIC -> lang.getFor(viewer, line.i18nKey(), (Object[]) resolveArgs(line, view, viewer));
         };
+        // 头/尾是「这名观看者看到的东西」，所以 PAPI 上下文就是 viewer 本人。
+        // 分隔线与空行没有文本，resolve 会在 indexOf('%') 处直接短路。
+        return placeholders.resolve(viewer, rendered);
     }
 
     /**
@@ -694,7 +700,7 @@ public class TabListManager {
                 case SPECTATOR -> fallbackKey(tab.nameSpectator(), KEY_NAME_SPECTATOR);
             };
         }
-        return lang.getFor(target, key, target.getName());
+        return placeholders.resolve(target, lang.getFor(target, key, target.getName()));
     }
 
     /**
