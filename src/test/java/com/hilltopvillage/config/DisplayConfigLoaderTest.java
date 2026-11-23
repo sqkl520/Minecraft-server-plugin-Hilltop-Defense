@@ -418,4 +418,62 @@ class DisplayConfigLoaderTest {
                         w.contains("separator") && w.contains("wins")),
                 "expected the warning to name the winning kind, got: " + result.warnings());
     }
+
+    // ------------------------------------------------- header-footer-mode
+
+    @Test
+    @DisplayName("header-footer-mode：三个合法值逐个解析")
+    void headerFooterModeParsesAllThreeValues() {
+        for (DisplayConfig.HeaderFooterMode expected : DisplayConfig.HeaderFooterMode.values()) {
+            String raw = "tab:\n  header-footer-mode: "
+                    + expected.name().toLowerCase(java.util.Locale.ROOT) + "\n";
+            DisplayConfigLoader.Result result = DisplayConfigLoader.parse(yaml(raw));
+            assertEquals(expected, result.config().tab().headerFooterMode(),
+                    "值 " + expected + " 应被正确解析");
+        }
+    }
+
+    @Test
+    @DisplayName("header-footer-mode：大小写与首尾空格都不敏感")
+    void headerFooterModeIsCaseAndWhitespaceInsensitive() {
+        DisplayConfigLoader.Result result = DisplayConfigLoader.parse(
+                yaml("tab:\n  header-footer-mode: '  AlWaYs  '\n"));
+        assertEquals(DisplayConfig.HeaderFooterMode.ALWAYS,
+                result.config().tab().headerFooterMode());
+    }
+
+    @Test
+    @DisplayName("header-footer-mode 缺席 → AUTO，且不产生告警（老服就是这种状态）")
+    void headerFooterModeDefaultsToAutoWithoutWarning() {
+        DisplayConfigLoader.Result result = DisplayConfigLoader.parse(yaml("tab:\n  enabled: true\n"));
+        assertEquals(DisplayConfig.HeaderFooterMode.AUTO, result.config().tab().headerFooterMode(),
+                "老服的 display.yml 由 saveResource(..., false) 写下，永远没有这个键，默认值必须由代码提供");
+        assertEquals(List.of(), result.warnings(),
+                "缺省是正常状态，不该报警");
+    }
+
+    @Test
+    @DisplayName("header-footer-mode 写错 → 回退 AUTO 并告警，绝不放行成 ALWAYS")
+    void headerFooterModeFallsBackToAutoOnGarbage() {
+        DisplayConfigLoader.Result result = DisplayConfigLoader.parse(
+                yaml("tab:\n  header-footer-mode: sometimes\n"));
+        assertEquals(DisplayConfig.HeaderFooterMode.AUTO, result.config().tab().headerFooterMode(),
+                "拼错时降级成 ALWAYS 会在群组服上直接复现表头闪烁；AUTO 在单机服上恒等于 ALWAYS，"
+                        + "所以回退 AUTO 两头都不伤");
+        assertTrue(result.warnings().stream().anyMatch(w -> w.contains("header-footer-mode")),
+                "拼错必须可见，否则运维会以为自己配上了；实际告警：" + result.warnings());
+    }
+
+    @Test
+    @DisplayName("出厂模板里的 header-footer-mode 是 auto")
+    void shippedTemplateShipsAuto() throws Exception {
+        try (java.io.InputStream stream = getClass().getResourceAsStream("/display.yml")) {
+            assertNotNull(stream, "display.yml must be packaged into the JAR");
+            DisplayConfigLoader.Result result = DisplayConfigLoader.parse(
+                    yaml(new String(stream.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8)));
+            assertEquals(DisplayConfig.HeaderFooterMode.AUTO,
+                    result.config().tab().headerFooterMode(),
+                    "出厂模板必须显式写出 auto，不能让运维猜默认值");
+        }
+    }
 }

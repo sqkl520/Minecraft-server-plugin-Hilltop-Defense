@@ -193,7 +193,7 @@ class ArenaScoreboardTest extends MockBukkitTestBase {
         setField(scoreboard, "updateTask", task);
 
         Scoreboard board = server.getScoreboardManager().getNewScoreboard();
-        Objective objective = board.registerNewObjective("hilltop", Criteria.DUMMY, "title");
+        Objective objective = board.registerNewObjective(ArenaScoreboard.OBJECTIVE_NAME, Criteria.DUMMY, "title");
         @SuppressWarnings("unchecked")
         Map<UUID, Object> boards = (Map<UUID, Object>) field(scoreboard, "boards");
         boards.put(player.getUniqueId(), newBoardState(board, objective));

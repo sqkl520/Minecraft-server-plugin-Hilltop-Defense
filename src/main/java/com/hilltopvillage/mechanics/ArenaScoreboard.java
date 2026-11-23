@@ -45,6 +45,18 @@ import java.util.concurrent.ConcurrentHashMap;
 public class ArenaScoreboard {
 
     /**
+     * 侧边栏 objective 的名字。
+     *
+     * <p>带 {@code hv_} 前缀而不是裸的 {@code hilltop}：{@code DisplaySlot.SIDEBAR} 一次只能挂
+     * 一个 objective，而 objective 名在同一块 board 上是唯一的。裸名与别的插件相撞时，
+     * {@code registerNewObjective} 会抛 {@code IllegalArgumentException}。</p>
+     *
+     * <p>包可见而非私有，因为测试要往自建 board 上注册同名 objective 来模拟真实状态，
+     * 两边必须用同一份字面量（否则改了一处、另一处静默失配）。</p>
+     */
+    static final String OBJECTIVE_NAME = "hv_sidebar";
+
+    /**
      * 侧边栏最大行数。
      *
      * <p>Minecraft 侧边栏能稳定显示的极限是 15 行；早先版本取 10 行是「当时内置布局的峰值」，
@@ -281,7 +293,17 @@ public class ArenaScoreboard {
 
         Scoreboard board = Bukkit.getScoreboardManager().getNewScoreboard();
         String title = lang.getFor(player, titleKey());
-        Objective objective = board.registerNewObjective("hilltop", Criteria.DUMMY, title);
+        // objective 名带插件前缀，避免与别的插件（TAB、其它侧边栏插件）裸名相撞。
+        // registerNewObjective 同名抛 IllegalArgumentException，所以先查一次；
+        // 这一帧的 board 是 getNewScoreboard() 新建的，上面必然没有同名 objective，
+        // 因此下面这个分支当前不可达 —— 保留它是为了将来复用玩家已有 board 时不必再补。
+        Objective existing = board.getObjective(OBJECTIVE_NAME);
+        Objective objective = existing != null
+                ? existing
+                : board.registerNewObjective(OBJECTIVE_NAME, Criteria.DUMMY, title);
+        if (existing != null) {
+            objective.setDisplayName(title);
+        }
         objective.setDisplaySlot(DisplaySlot.SIDEBAR);
         // D9：1.20.3+ 默认会把 score 值渲染成行尾的红色数字。本类的 score 只承担排序职责，
         // 数字对玩家完全是噪音（还会被误读成击杀数），blank 是全类唯一正确的写法。

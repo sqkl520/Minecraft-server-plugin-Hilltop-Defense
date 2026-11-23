@@ -134,7 +134,7 @@ class TabListManagerTest extends MockBukkitTestBase {
         DisplayConfig defaults = DisplayConfig.defaults();
         DisplayConfig.Tab base = defaults.tab();
         DisplayConfig.Tab tab = new DisplayConfig.Tab(
-                enabled, ticks, base.lobby(), base.arena(), base.spectator(),
+                enabled, ticks, base.headerFooterMode(), base.lobby(), base.arena(), base.spectator(),
                 base.header(), base.footer(),
                 base.nameAlive(), base.nameDead(), base.nameSpectator());
         when(configManager.getDisplayConfig())
@@ -153,7 +153,7 @@ class TabListManagerTest extends MockBukkitTestBase {
         DisplayConfig defaults = DisplayConfig.defaults();
         DisplayConfig.Tab base = defaults.tab();
         DisplayConfig.Tab tab = new DisplayConfig.Tab(
-                true, ticks, lobby, arena, spectator,
+                true, ticks, base.headerFooterMode(), lobby, arena, spectator,
                 header, base.footer(),
                 base.nameAlive(), base.nameDead(), base.nameSpectator());
         when(configManager.getDisplayConfig())
@@ -964,6 +964,154 @@ class TabListManagerTest extends MockBukkitTestBase {
             assertEquals(0, p.getPlayerListOrder(), "排序应归 0");
             assertEquals(1, headerSends, "头/尾应被擦一次");
             assertEquals(Component.empty(), sentHeader, "擦除包必须是空值");
+        }
+    }
+
+    /**
+     * 让渡策略的真值表。
+     *
+     * <p>这三态是本轮唯一新增的「与外部插件争资源」的开关，写成纯函数就是为了能脱离
+     * Bukkit 逐行断言。六个组合全测，且断言的是<b>结果</b>而不是「没抛异常」。</p>
+     */
+    @Nested
+    @DisplayName("shouldDeferHeaderFooter：六种组合")
+    class DeferralTruthTable {
+
+        @Test
+        @DisplayName("auto + Bridge 在场 → 让渡（这是群组服的出厂状态）")
+        void autoWithBridgeDefers() {
+            assertTrue(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.AUTO, true));
+        }
+
+        @Test
+        @DisplayName("auto + 无 Bridge → 接管（单机服上 auto 必须等于 always）")
+        void autoWithoutBridgeManages() {
+            assertFalse(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.AUTO, false),
+                    "没有 TAB-Bridge 的服上让渡等于白白丢掉头/尾，出厂默认不能这样");
+        }
+
+        @Test
+        @DisplayName("always 恒接管，与 Bridge 无关")
+        void alwaysAlwaysManages() {
+            assertFalse(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.ALWAYS, true));
+            assertFalse(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.ALWAYS, false));
+        }
+
+        @Test
+        @DisplayName("never 恒让渡，与 Bridge 无关（连探测结果都不看）")
+        void neverAlwaysDefers() {
+            assertTrue(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.NEVER, true));
+            assertTrue(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.NEVER, false),
+                    "运维显式选了 never，就不能因为探不到 Bridge 又偷偷开始发");
+        }
+
+        @Test
+        @DisplayName("配置为 null（老配置读不到该键）按 auto 处理")
+        void nullModeBehavesLikeAuto() {
+            assertTrue(TabListManager.shouldDeferHeaderFooter(null, true));
+            assertFalse(TabListManager.shouldDeferHeaderFooter(null, false));
+        }
+    }
+
+    /**
+     * 让渡<b>真的接进了发包路径</b>，而不只是纯函数算得对。
+     *
+     * <p><b>为什么必须单开一组</b>：`shouldDeferHeaderFooter` 的真值表只能证明「算得对」。
+     * 实测变异证实过：把 `pushHeaderFooter` 里的 `&& !headerFooterDeferred` 摘掉
+     * （功能完全没接上，让渡永远是死代码），真值表六行<b>依然全绿</b>。
+     * 这与「只测纯谓词不测调用点」是同一个毛病，必须用真正驱动发包路径的用例堵住。</p>
+     */
+    @Nested
+    @DisplayName("让渡接进发包路径（不是只测纯函数）")
+    class DeferralIsWiredIn {
+
+        private int headerSends;
+        private Component sentHeader;
+
+        private PlayerMock recordingPlayer(String name) {
+            PlayerMock p = new PlayerMock(server, name) {
+                @Override
+                public void sendPlayerListHeaderAndFooter(Component header, Component footer) {
+                    headerSends++;
+                    sentHeader = header;
+                }
+            };
+            server.addPlayer(p);
+            return p;
+        }
+
+        /** 让玩家落在大厅上下文，从而 tab.lobby() 决定 managed 的基准值。 */
+        private void enterLobby(PlayerMock p) throws ReflectiveOperationException {
+            when(arenas.getPlayerArena(p)).thenReturn(null);
+        }
+
+        @Test
+        @DisplayName("★ 让渡标志为 true → pushHeaderFooter 一个包都不发")
+        void deferredSendsNothing() throws Exception {
+            PlayerMock p = recordingPlayer("Deferred");
+            enterLobby(p);
+            setField("headerFooterDeferred", Boolean.TRUE);
+            setField("lastHeader", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+            setField("lastFooter", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+
+            invokePushHeaderFooter(p);
+
+            assertEquals(0, headerSends,
+                    "让渡期间必须一个包都不发；这里若为 1，说明 headerFooterDeferred 没接进 managed");
+            assertNull(sentHeader, "连空值都不该发——缓存本来就是空的，没有东西要擦");
+        }
+
+        @Test
+        @DisplayName("★ 让渡标志为 false → pushHeaderFooter 正常发包（防止让渡把功能永久关死）")
+        void notDeferredSends() throws Exception {
+            PlayerMock p = recordingPlayer("NotDeferred");
+            enterLobby(p);
+            setField("headerFooterDeferred", Boolean.FALSE);
+            setField("lastHeader", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+            setField("lastFooter", new java.util.concurrent.ConcurrentHashMap<UUID, Component>());
+
+            invokePushHeaderFooter(p);
+
+            assertEquals(1, headerSends,
+                    "不让渡时必须发包；这里若为 0，说明让渡标志恒真或 managed 判定被改坏");
+            assertNotNull(sentHeader, "发出的头不该是 null");
+        }
+
+        @Test
+        @DisplayName("★ 从接管翻到让渡 → 只擦一次，之后静默")
+        void deferralWipesOnceThenGoesQuiet() throws Exception {
+            PlayerMock p = recordingPlayer("FlipToDefer");
+            enterLobby(p);
+            java.util.concurrent.ConcurrentHashMap<UUID, Component> headers =
+                    new java.util.concurrent.ConcurrentHashMap<>();
+            java.util.concurrent.ConcurrentHashMap<UUID, Component> footers =
+                    new java.util.concurrent.ConcurrentHashMap<>();
+            setField("lastHeader", headers);
+            setField("lastFooter", footers);
+
+            // 第 1 帧：接管，写进缓存
+            setField("headerFooterDeferred", Boolean.FALSE);
+            invokePushHeaderFooter(p);
+            assertEquals(1, headerSends, "接管时应当发一次");
+            assertTrue(headers.containsKey(p.getUniqueId()), "缓存里应留下本插件发过的值");
+
+            // 第 2 帧：翻成让渡 —— 必须发恰好一次空值把旧文字擦掉
+            setField("headerFooterDeferred", Boolean.TRUE);
+            invokePushHeaderFooter(p);
+            assertEquals(2, headerSends, "从接管翻让渡时必须擦一次");
+            assertEquals(Component.empty(), sentHeader, "擦除包必须是空值");
+            assertFalse(headers.containsKey(p.getUniqueId()), "擦完必须删缓存");
+
+            // 第 3 帧：缓存已空，一个包都不该再发
+            invokePushHeaderFooter(p);
+            assertEquals(2, headerSends,
+                    "缓存已空时让渡必须完全静默；多发一次空值就是在抹别人的屏");
         }
     }
 }

@@ -5,7 +5,11 @@ api-version: '1.21'
 description: Hilltop Village - Cooperative PvE Tower Defense
 authors: [HilltopVillageTeam]
 depend: []
-softdepend: []
+# TAB-Bridge：群组服上子服侧装的是它（TAB 本身在代理侧，子服永远没有名为 TAB 的插件）。
+# 写进 softdepend 主要是声明式正确性与 /plugins 里的加载顺序。
+# PlaceholderAPI：功能性的 —— 它的 expansion 注册发生在自身 enable 期间，
+# softdepend 保证它先 enable，本插件第一次解析占位符时 expansion 表已就绪。
+softdepend: [TAB-Bridge, PlaceholderAPI]
 
 commands:
   hilltop:

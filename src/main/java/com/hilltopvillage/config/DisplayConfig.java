@@ -33,6 +33,26 @@ public final class DisplayConfig {
     }
 
     /**
+     * 头/尾的接管策略（对应 {@code display.yml} 的 {@code tab.header-footer-mode}）。
+     *
+     * <p>{@code sendPlayerListHeaderAndFooter} 在协议层是「每个玩家唯一一份值，没有作者概念」，
+     * 所以本插件与代理侧的 TAB 谁后发谁生效。代理侧 TAB 在 Velocity 安装下<b>没有</b>
+     * 反覆盖能力（官方 wiki 明确说明该功能在 Velocity 上不可用），因此本插件每发一次就是
+     * 一次真实覆盖，表现为玩家看到的表头每秒整块替换。</p>
+     *
+     * <p>{@link #AUTO} 是出厂值，因为两种部署都要能用：单机服没有 TAB-Bridge，它恒等于
+     * {@link #ALWAYS}；群组服探测到 TAB-Bridge 就让渡。</p>
+     */
+    public enum HeaderFooterMode {
+        /** 未检测到 TAB-Bridge 就发；检测到就不发。出厂值。 */
+        AUTO,
+        /** 永远发。代理侧 TAB 的头/尾已被 {@code %server%} 条件关掉时用这个。 */
+        ALWAYS,
+        /** 永远不发，且把此前发过的擦一次。运维明知代理在管时用这个。 */
+        NEVER
+    }
+
+    /**
      * 一行布局。
      *
      * <p>{@code when} 恒为小写（加载器统一小写化，条件名大小写不敏感）；
@@ -91,17 +111,21 @@ public final class DisplayConfig {
      * <p>{@code lobby/arena/spectator} 是「本插件是否接管该上下文玩家的头/尾/名字」，
      * 不是可见性隔离——Minecraft 的 tab 列表是服务器级的，Bukkit 没有低成本的隔离手段。</p>
      *
-     * @param nameAlive     存活玩家名字格式的 i18n 键
-     * @param nameDead      死亡待复活玩家名字格式的 i18n 键
-     * @param nameSpectator 观战者名字格式的 i18n 键
+     * @param headerFooterMode 头/尾的接管策略；决定是否与代理侧 TAB 争这个单值字段
+     * @param nameAlive        存活玩家名字格式的 i18n 键
+     * @param nameDead         死亡待复活玩家名字格式的 i18n 键
+     * @param nameSpectator    观战者名字格式的 i18n 键
      */
-    public record Tab(boolean enabled, int refreshTicks,
+    public record Tab(boolean enabled, int refreshTicks, HeaderFooterMode headerFooterMode,
                       boolean lobby, boolean arena, boolean spectator,
                       List<Line> header, List<Line> footer,
                       String nameAlive, String nameDead, String nameSpectator) {
         public Tab {
             header = header == null ? List.of() : List.copyOf(header);
             footer = footer == null ? List.of() : List.copyOf(footer);
+            if (headerFooterMode == null) {
+                headerFooterMode = HeaderFooterMode.AUTO;
+            }
             if (nameAlive == null) {
                 nameAlive = "";
             }
@@ -148,7 +172,8 @@ public final class DisplayConfig {
      */
     public static DisplayConfig defaults() {
         Board board = new Board(true, DEFAULT_TITLE_KEY, DEFAULT_SCOREBOARD_REFRESH_TICKS, defaultLines());
-        Tab tab = new Tab(true, DEFAULT_TAB_REFRESH_TICKS, true, true, true,
+        Tab tab = new Tab(true, DEFAULT_TAB_REFRESH_TICKS, HeaderFooterMode.AUTO,
+                true, true, true,
                 List.of(Line.staticLine("tab.header.title", List.of(), "always"),
                         Line.staticLine("tab.header.arena", List.of("arenaName", "gameState"), "in-game")),
                 List.of(Line.staticLine("tab.footer.hint", List.of(), "always")),

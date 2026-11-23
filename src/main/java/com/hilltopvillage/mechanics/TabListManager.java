@@ -137,6 +137,77 @@ public class TabListManager {
     /** 掉线程告警只打一次，避免一旦误用就刷屏。 */
     private boolean warnedOffThread;
 
+    /** 子服侧的后端插件名。探测它而不是 {@code TAB} —— TAB 是代理插件，子服上永远没有它。 */
+    private static final String BRIDGE_PLUGIN = "TAB-Bridge";
+
+    /**
+     * 本帧是否让渡头/尾给代理侧 TAB。
+     *
+     * <p><b>不允许在 {@link #pushHeaderFooter} 里现算</b>：那条路径是「每个观看者每帧一次」，
+     * 而探测是一次 {@code PluginManager} 查表。这里的值只在
+     * {@link #updateHeaderFooterPolicy} 里写，而那三个调用点都是「一次刷新周期一次」。</p>
+     */
+    private boolean headerFooterDeferred;
+
+    /**
+     * 上一次记过日志的决定，只用于翻转时打一条 INFO；不参与任何发包判断。
+     *
+     * <p>初始为 {@code null} 而不是 {@code false}：第一帧无论算出什么都应当能打一条，
+     * 否则「启动时就已经在让渡」这个状态永远不会被记录。</p>
+     */
+    private Boolean lastDeferredLogged;
+
+    /**
+     * 合成「本帧是否让渡 header/footer」。
+     *
+     * <p>纯函数，可脱离 Bukkit 单测。{@link DisplayConfig.HeaderFooterMode#AUTO} 的语义是
+     * 「检测到 Bridge 就让渡」，{@code NEVER} 恒让渡，{@code ALWAYS} 恒接管。</p>
+     *
+     * <p>{@code AUTO} 下 Bridge 在场只是一个<b>弱信号</b>——它证明「本子服属于一个代理侧
+     * 可能有 TAB 的群组」，不证明代理侧真的在管头/尾。仍然按它让渡，是因为两个方向的代价
+     * 不对称：假阳性得到「头/尾变空白」（可见、可解释、改一行配置自愈）；假阴性得到
+     * 「每秒整块覆盖」（不可解释、无配置可自愈）。</p>
+     */
+    static boolean shouldDeferHeaderFooter(DisplayConfig.HeaderFooterMode configured, boolean bridgeOn) {
+        return switch (configured == null ? DisplayConfig.HeaderFooterMode.AUTO : configured) {
+            case AUTO -> bridgeOn;
+            case ALWAYS -> false;
+            case NEVER -> true;
+        };
+    }
+
+    /**
+     * 重算本帧的让渡决定，并在翻转时打一条 INFO。
+     *
+     * <p>调用点恰好三个，每个都是「一次刷新周期一次」而不是「一个玩家一次」：
+     * {@link #start()}（让第一位进服的玩家拿到正确决定）、{@link #refreshAllUnchecked()}
+     * 开头、{@link #forcePush} 入口。</p>
+     *
+     * <p><b>刻意不在 {@link #restoreAll()} 里重新探测</b>：关服时插件按依赖倒序 disable，
+     * Bridge 可能先于本插件消失，那时 {@code isPluginEnabled} 会翻成 {@code false}。
+     * 若因此重新接管并在 shutdown 流程里发包，等于给玩家留一块无人认领的文本。</p>
+     */
+    private void updateHeaderFooterPolicy(DisplayConfig.Tab tab) {
+        boolean bridgeOn = Bukkit.getPluginManager().isPluginEnabled(BRIDGE_PLUGIN);
+        boolean deferred = shouldDeferHeaderFooter(tab == null ? null : tab.headerFooterMode(), bridgeOn);
+        headerFooterDeferred = deferred;
+        if (lastDeferredLogged != null && lastDeferredLogged == deferred) return;
+        lastDeferredLogged = deferred;
+
+        DisplayConfig.HeaderFooterMode mode = tab == null ? null : tab.headerFooterMode();
+        if (mode == DisplayConfig.HeaderFooterMode.NEVER) {
+            // 措辞必须点名是**配置**而不是探测结果，否则运维会去查一个不存在的检测故障
+            plugin.getLogger().info("Header/footer handed over to the proxy plugin "
+                    + "(header-footer-mode: never); this server will not send them");
+        } else if (deferred) {
+            plugin.getLogger().info("Header/footer handed over to TAB-Bridge (mode=auto);"
+                    + " this server's tab header/footer is now managed by the proxy");
+        } else {
+            plugin.getLogger().info("Header/footer management resumed (mode=auto,"
+                    + " TAB-Bridge not enabled)");
+        }
+    }
+
     public TabListManager(HilltopVillagePlugin plugin) {
         this.plugin = plugin;
         this.lang = plugin.getLanguageManager();
@@ -158,6 +229,9 @@ public class TabListManager {
             stop();
             return;
         }
+        // 先定让渡策略，再起任务：第一位进服的玩家走 apply() → forcePush，
+        // 那一刻 headerFooterDeferred 必须已经是正确的，否则首帧会多发一次头/尾。
+        updateHeaderFooterPolicy(tab);
         int period = tab.refreshTicks() > 0 ? tab.refreshTicks() : DisplayConfig.DEFAULT_TAB_REFRESH_TICKS;
         // 除周期比对还须查 isCancelled：stop() / restoreAll() 会主动 cancel 任务，
         // 此时 refreshTask 字段虽已置空、但若有人绕过来调用也会命中；而 Error（catch RuntimeException
@@ -288,6 +362,9 @@ public class TabListManager {
 
     private void forcePush(Player player, DisplayConfig.Tab tab, String where) {
         if (!ensureMainThread(where)) return;
+        // 立即刷新可能靠 /hilltop reloadconfig 或玩家加入触发，而这两条路径都可能在
+        // 刷新任务的两次 tick 之间发生；不在这里重算会让首帧用上一周期的旧决定。
+        updateHeaderFooterPolicy(tab);
         UUID id = player.getUniqueId();
         lastHeader.remove(id);
         lastFooter.remove(id);
@@ -365,6 +442,10 @@ public class TabListManager {
             clearCaches();
             return;
         }
+
+        // 让渡策略每周期重算一次（不是每玩家一次）：检测 TAB-Bridge 是一次 PluginManager 查表，
+        // 放进 pushHeaderFooter 就变成「每个观看者每帧一次」。
+        updateHeaderFooterPolicy(tab);
 
         // 热重载：display.yml 改了 refresh-ticks 而没人调 start()，就在这里重排一次。
         // 重排必须在遍历之前，否则本帧会带着旧周期继续跑。
@@ -459,7 +540,7 @@ public class TabListManager {
             case LOBBY -> tab.lobby();
             case ARENA -> tab.arena();
             case SPECTATOR -> tab.spectator();
-        };
+        } && !headerFooterDeferred;
 
         UUID id = viewer.getUniqueId();
         if (!managed) {
