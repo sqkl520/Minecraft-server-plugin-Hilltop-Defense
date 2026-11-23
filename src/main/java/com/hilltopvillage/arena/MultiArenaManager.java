@@ -914,12 +914,28 @@ public class MultiArenaManager {
     }
 
     /**
-     * Reload arena definitions from arenas.yml.
-     * Note: Does NOT restart running arenas.
+     * 重读 arenas.yml 里的竞技场定义（只重建 registry，不重启、不重建任何活动实例、不启用任何场）。
+     *
+     * <p><b>安全性（为什么可以在对局进行中调用）：</b>{@link ArenaInstance} 在构造时就把
+     * {@link ArenaDefinition} 存成自己的 {@code volatile definition} 快照（见
+     * {@code ArenaInstance#definition}），本方法只替换 {@code definitionManager} 的 registry，
+     * 全程不触碰 {@code activeArenas}、不调 {@code stopGame()} / {@code disableArena()}
+     * / {@code retireArena()}，也不动玩家映射与地图回滚记账。因此运行中的实例继续用旧快照
+     * 跑完本局（对局中改 arenas.yml 不会让在打的玩家掉线或换数值）；受影响的只有
+     * 「之后新建的实例」与「之后按 ID / 世界解析到的命令目标」，与
+     * {@code SetupWizard#finishDeployment} 早已在用的路径完全一致。</p>
+     *
+     * <p>本方法刻意<b>不</b>把任何竞技场放进启用队列：那属于 {@code /hilltop reloadconfig}
+     * 的恢复语义（见 {@code HilltopCommandHandler}），向导部署完成时也调用本方法，
+     * 不能被连带启用无关竞技场。</p>
+     *
+     * @return 重载后 registry 里的定义数量（arenas.yml 仍不可用时为 0）
      */
-    public void reloadDefinitions() {
+    public int reloadDefinitions() {
         definitionManager.reload();
-        plugin.getLogger().info("Reloaded arena definitions");
+        int loaded = definitionManager.getRegistry().size();
+        plugin.getLogger().info("Reloaded arena definitions (" + loaded + " loaded)");
+        return loaded;
     }
 
     /**

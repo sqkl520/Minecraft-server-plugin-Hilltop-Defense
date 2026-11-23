@@ -133,8 +133,12 @@ public final class ArenaManager {
         // 闸门已锁只读时，即使文件此刻不存在（隔离后被改名 *.corrupt）也按不可用处理：
         // YamlFiles.load 对「不存在」返回 ABSENT + 空配置（usable），照走会用空配置重建 registry。
         if (!loaded.usable() || arenasGate.isReadOnly()) {
+            // 恢复指引必须给出真的可执行动作：修好文件后 /hilltop reloadconfig 会经
+            // MultiArenaManager#reloadDefinitions() 重新调到这里，无需重启（见
+            // docs/01-reviews/arenas-reload-deadend.md）。
             plugin.getLogger().severe("arenas.yml is unusable; 0 arenas loaded this run and arenas.yml "
-                    + "will NOT be written (see the log line above for the reason)");
+                    + "will NOT be written (see the log line above for the reason)."
+                    + " Repair/restore the file, then run /hilltop reloadconfig or restart the server");
             registry.clear();
             return;
         }
@@ -170,8 +174,11 @@ public final class ArenaManager {
                         // fix-round1 pattern-2：拒绝原因必须可见——这是唯一的加载闸门，静默 continue
                         // 会让竞技场从 /hilltop list 与 GUI 里凭空消失，而 ArenaResetService 只会报
                         // ARENA_NOT_FOUND，管理员没有任何线索可循。
+                        // 恢复指引必须是**真命令**：旧文案让管理员运行 /hilltop reloadarena，
+                        // 而本插件从未有过该子命令（误导性死路，见 docs/01-reviews/arenas-reload-deadend.md）。
+                        // /hilltop reloadconfig 现在会调 MultiArenaManager#reloadDefinitions 重读本文件。
                         plugin.getLogger().warning("Skipping invalid arena definition '" + id + "': " + rejection
-                                + " (fix arenas.yml -> arenas." + id + " and run /hilltop reloadarena,"
+                                + " (fix arenas.yml -> arenas." + id + " and run /hilltop reloadconfig,"
                                 + " otherwise this arena is unavailable)"
                                 + (definition == null ? "" : " [world '" + definition.getWorldName() + "']"));
                         continue;

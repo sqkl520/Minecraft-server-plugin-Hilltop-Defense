@@ -235,7 +235,7 @@ arenas:
       wave-interval-seconds: 30
 ```
 
-> To apply: restart the server, or run `/hilltop reloadconfig` and restart the arena.
+> To apply: restart the server, or run `/hilltop reloadconfig` (it re-reads arenas.yml; matches already in progress keep the settings they started with).
 
 ### Phase 2.5: Enter the arena world
 
@@ -292,7 +292,9 @@ Go to the **arena world** (see Phase 2.5) and run:
 
 > **Required items**: player spawn points, mob spawn points, villagers and the shop location — all four are mandatory. If any is missing, clicking [Confirm & Save] is rejected and the wizard jumps back to the corresponding step.
 
-> **Waiting area (optional)**: step 2 also has a [Set as Waiting Area] button next to [Set as Core] — it writes your position to `arenas.<id>.waiting-location`, the spot where players gather after `/hilltop join` and before the match starts (**no extra step — the wizard stays at 8 steps**). Clicking it does **not** advance, so you can still click [Set as Core]. Skipping it is fine: players then wait on the core respawn point, and step 8 prints a non-blocking reminder in that case. You can change it at any time with `/hilltop deploy setwaiting`.
+> **Waiting area (optional)**: step 2 also has a [Set as Waiting Area] button next to [Set as Core] — it writes your position to `arenas.<id>.waiting-location`, the spot where players gather after `/hilltop join` and before the match starts (**no extra step — the wizard stays at 8 steps**). Clicking it does **not** advance, so you can still click [Set as Core]. **The other order works too**: after you click [Set as Core] and move on to step 3, that same [Set as Waiting Area] button in your chat history still works (once the world is confirmed, steps 2–8 all accept it); it then offers a [Show step N again] button to put you back on the step you were working on. Skipping it is fine: players then wait on the core respawn point, and step 8 prints a non-blocking reminder in that case. Once the arena is deployed you can also use `/hilltop deploy setwaiting` (refused mid-match).
+
+> **Clicked a stale button?** Wizard buttons are clickable chat components and stay clickable in your chat history forever. If you click a button that belongs to an earlier step, the wizard no longer says "unknown setup command" — it tells you which step the button belongs to, which step you are on, and that nothing was changed, with a [Go to step N] button. Clicking that only re-renders the step; it changes no data.
 
 ### Phase 4: Tune the game settings
 
@@ -336,13 +338,13 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 
 > **What "Restore initial state" does**: deletes the arena's core coordinates, all player spawn points, all mob spawn points, all villagers, all energy nodes, the shop NPC (both the stored location and the live entity), plus the per-arena game parameters and radius offsets, and force-rolls back the world's map blocks. It **keeps** the world, display name and `enabled` flag, so the arena stays in the list as "not deployed" afterwards. There is a confirmation page (listing exactly what will be cleared plus the real player count on site) and a second cancel button. **Refused while a match is in progress** — run `/hilltop stop <arena>` first. Because the core coordinates are removed, the arena is not re-enabled automatically; redeploy it and then `/hilltop enable`.
 
-> **Parameter edits need no restart**: changes made through the management GUI are written to `arenas.yml` immediately and pushed to the running arena — player counts apply from the next match, wave interval and victory waves apply from the next intermission. **Editing `arenas.yml` by hand still requires a server restart** (same as the other arena settings). Edits are refused while a match is in progress (including the end-of-match countdown), so raising the player floor mid-match can't trigger an auto-defeat.
+> **Parameter edits need no restart**: changes made through the management GUI are written to `arenas.yml` immediately and pushed to the running arena — player counts apply from the next match, wave interval and victory waves apply from the next intermission. **Editing `arenas.yml` by hand takes effect after `/hilltop reloadconfig`** (matches already in progress keep the settings they started with). Edits are refused while a match is in progress (including the end-of-match countdown), so raising the player floor mid-match can't trigger an auto-defeat.
 
 > **Deleting one entry uses the "filtered ordinal"**: entries with broken coordinates are skipped when reading, so the numbering you see in the GUI may not match the raw line numbers in `arenas.yml`. Always delete from the GUI rather than editing the file using the GUI's numbers.
 
 > **One world can back only one arena**: the plugin checks world uniqueness when loading `arenas.yml`; definitions that reuse a world are rejected with an explicit warning (world names are case-insensitive). This constraint is what makes map rollback correct — rollback journals and restore tasks are keyed by world name, so two arenas sharing one world would roll back each other's ongoing matches.
 
-> **The player minimum (`min-players`) is authoritative per arena**: `arenas.yml`'s `game.min-players` is that arena's value (e.g. set an arena to `1` for solo play); arenas without an explicit value inherit the global `min-players` from `game-settings.yml`. Note: the `min-players` in the config GUI is the **global default** and has no effect on arenas that spell it out in `arenas.yml`. Two ways to change it — the parameter page in `/hilltop manage` (**takes effect immediately**, for the next match), or edit `arenas.yml` and **restart the server**.
+> **The player minimum (`min-players`) is authoritative per arena**: `arenas.yml`'s `game.min-players` is that arena's value (e.g. set an arena to `1` for solo play); arenas without an explicit value inherit the global `min-players` from `game-settings.yml`. Note: the `min-players` in the config GUI is the **global default** and has no effect on arenas that spell it out in `arenas.yml`. Two ways to change it — the parameter page in `/hilltop manage` (**takes effect immediately**, for the next match), or edit `arenas.yml` and run `/hilltop reloadconfig`.
 
 > **Shop NPCs are managed by the plugin**: the shop villagers in the lobby and in each arena are spawned by the deployment wizard and cleaned up by server lifecycle. **The end-of-match map rollback never touches any NPC**, so shops stay available between matches; only "Restore initial state" in `/hilltop manage` clears the shop NPC (location + entity) **of that arena's world**, leaving the lobby and other arenas untouched.
 
@@ -604,7 +606,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop deploy` | Open deploy menu (Admin) | ❌ |
 | `/hilltop setup` | 8-step guided setup wizard (Admin) | ❌ |
 | `/hilltop config` | Open config center GUI (Admin) | ❌ |
-| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) | ✅ |
+| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml + arenas.yml definitions) (Admin) | ✅ |
 | `/hilltop shop reload` | Reload villager shop config (Admin) | ✅ |
 | `/hilltop shop give <player> [amount]` | Give shop currency (Energy Crystals; default 1, max 6400) to an online player (Admin; works in any world, including the lobby) | ✅ |
 | `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) | ❌ |
@@ -642,7 +644,7 @@ Available while the wizard is in progress (normally triggered via clickable chat
 |------|------|
 | `confirm-world` | Confirm game world (Step 1) |
 | `confirm-core` | Set current location as village core (Step 2; advances to Step 3) |
-| `confirm-waiting` | Set current location as the waiting area (Step 2, **optional**; stays on Step 2, does not advance) |
+| `confirm-waiting` | Set current location as the waiting area (**optional**; never advances the step. On Step 2 the wizard stays put; after the world is confirmed (Steps 2–8) the same button in your chat history still works, so you can set the core first and come back to the waiting area) |
 | `addspawn` | Add current location as player spawn point (Step 3, feedback includes index) |
 | `overview` | Open the Spawn Points Overview GUI (Step 3 hub: counts/status of both sets + two sub-manager entries + the single [Done]) |
 | `spawngui` | Open player spawn point manager GUI (Step 3, direct; [Back to Overview] returns to the hub) |
