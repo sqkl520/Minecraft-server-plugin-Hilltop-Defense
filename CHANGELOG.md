@@ -1,11 +1,13 @@
 # Changelog
 
 
-## [1.1.1] - 2026-11-23
+## [1.1.0-SNAPSHOT-fix4] - 2026-11-24
 
-> 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷，
-> 外加 TAB / 代理共存的第一批改造（让渡头/尾、objective 改名、软依赖声明）。
-> 本版不引入新功能，只修复已报告的问题，并把每条修复补上可执行回归测试。
+> 1.1.0 的第四个修复版。两条现场缺陷（向导过期按钮、arenas.yml 重载死路），
+> 加上 TAB / 代理共存改造（让渡头/尾、objective 改名、软依赖声明）
+> 与 PlaceholderAPI 集成；另有若干运维可见的提示改进。
+> 测试套件 991 → 1036 项（Failures 0 / Errors 0 / Skipped 1）。
+
 ### Added（2026-11-23 — PlaceholderAPI 集成）
 
 - **`display.yml` 与 `messages.yml` 的文本现在支持 PlaceholderAPI 占位符**：此前插件里**没有任何一行**引用 PAPI，`player-name` 只能指向一个 i18n 键，所以玩家无法在 Hilltop 的名字里显示自己的 UserPrefix 前缀 —— 别的服靠 TAB-Bridge 把前缀桥到代理 TAB，但本插件的 `player-name` 走自己的渲染路径，那条链在这里是断的。现新增 `util/PlaceholderResolver`，在三个渲染点解析：`TabListManager.nameText`（即 `playerListName`）、`TabListManager.renderLine`、`ArenaScoreboard.renderLine`
