@@ -6,7 +6,22 @@
 > 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷，
 > 外加 TAB / 代理共存的第一批改造（让渡头/尾、objective 改名、软依赖声明）。
 > 本版不引入新功能，只修复已报告的问题，并把每条修复补上可执行回归测试。
-> 测试套件 991 → 1026 项（Failures 0 / Errors 0 / Skipped 1）。
+### Added（2026-11-23 — PlaceholderAPI 集成）
+
+- **`display.yml` 与 `messages.yml` 的文本现在支持 PlaceholderAPI 占位符**：此前插件里**没有任何一行**引用 PAPI，`player-name` 只能指向一个 i18n 键，所以玩家无法在 Hilltop 的名字里显示自己的 UserPrefix 前缀 —— 别的服靠 TAB-Bridge 把前缀桥到代理 TAB，但本插件的 `player-name` 走自己的渲染路径，那条链在这里是断的。现新增 `util/PlaceholderResolver`，在三个渲染点解析：`TabListManager.nameText`（即 `playerListName`）、`TabListManager.renderLine`、`ArenaScoreboard.renderLine`
+- **解析用的「上下文玩家」按位置不同，这是最容易搞错的地方**：`nameText` 用**被渲染的那名玩家** —— 不是「选了 target 而不是 viewer」，而是 `pushName(Player target, ...)` 本来就只有 target 一个参数（`playerListName` 是目标的全局属性，不存在观看者维度）；而 `renderLine` 两处用**观看者/持有者本人**，因为那是他自己屏幕上显示的内容
+- **PAPI 类型只在嵌套静态类里触碰，且只在「已安装」分支首次引用**：PAPI 以 `provided` 引入、不打包。若在外层类的 `<clinit>` 或无条件分支引用 `me.clip.placeholderapi.PlaceholderAPI`，PAPI 缺席时会在**类加载期**抛 `NoClassDefFoundError`，把持有它的整个 `TabListManager` 一起炸掉，而不是安静降级。已验证构建产物里 `me/clip` 类为零
+- **「装了 PAPI」不等于「能解析」**：PAPI 对未注册的 expansion 标识符**原样返回**输入串，所以装了 PAPI 却没装 UserPrefix 时 `%UserPrefix_prefix%` 会原封不动回到结果里。残留按「返回值仍含 `%identifier%` 形状」判定，命中则**剔除**（只删这一种形状，`100%` 这类正常文本不受影响）并告警，**绝不退回原文** —— 原文里就是那个占位符，退回等于什么都没做
+- **告警按 `(来源文本, token)` 去重**：这段代码跑在每条刷新周期的渲染路径上，不去重的话一个没装 UserPrefix 的服会每帧刷一条同样的 WARN，把控制台冲满、反而掩盖真正的问题。文案指向解法（「注册这个占位符的插件没装」）而不是现象
+- **无占位符时完全不调用 PAPI**：`resolve` 先扫 `%` 再决定，出厂 `messages.yml` 一个 `%` 都没有，所以默认部署下 PAPI 一次都不会被调到
+- **测试**：新增 `PlaceholderResolverTest` 10 项（无 PAPI 时逐字原样返回且不告警 / `100%` 不被误伤 / null 与空串不抛 / 只剔除占位符形状 / 同一文本重复渲染只告警一次 / 不同 token 各报一次 / 无残留不告警）；两个变异已实测 —— 去掉去重会让「只告警一次」变红（1 → 5），跳过剔除会让「只剔占位符形状」变红（裸露的 `%UserPrefix_prefix%` 到达客户端）。**未覆盖**：PAPI 在场且解析成功的分支，本测试环境装不了真的 PlaceholderAPI，已在 commit 中如实说明
+- **`display.yml` 注释块**补 PAPI 一节：哪些字段支持、两种上下文玩家的区别、只装 PAPI 不足以解析 `%UserPrefix_prefix%`（必须另装 UserPrefix）、以及残留占位符的**实际**处置方式（剔除 + 告警，而不是原样发出）
+
+### Changed（2026-11-23 — `auto` 让渡时的日志给出路）
+
+- **`header-footer-mode: auto` 让渡时多打一行说明「这个假设可能不成立」与自愈开关**：`auto` 的让渡判据只是「TAB-Bridge 在场」，它证明的是「本子服属于一个代理侧可能跑 TAB 的群组」，**不**证明代理侧真的在管这个服的头/尾。假设不成立时玩家看到的是空白头/尾，而旧的单行 INFO 只说「已交给代理管理」，运维无从分辨「刻意的让渡」与「配置坏了」，也不知道一个配置值就能恢复。现补一行点名 `header-footer-mode: always` 是出路。只改文案，`shouldDeferHeaderFooter` 与 `updateHeaderFooterPolicy` 的结构未动
+
+> 测试套件 991 → 1036 项（Failures 0 / Errors 0 / Skipped 1）。
 
 
 ### Fixed（2026-11-23 — 向导第 2 步「过期按钮」缺陷，1 项）
