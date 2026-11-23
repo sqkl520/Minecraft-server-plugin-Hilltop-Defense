@@ -404,6 +404,13 @@ en:
   setup.btn-confirm-world: "&a[Confirm]"
   setup.btn-confirm-core: "&a[Set as Core]"
   setup.btn-confirm-waiting: "&b[Set as Waiting Area] (optional)"
+  # Stale-button reply (wizard buttons stay clickable in chat history after their step has passed).
+  # {0}=the step you are on now, {1}=total steps, {2}=the step this button belongs to.
+  setup.stale-step: "&eThis button belongs to step &f{2}&e, but you are now on step &f{0}/{1}&e. Nothing was changed. Use the button below to switch to step &f{2}&e."
+  # Clickable jump button appended to setup.stale-step. {0}=target step number.
+  setup.btn-back-to-step: "&a[Go to step {0}]"
+  # Clickable button offered after a late [Set as Waiting Area] click, to re-show your current step. {0}=current step.
+  setup.btn-resume-step: "&a[Show step {0} again]"
   setup.waiting-set: "&aWaiting area set to your current position. &7Players who run /hilltop join wait here until the match starts; it is optional — without it they stand on the core."
   setup.btn-continue: "&a[Continue]"
   setup.btn-add: "&e[Add Current Location]"
@@ -1511,6 +1518,13 @@ zh:
   setup.btn-confirm-world: "&a[确认]"
   setup.btn-confirm-core: "&a[设为核心]"
   setup.btn-confirm-waiting: "&b[设为等待区]（可选）"
+  # 过期按钮提示（向导按钮在所属步骤过去后仍留在聊天历史里、仍然可点）。
+  # {0}=当前步骤，{1}=总步数，{2}=该按钮所属步骤。
+  setup.stale-step: "&e这个按钮属于第 &f{2} &e步，而你现在在第 &f{0}/{1} &e步。没有改动任何设置。点下面的按钮切换到第 &f{2} &e步。"
+  # 接在 setup.stale-step 后面的可点击跳转按钮。{0}=目标步骤号。
+  setup.btn-back-to-step: "&a[跳到第 {0} 步]"
+  # 在第 2 步之后补点 [设为等待区] 成功后给出的按钮，用于重新显示你原本所在的那一步。{0}=当前步骤。
+  setup.btn-resume-step: "&a[重新显示第 {0} 步]"
   setup.waiting-set: "&a等待区已设置为你当前所在坐标。&7玩家 /hilltop join 后会先在这里等开局；不设则站在核心上等。"
   setup.btn-continue: "&a[继续]"
   setup.btn-add: "&e[添加当前位置]"
