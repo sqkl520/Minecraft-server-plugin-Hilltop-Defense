@@ -60,6 +60,7 @@
 #    scoreboard.refresh-ticks  整板重算周期 tick，5-200（出厂 10 = 0.5 秒）
 #    tab.enabled               tab 总开关；关闭时会主动还原名字与排序，不只是停止发送
 #    tab.refresh-ticks         头/尾刷新周期 tick，1-200（出厂 20 = 1 秒）
+#    tab.header-footer-mode    auto / always / never（出厂 auto；决定是否与代理侧 TAB 争头/尾）
 #    tab.contexts.lobby / arena / spectator  是否接管该上下文玩家（布尔，缺省 true）
 #    tab.player-name.alive / dead / spectator  名字格式的 i18n 键（值必须是键名，不是文本）
 #
@@ -124,6 +125,43 @@ scoreboard:
       when: alive
 
 # ------------------------------------------------------------
+#  header-footer-mode —— 与代理侧 TAB 争不争「表头/表尾」
+# ------------------------------------------------------------
+#  背景：sendPlayerListHeaderAndFooter 在协议层是「每个玩家唯一一份值，没有作者概念」，
+#  所以本插件和别的插件谁后发谁生效。代理侧装 TAB 的群组服上，TAB 会以很短的周期
+#  （默认约 100ms，因为它默认开了动画）重发自己的表头，而本插件每 20 tick 发一次。
+#  结果是玩家看到表头每秒整块替换一次、两层内容互相覆盖。
+#
+#  不能在子服指望「TAB 会挡掉别人」：TAB 的反覆盖（block 其它插件的 header/footer）
+#  在 Velocity 安装下按官方说明是**不可用**的，本插件发出的每一个包都会真的到达客户端。
+#
+#  ── 三个取值 ──
+#    auto    （出厂）检测到 TAB-Bridge 就不发，检测不到就发。
+#            单机服没有 TAB-Bridge，所以 auto 恒等于 always，不影响不用代理的部署。
+#    always  永远发。适用于「代理侧 TAB 的 header-footer 已被 %server% 条件关掉」的服。
+#    never   永远不发，并且把此前发过的擦掉一次。运维明知代理在管时用这个。
+#
+#  ── auto 具体探测什么 ──
+#    探测的是 TAB-Bridge（子服侧的后端插件），不是 TAB —— TAB 是代理插件，
+#    子服上永远没有它。判据是 isPluginEnabled("TAB-Bridge")，不是 getPlugin() != null：
+#    被禁用的 Bridge 不产生任何代理侧效果，那时让渡等于白白丢掉本插件的功能。
+#
+#  ── 检测到之后发生什么 ──
+#    本插件停止写这个字段，并且把此前写过的内容擦掉一次（发一个空值再清缓存）。
+#    只清缓存不发空值会把旧表头永久冻结在玩家屏幕上，那是另一个 bug。
+#    从 auto 翻回 always 时无需任何额外操作：缓存已空，第一帧会正常重发。
+#
+#  ── 只装了 Bridge 转发占位符的服会怎样 ──
+#    Bridge 在场但代理侧 TAB 其实没在管头/尾时，auto 会让本插件的头/尾变成空白
+#    （客户端默认）。这是**可见且可解释**的退化，改一行 header-footer-mode: always 就恢复。
+#    反过来（在管却照发）得到的是不可解释的覆盖闪烁，且没有任何配置能自愈，所以出厂选 auto。
+#
+#  ── 想让某个上下文完全交给别的插件 ──
+#    全局用 header-footer-mode: never；只让出某一个用下面对应的 contexts.X: false。
+#    （注意：tab.enabled: false 不一样——它连名字与排序一起停，且刻意不擦除已发出的头/尾。）
+# ------------------------------------------------------------
+
+# ------------------------------------------------------------
 #  注意：Minecraft 的 tab 列表是服务器级的 —— 大厅玩家与竞技场玩家互相可见。
 #  contexts 开关只控制「本插件是否管理这个上下文玩家的头/尾/名字」，
 #  不控制可见性（Bukkit 没有低成本的可见性隔离手段）。
@@ -135,6 +173,9 @@ tab:
   enabled: true
   # 头/尾刷新周期（tick）。20 tick = 1 秒；只有内容变化时才真正发包。
   refresh-ticks: 20
+
+  # auto / always / never —— 详见上方说明。检测到 TAB-Bridge 时 auto 会让渡给代理侧 TAB。
+  header-footer-mode: auto
 
   contexts:
     lobby: true

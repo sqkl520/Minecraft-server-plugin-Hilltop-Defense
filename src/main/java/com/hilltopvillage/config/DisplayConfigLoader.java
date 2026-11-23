@@ -172,6 +172,8 @@ public final class DisplayConfigLoader {
                 MIN_TAB_REFRESH_TICKS, MAX_TAB_REFRESH_TICKS,
                 "tab.refresh-ticks", warnings);
 
+        DisplayConfig.HeaderFooterMode headerFooterMode = headerFooterMode(section, warnings);
+
         // contexts 缺省全开：老配置里没有这个段时行为与「全部接管」一致。
         //
         // 但「写成标量」是另一回事：`contexts: false`（想整体关闭，却漏了缩进）会让
@@ -194,8 +196,44 @@ public final class DisplayConfigLoader {
         String nameDead = nameKey(section, "player-name.dead", "tab.name.dead", warnings);
         String nameSpectator = nameKey(section, "player-name.spectator", "tab.name.spectator", warnings);
 
-        return new DisplayConfig.Tab(enabled, refreshTicks, lobby, arena, spectator,
-                header, footer, nameAlive, nameDead, nameSpectator);
+        return new DisplayConfig.Tab(enabled, refreshTicks, headerFooterMode,
+                lobby, arena, spectator, header, footer, nameAlive, nameDead, nameSpectator);
+    }
+
+    /**
+     * 解析 {@code tab.header-footer-mode}。
+     *
+     * <p>缺省与写错都回退 {@link DisplayConfig.HeaderFooterMode#AUTO}，理由不同：</p>
+     * <ul>
+     *   <li><b>缺省</b>是正常状态——老服的 {@code display.yml} 由出厂模板 {@code saveResource(..., false)}
+     *       写下，本插件从不覆盖已存在的文件，所以升级后那份文件里<b>永远没有</b>这个键。
+     *       默认值必须由代码提供，不能靠模板。</li>
+     *   <li><b>写错</b>回退 AUTO 而不是 ALWAYS：AUTO 在单机服上恒等于 ALWAYS（没有 TAB-Bridge），
+     *       所以这个回退不会伤到不装代理的部署；而在群组服上它保住了「不要和 TAB 抢」这个
+     *       安全方向。反过来把拼错降级成 ALWAYS 会在群组服上直接复现表头闪烁。</li>
+     * </ul>
+     */
+    private static DisplayConfig.HeaderFooterMode headerFooterMode(ConfigurationSection section,
+                                                                  List<String> warnings) {
+        String raw = section.getString("header-footer-mode");
+        if (raw == null || raw.isBlank()) {
+            if (section.isSet("header-footer-mode")) {
+                warnings.add("display.yml tab.header-footer-mode is empty or not a string; using 'auto'");
+            }
+            return DisplayConfig.HeaderFooterMode.AUTO;
+        }
+        switch (raw.trim().toLowerCase(java.util.Locale.ROOT)) {
+            case "auto":
+                return DisplayConfig.HeaderFooterMode.AUTO;
+            case "always":
+                return DisplayConfig.HeaderFooterMode.ALWAYS;
+            case "never":
+                return DisplayConfig.HeaderFooterMode.NEVER;
+            default:
+                warnings.add("display.yml tab.header-footer-mode is '" + raw
+                        + "'; expected auto/always/never. Using 'auto'");
+                return DisplayConfig.HeaderFooterMode.AUTO;
+        }
     }
 
     private static List<DisplayConfig.Line> parseOptionalLines(ConfigurationSection section,

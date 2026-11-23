@@ -134,7 +134,7 @@ class TabListManagerTest extends MockBukkitTestBase {
         DisplayConfig defaults = DisplayConfig.defaults();
         DisplayConfig.Tab base = defaults.tab();
         DisplayConfig.Tab tab = new DisplayConfig.Tab(
-                enabled, ticks, base.lobby(), base.arena(), base.spectator(),
+                enabled, ticks, base.headerFooterMode(), base.lobby(), base.arena(), base.spectator(),
                 base.header(), base.footer(),
                 base.nameAlive(), base.nameDead(), base.nameSpectator());
         when(configManager.getDisplayConfig())
@@ -153,7 +153,7 @@ class TabListManagerTest extends MockBukkitTestBase {
         DisplayConfig defaults = DisplayConfig.defaults();
         DisplayConfig.Tab base = defaults.tab();
         DisplayConfig.Tab tab = new DisplayConfig.Tab(
-                true, ticks, lobby, arena, spectator,
+                true, ticks, base.headerFooterMode(), lobby, arena, spectator,
                 header, base.footer(),
                 base.nameAlive(), base.nameDead(), base.nameSpectator());
         when(configManager.getDisplayConfig())
@@ -964,6 +964,58 @@ class TabListManagerTest extends MockBukkitTestBase {
             assertEquals(0, p.getPlayerListOrder(), "排序应归 0");
             assertEquals(1, headerSends, "头/尾应被擦一次");
             assertEquals(Component.empty(), sentHeader, "擦除包必须是空值");
+        }
+    }
+
+    /**
+     * 让渡策略的真值表。
+     *
+     * <p>这三态是本轮唯一新增的「与外部插件争资源」的开关，写成纯函数就是为了能脱离
+     * Bukkit 逐行断言。六个组合全测，且断言的是<b>结果</b>而不是「没抛异常」。</p>
+     */
+    @Nested
+    @DisplayName("shouldDeferHeaderFooter：六种组合")
+    class DeferralTruthTable {
+
+        @Test
+        @DisplayName("auto + Bridge 在场 → 让渡（这是群组服的出厂状态）")
+        void autoWithBridgeDefers() {
+            assertTrue(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.AUTO, true));
+        }
+
+        @Test
+        @DisplayName("auto + 无 Bridge → 接管（单机服上 auto 必须等于 always）")
+        void autoWithoutBridgeManages() {
+            assertFalse(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.AUTO, false),
+                    "没有 TAB-Bridge 的服上让渡等于白白丢掉头/尾，出厂默认不能这样");
+        }
+
+        @Test
+        @DisplayName("always 恒接管，与 Bridge 无关")
+        void alwaysAlwaysManages() {
+            assertFalse(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.ALWAYS, true));
+            assertFalse(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.ALWAYS, false));
+        }
+
+        @Test
+        @DisplayName("never 恒让渡，与 Bridge 无关（连探测结果都不看）")
+        void neverAlwaysDefers() {
+            assertTrue(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.NEVER, true));
+            assertTrue(TabListManager.shouldDeferHeaderFooter(
+                    DisplayConfig.HeaderFooterMode.NEVER, false),
+                    "运维显式选了 never，就不能因为探不到 Bridge 又偷偷开始发");
+        }
+
+        @Test
+        @DisplayName("配置为 null（老配置读不到该键）按 auto 处理")
+        void nullModeBehavesLikeAuto() {
+            assertTrue(TabListManager.shouldDeferHeaderFooter(null, true));
+            assertFalse(TabListManager.shouldDeferHeaderFooter(null, false));
         }
     }
 }
