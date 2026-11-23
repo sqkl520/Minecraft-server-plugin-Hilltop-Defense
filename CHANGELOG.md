@@ -47,6 +47,10 @@
 
 - **`softdepend: []` 改为 `[TAB-Bridge, PlaceholderAPI]`**：需求稿写的 `[TAB, PlaceholderAPI]` 里 `TAB` 这一条是错的 —— 子服永远没有名为 `TAB` 的插件（TAB 是代理插件），留着它会让运维以为「要在这个子服装一份 TAB」，而 TAB 6.x 的 Bukkit 端根本不支持 1.21.4。留一个指向错误解法的声明比空着更糟。`softdepend` 只影响加载顺序、不影响探测（探测走运行时 `isPluginEnabled`，Bridge 晚于本插件 enable 也能在下一轮刷新里被探到）；`PlaceholderAPI` 那条是功能性的，它的 expansion 注册发生在自身 enable 期间，`softdepend` 保证它先 enable。已验证 `plugin.yml` 经 Maven filtering 后 `softdepend` 正确进 JAR
 
+### Changed（2026-11-24 — 让渡 header/footer 时补上自愈出路）
+
+- **`updateHeaderFooterPolicy` 在 `auto` 下让渡时，INFO 日志补第二行：点明这是一个假设，并给出 `header-footer-mode: always` 这个开关**：原日志只说「已交给 TAB-Bridge / 由代理管理」，读者据此会以为代理侧一定在管。实际上 `auto` 的判据只是「TAB-Bridge 在场」这个弱信号 —— 它证明不了代理侧真的配了管理本服。假阳性时玩家看到的是空白头/尾，而日志里没有开关名，运维只能翻文档才知道怎么自愈。现追加 `NOTE: this assumes the proxy-side TAB is configured to manage this server. If you see empty header/footer in game, set header-footer-mode: always.`。**只改这两行日志文本**，`shouldDeferHeaderFooter` 的真值与 `updateHeaderFooterPolicy` 的结构一个字都没动（用户明确要求该实现保持原样）
+
 
 
 

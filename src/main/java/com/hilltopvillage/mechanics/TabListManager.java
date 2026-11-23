@@ -200,8 +200,13 @@ public class TabListManager {
             plugin.getLogger().info("Header/footer handed over to the proxy plugin "
                     + "(header-footer-mode: never); this server will not send them");
         } else if (deferred) {
+            // 第二行给的是出路，不是解释：auto 下让渡只是「Bridge 在场」这个弱信号的结果，
+            // 它证明不了代理侧真的在管头/尾。假阳性时玩家看到的是空白头/尾，
+            // 若提示里不写开关名，运维只能去翻文档才知道怎么自愈。
             plugin.getLogger().info("Header/footer handed over to TAB-Bridge (mode=auto);"
-                    + " this server's tab header/footer is now managed by the proxy");
+                    + " this server's tab header/footer is now managed by the proxy.\n"
+                    + "NOTE: this assumes the proxy-side TAB is configured to manage this server."
+                    + " If you see empty header/footer in game, set header-footer-mode: always.");
         } else {
             plugin.getLogger().info("Header/footer management resumed (mode=auto,"
                     + " TAB-Bridge not enabled)");
