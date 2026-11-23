@@ -3,9 +3,10 @@
 
 ## [1.1.1] - 2026-11-23
 
-> 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷。
-> 本版不引入新功能，只修复已报告的问题并把两条修复补上可执行回归测试。
-> 测试套件 991 → 1009 项（Failures 0 / Errors 0 / Skipped 1）。
+> 1.1.0 之后的第一个修复版：向导过期按钮、arenas.yml 重载死路两条现场缺陷，
+> 外加 TAB / 代理共存的第一批改造（让渡头/尾、objective 改名、软依赖声明）。
+> 本版不引入新功能，只修复已报告的问题，并把每条修复补上可执行回归测试。
+> 测试套件 991 → 1006 项（Failures 0 / Errors 0 / Skipped 1）。
 
 ### Fixed（2026-11-23 — 向导第 2 步「过期按钮」缺陷，1 项）
 
@@ -13,6 +14,16 @@
 - **新增 3 个双语 i18n 键**：`setup.stale-step` / `setup.btn-back-to-step` / `setup.btn-resume-step`
 - **测试**：新增 `SetupWizardStaleStepTest` 11 项（`stepAllows` 全步骤矩阵 / `waitingSettableAt` 边界 / `recoveryCommand` 一一对应 / 三个新键 en+zh 齐全且占位符与调用点一致 / 源码确实引用新键）；本项 +11 项，Failures 0 / Errors 0 / Skipped 1
 - **测试（补强）**：`SetupWizardStaleStepTest` 只测三个 static 纯谓词，实测钉不住任何行为 —— 把 `confirm-waiting` 的守卫改回旧的 `if (s.step != 2)`（用户报告的 bug 原样复活），或把 `rejectStaleStep` 整个改成 `if (true) return false;`（特性完全失效），套件依然全绿。新增 `SetupWizardClickPathTest` 5 项直接驱动 `handle(...)`，与游戏内 `run_command` 点击走同一条生产路径，同时断言守卫决定与实际写盘结果，让「放行但什么都不做」的实现也无法通过；两条修复现在都有可执行回归测试
+
+### Fixed（2026-11-23 — `arenas.yml` 隔离后的恢复死路，4 项）
+
+- **【P1】`/hilltop reloadconfig` 现在真的重读 `arenas.yml`**：`arenas.yml` 读不出来时（空白 / 截断 / 无合法竞技场）`YamlFiles` 判 SUSPECT 并把文件隔离成 `arenas.yml.corrupt.<时间戳>`、闸门锁只读、`ArenaManager.load()` 清空 registry 后提前返回。管理员修好文件后执行 `reloadconfig`，该分支当时**只 `reset()` 了闸门、从不重读 `arenas.yml`**——于是出现「闸门已解封、文件可写，但 registry 仍是空集」的三态并存：玩家 `/hilltop join` 得 `no-arenas-available`、管理员 `/hilltop enable` 得 `arena-not-found`、`/hilltop arenas` 空列表，唯一出路是重启服务器（而日志与闸门提示恰好告诉他 reloadconfig 就够了）。现 `reloadconfig` 在闸门 `reset()` 之后调用 `MultiArenaManager#reloadDefinitions()` 真读一遍文件
+- **【P1】恢复语义与重启等价：定义读回后按 `settings.auto-start-arenas` 重新入队**：只重建 registry 仍然 join 不到任何场——`joinArena` 查的是 `activeArenas`，而启用队列只在 `onEnable` 里跑一次。现补一步**单向、强条件**的恢复：仅当「本次重载前 registry 为 0 且重载后非 0 且无活动实例且启用队列为空」时，才按开关调用 `enableAllConfiguredArenas()`（开关关闭则打日志让管理员用 `/hilltop enable`）。`arenasBefore == 0` 是安全闸——日常 reloadconfig（registry 本来就非空）绝不会走进该分支，因此运行期被 `/hilltop disable` 掉的竞技场不会被悄悄重新启用
+- **【P2】三处误导性提示改为可执行的恢复动作**：①`ArenaManager.load()` 不可用分支的 SEVERE 补上「修好文件后执行 `/hilltop reloadconfig` 或重启」；②非法定义的 WARNING 让管理员运行 `/hilltop reloadarena`——**本插件从来没有这个子命令**（`plugin.yml`、`HilltopCommandHandler`、`HilltopTabCompleter` 均无），等于指了一条死路，现改为 `/hilltop reloadconfig`；③`YamlFileGate` 的只读提示把 reloadconfig 排到「重启」之前，并注明它会重新读盘。`MultiArenaManager#reloadDefinitions()` 的 javadoc 同时写清「只重建 registry、不触碰活动实例」的安全性证据（`ArenaInstance` 在构造时固化 `ArenaDefinition` 快照），因此对局进行中重载是安全的：在打的对局继续用开局时的定义跑完，受影响的只有之后新建的实例与之后按 ID / 世界解析的命令目标
+- **播报如实**：reloadconfig 不再只发一句「已重载」。读到定义时报 `config.arenas-reloaded`（含竞技场座数），一座都没读到时报 `config.arenas-reload-empty`（点名 arenas.yml 仍不可用 / 已被隔离 / 无合法竞技场，并指到 `latest.log` 的 SEVERE/WARNING）。原「用手改文件则需重启」的 `config.reload-arena-notice` 相应改为指向 `/hilltop reloadconfig`（新增 2 个双语键）
+- **测试**：新增 `ArenaReloadRecoveryTest` 4 项（坏文件前置态 → 修好 + reloadconfig 必须真的填回 registry 且 `arena1` 回来 / 对局中的实例**同一对象**仍在 `activeArenas` 里 / 空 registry + 无活动场 + 无待启用项时重新入队 / 文件仍是坏的则如实播报空结果且闸门重新锁上）
+- **文档同步**：所有「手动编辑 `arenas.yml` 需要重启服务器」的表述改为「执行 `/hilltop reloadconfig`」——`README.md` / `README-EN.md`、`docs/guides/arena-lifecycle*.md`、`commands-reference*.md`、`config-reference*.md`、`deploy-stages-1-2*.md`，以及运行时生成的 `commands.md`（`CommandsDocumentGenerator` 的 `reloadconfig` 注意事项）
+
 
 ## [1.1.0-SNAPSHOT-fix3] - 2026-11-11
 

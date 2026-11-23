@@ -474,7 +474,9 @@ en:
   config.invalid-material: "&cInvalid material name: &f{0}"
   config.invalid-material-not-item: "&cMaterial &f{0} &cexists but is not a carryable item (resolved: {1}), rejected."
   config.unknown-sub: "&cUnknown config subcommand: &f{0}"
-  config.reload-arena-notice: "&eNote: Arena settings (min-players / victory-waves / wave-interval / countdown, etc.) live in arenas.yml. Edit them from the &f/hilltop manage &eparams page (takes effect immediately), or edit the file and restart the server."
+  config.arenas-reloaded: "&aArena definitions reloaded from arenas.yml &7({0} arena(s))&a. Matches already in progress keep the settings they started with."
+  config.arenas-reload-empty: "&cNo arena definitions were loaded — arenas.yml is still unreadable, quarantined, or has no valid arena. Check the console log (latest.log) for the SEVERE/WARNING entry, fix the file, then run /hilltop reloadconfig again."
+  config.reload-arena-notice: "&eNote: Arena parameters (min-players / victory-waves / wave-interval / countdown, etc.) live in arenas.yml. Edit them from the &f/hilltop manage &eparams page (takes effect immediately), or edit the file and run &f/hilltop reloadconfig&e."
 
   # === 部署管理 ===
   deploy.setcore-set: "&aCore location set to your current position."
@@ -1585,7 +1587,9 @@ zh:
   config.invalid-material: "&c无效的材料名: &f{0}"
   config.invalid-material-not-item: "&c材质 &f{0} &c存在但不是可携带物品（解析为 {1}），已拒绝。"
   config.unknown-sub: "&c未知的配置子命令: &f{0}"
-  config.reload-arena-notice: "&e提示：竞技场参数（min-players / victory-waves / wave-interval / 倒计时等）存放在 arenas.yml，可通过 &f/hilltop manage &e参数页在线修改（立即生效），手动编辑本文件则需重启服务器。"
+  config.arenas-reloaded: "&a竞技场定义已从 arenas.yml 重新加载 &7（{0} 座）&a。进行中的对局仍沿用开局时的设置。"
+  config.arenas-reload-empty: "&c没有加载到任何竞技场定义 —— arenas.yml 仍无法读取、已被隔离，或不含合法竞技场。请查看控制台日志（latest.log）中的 SEVERE/WARNING 记录，修好文件后再次执行 /hilltop reloadconfig。"
+  config.reload-arena-notice: "&e提示：竞技场参数（min-players / victory-waves / wave-interval / 倒计时等）存放在 arenas.yml，可通过 &f/hilltop manage &e参数页在线修改（立即生效），手动编辑本文件后执行 &f/hilltop reloadconfig&e 即可生效。"
 
   # === 部署管理 ===
   deploy.setcore-set: "&a核心位置已设置为你当前所在坐标。"

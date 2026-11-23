@@ -89,7 +89,8 @@ arenas:
       # 人数下限：以竞技场自己的这个值为准——写 1 就是允许单人开局。
       # 不写这一项时才回退到 game-settings.yml 的全局 min-players。
       # Use /hilltop manage param page for live edits (immediate);
-      # manual edit of this file requires a server restart (/hilltop reloadconfig does not re-read arenas.yml).
+      # after a manual edit of this file run /hilltop reloadconfig (it re-reads arenas.yml).
+      # Matches already in progress keep the settings they started with.
       min-players: 1
       max-players: 6
       victory-waves: 20
@@ -124,7 +125,7 @@ arenas:
     spawn-y-offset: 0
 
     game:
-      # 人数下限：以本竞技场此值为准；不写则继承 game-settings.yml 的 min-players（修改后需重启）
+      # 人数下限：以本竞技场此值为准；不写则继承 game-settings.yml 的 min-players（改完执行 /hilltop reloadconfig）
       min-players: 2
       max-players: 8
       victory-waves: 25
@@ -159,7 +160,7 @@ arenas:
     spawn-y-offset: 0
 
     game:
-      # 人数下限：以本竞技场此值为准；不写则继承 game-settings.yml 的 min-players（修改后需重启）
+      # 人数下限：以本竞技场此值为准；不写则继承 game-settings.yml 的 min-players（改完执行 /hilltop reloadconfig）
       min-players: 2
       max-players: 4
       victory-waves: 15

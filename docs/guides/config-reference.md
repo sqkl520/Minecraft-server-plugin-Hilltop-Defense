@@ -32,7 +32,7 @@ arenas:
       wave-interval-seconds: 30
 ```
 
-> 注：手动编辑 `arenas.yml` 需要重启服务器；`/hilltop reloadconfig` 重载的是 game-settings.yml + monsters-config.yml + messages.yml + display.yml。详见同目录 `commands-reference.md` 的 `/hilltop reloadconfig` 一行，以及 `arena-lifecycle.md` 的「参数编辑无需重启」。
+> 注：手动编辑 `arenas.yml` 后执行 `/hilltop reloadconfig` 即可重新读取（进行中的对局仍沿用开局时的设置）；`/hilltop reloadconfig` 同时重载 game-settings.yml + monsters-config.yml + messages.yml + display.yml。详见同目录 `commands-reference.md` 的 `/hilltop reloadconfig` 一行，以及 `arena-lifecycle.md` 的「参数编辑无需重启」。
 
 ## game-settings.yml —— 游戏参数
 
@@ -187,7 +187,7 @@ language: "zh"    # zh / en
 | 改的是什么 | 生效方式 |
 |------|------|
 | `game-settings.yml` / `monsters-config.yml` / `messages.yml` / `display.yml` | `/hilltop reloadconfig`（管理员） |
-| `arenas.yml`（手动编辑） | **重启服务器** |
+| `arenas.yml`（手动编辑） | `/hilltop reloadconfig`（进行中的对局仍沿用开局时的设置） |
 | `arenas.yml` 的 per-arena 游戏参数（经 `/hilltop manage` 参数页） | 立即写入并推送到运行中的竞技场，人数下一局生效 |
 | `shop.yml` | `/hilltop shop reload`（管理员） |
 | 经 `/hilltop config` GUI 保存的游戏规则 | 点 [保存并应用配置]，**新配置在下一局开始时生效** |

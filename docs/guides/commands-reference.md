@@ -36,7 +36,7 @@
 | `/hilltop deploy` | 打开部署菜单（管理员） | ❌ |
 | `/hilltop setup` | 8 步引导式部署向导（管理员） | ❌ |
 | `/hilltop config` | 打开配置中心 GUI（管理员） | ❌ |
-| `/hilltop reloadconfig` | 重载游戏配置（game-settings.yml + monsters-config.yml + messages.yml + display.yml）（管理员；arenas.yml 仍需重启） | ✅ |
+| `/hilltop reloadconfig` | 重载游戏配置（game-settings.yml + monsters-config.yml + messages.yml + display.yml + arenas.yml 定义）（管理员；进行中的对局仍沿用开局时的设置） | ✅ |
 | `/hilltop shop reload` | 重载村民商店配置（管理员） | ✅ |
 | `/hilltop shop give <玩家> [数量]` | 给在线玩家发放商店货币（能量水晶，默认 1、上限 6400）（管理员；任何世界均可用，含大厅） | ✅ |
 | `/hilltop build` | 切换大厅建造模式（管理员，用于整修大厅；**仅大厅世界**，竞技场改动由地图回滚管理，建造模式不影响竞技场） | ❌ |

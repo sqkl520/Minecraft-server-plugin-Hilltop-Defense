@@ -235,7 +235,7 @@ arenas:
       wave-interval-seconds: 30
 ```
 
-> To apply: restart the server, or run `/hilltop reloadconfig` and restart the arena.
+> To apply: restart the server, or run `/hilltop reloadconfig` (it re-reads arenas.yml; matches already in progress keep the settings they started with).
 
 ### Phase 2.5: Enter the arena world
 
@@ -338,13 +338,13 @@ Admins run `/hilltop manage` to open a 54-slot menu listing **every configured a
 
 > **What "Restore initial state" does**: deletes the arena's core coordinates, all player spawn points, all mob spawn points, all villagers, all energy nodes, the shop NPC (both the stored location and the live entity), plus the per-arena game parameters and radius offsets, and force-rolls back the world's map blocks. It **keeps** the world, display name and `enabled` flag, so the arena stays in the list as "not deployed" afterwards. There is a confirmation page (listing exactly what will be cleared plus the real player count on site) and a second cancel button. **Refused while a match is in progress** — run `/hilltop stop <arena>` first. Because the core coordinates are removed, the arena is not re-enabled automatically; redeploy it and then `/hilltop enable`.
 
-> **Parameter edits need no restart**: changes made through the management GUI are written to `arenas.yml` immediately and pushed to the running arena — player counts apply from the next match, wave interval and victory waves apply from the next intermission. **Editing `arenas.yml` by hand still requires a server restart** (same as the other arena settings). Edits are refused while a match is in progress (including the end-of-match countdown), so raising the player floor mid-match can't trigger an auto-defeat.
+> **Parameter edits need no restart**: changes made through the management GUI are written to `arenas.yml` immediately and pushed to the running arena — player counts apply from the next match, wave interval and victory waves apply from the next intermission. **Editing `arenas.yml` by hand takes effect after `/hilltop reloadconfig`** (matches already in progress keep the settings they started with). Edits are refused while a match is in progress (including the end-of-match countdown), so raising the player floor mid-match can't trigger an auto-defeat.
 
 > **Deleting one entry uses the "filtered ordinal"**: entries with broken coordinates are skipped when reading, so the numbering you see in the GUI may not match the raw line numbers in `arenas.yml`. Always delete from the GUI rather than editing the file using the GUI's numbers.
 
 > **One world can back only one arena**: the plugin checks world uniqueness when loading `arenas.yml`; definitions that reuse a world are rejected with an explicit warning (world names are case-insensitive). This constraint is what makes map rollback correct — rollback journals and restore tasks are keyed by world name, so two arenas sharing one world would roll back each other's ongoing matches.
 
-> **The player minimum (`min-players`) is authoritative per arena**: `arenas.yml`'s `game.min-players` is that arena's value (e.g. set an arena to `1` for solo play); arenas without an explicit value inherit the global `min-players` from `game-settings.yml`. Note: the `min-players` in the config GUI is the **global default** and has no effect on arenas that spell it out in `arenas.yml`. Two ways to change it — the parameter page in `/hilltop manage` (**takes effect immediately**, for the next match), or edit `arenas.yml` and **restart the server**.
+> **The player minimum (`min-players`) is authoritative per arena**: `arenas.yml`'s `game.min-players` is that arena's value (e.g. set an arena to `1` for solo play); arenas without an explicit value inherit the global `min-players` from `game-settings.yml`. Note: the `min-players` in the config GUI is the **global default** and has no effect on arenas that spell it out in `arenas.yml`. Two ways to change it — the parameter page in `/hilltop manage` (**takes effect immediately**, for the next match), or edit `arenas.yml` and run `/hilltop reloadconfig`.
 
 > **Shop NPCs are managed by the plugin**: the shop villagers in the lobby and in each arena are spawned by the deployment wizard and cleaned up by server lifecycle. **The end-of-match map rollback never touches any NPC**, so shops stay available between matches; only "Restore initial state" in `/hilltop manage` clears the shop NPC (location + entity) **of that arena's world**, leaving the lobby and other arenas untouched.
 
@@ -606,7 +606,7 @@ Players wait in the lobby after joining the server and enter an arena via `/hill
 | `/hilltop deploy` | Open deploy menu (Admin) | ❌ |
 | `/hilltop setup` | 8-step guided setup wizard (Admin) | ❌ |
 | `/hilltop config` | Open config center GUI (Admin) | ❌ |
-| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml) (Admin; arenas.yml still requires restart) | ✅ |
+| `/hilltop reloadconfig` | Reload game configs (game-settings.yml + monsters-config.yml + messages.yml + arenas.yml definitions) (Admin) | ✅ |
 | `/hilltop shop reload` | Reload villager shop config (Admin) | ✅ |
 | `/hilltop shop give <player> [amount]` | Give shop currency (Energy Crystals; default 1, max 6400) to an online player (Admin; works in any world, including the lobby) | ✅ |
 | `/hilltop build` | Toggle lobby build mode (Admin, for lobby maintenance) | ❌ |

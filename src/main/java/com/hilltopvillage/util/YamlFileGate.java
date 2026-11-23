@@ -69,13 +69,20 @@ public final class YamlFileGate {
     /**
      * 本进程当前是否允许写盘。被拒时打一次 warning（含原因与恢复指引）。
      *
+     * <p>指引里的 {@code /hilltop reloadconfig} 对每一份受本闸门守护的文件都成立：
+     * 它先 {@link #reset()} 五个闸门，再真读一遍每份文件——{@code arenas.yml} 走
+     * {@code MultiArenaManager#reloadDefinitions()}（重建 registry），其余走各自的
+     * {@code loadFromFile()} / {@code reloadDisplay()} / {@code reload()}。
+     * 不要说成「只能重启」，那会把一条本进程内可完成的恢复动作藏起来。</p>
+     *
      * @return true = 可写
      */
     public boolean writable() {
         if (readOnly && warned.compareAndSet(false, true)) {
             logger.warning("Refusing to write " + file.getName()
                     + ": the file was unreadable at startup (see the SEVERE log above). "
-                    + "Repair/restore it, then restart the server or run /hilltop reloadconfig.");
+                    + "Repair/restore it, then run /hilltop reloadconfig (this re-reads the file),"
+                    + " or restart the server.");
         }
         return !readOnly;
     }
