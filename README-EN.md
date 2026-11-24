@@ -525,7 +525,15 @@ See the [configuration reference](docs/guides/config-reference-EN.md#displayyml-
 
 The tab list also shows match information: header/footer rendered per context (lobby / in-arena / spectating), player names coloured by state (alive / awaiting respawn / spectating / admin), and automatic banded sorting — alive first, then dead, then spectators.
 
-Its layout lives in the `tab:` section of `display.yml`. If you already use another plugin for the tab list, set `tab.enabled` to `false`, or hand over one context at a time with `tab.contexts.lobby/arena/spectator` — when a context is disabled this plugin actively resets names and sort order back to the client default instead of fighting the other plugin.
+Its layout lives in the `tab:` section of `display.yml`. If you already use another plugin for the tab list, pick the switch by **which part you want to give up** — the two switches do not mean the same thing:
+
+- **Hand over header/footer only** (the usual case, especially on a proxy network running TAB): set `tab.header-footer-mode: never`. This plugin stops writing the header/footer and **wipes once** what it already sent; names and banded sorting stay with this plugin (proxy-side TAB overrides `UPDATE_DISPLAY_NAME` on Velocity, so the two never fight over names).
+- **Hand over the whole tab list**: set `tab.enabled: false`. Names, banded sorting and header/footer all stop together. Note it **deliberately does not wipe** the header/footer it already sent — it only drops its cache and stops sending, so the player can be left holding a frozen piece of old header the moment you flip it. Use `header-footer-mode: never` when you actually want it cleared.
+- **Hand over a single context**: use `tab.contexts.lobby/arena/spectator` to give up just the lobby, in-arena or spectating context. When a context is disabled, its names and sort order reset to the client default and its header/footer is wiped once.
+
+`header-footer-mode` takes three values: `auto` (the factory default), `always`, `never`. What `auto` does depends on whether the soft dependency is present: if it detects **TAB-Bridge** (the backend plugin installed on the game server) it hands over the header/footer; if not, it keeps sending — so on a standalone server `auto` is identical to `always`, and a deployment without a proxy needs no config change. **On a proxy network running TAB, `auto` already hands header/footer over for you** — you do not need PlaceholderAPI or UserPrefix for that; those only affect whether a prefix can be resolved to text, not who controls the header/footer. Conversely, if you have confirmed the proxy-side TAB has its header/footer turned off via a `%server%` condition and you want this plugin to render its own, set it to `always`.
+
+To let the text in `messages.yml` / `display.yml` use PlaceholderAPI placeholders (for example, configuring a player name prefix as `%UserPrefix_prefix%%player%`), just install PlaceholderAPI — this plugin resolves it before rendering. Note that **PlaceholderAPI alone is not enough** to make `%UserPrefix_prefix%` work — that is an expansion registered by the UserPrefix plugin, which must also be installed on the same game server; PlaceholderAPI returns unregistered expansions unchanged, and this plugin strips such residual placeholders and logs one warning to the console (it never sends a raw `%xxx%` to the client).
 
 ### Stats & leaderboards
 
@@ -841,6 +849,8 @@ See the individual files under `plugins/HilltopVillage/` for the complete refere
 - Paper 1.21.4+
 - Java 21
 - ItemsAdder (optional, for custom item/monster models)
+- TAB-Bridge (optional; installed on the game server of a proxy network — its presence is the signal that the proxy may be running TAB, which is what `tab.header-footer-mode: auto` uses to hand header/footer over)
+- PlaceholderAPI (optional; once installed, text in `display.yml` / `messages.yml` may use PAPI placeholders)
 
 ## Build
 
