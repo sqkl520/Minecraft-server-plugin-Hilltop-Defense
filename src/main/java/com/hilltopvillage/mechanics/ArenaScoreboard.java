@@ -295,7 +295,9 @@ public class ArenaScoreboard {
         if (!player.isOnline()) return;
 
         Scoreboard board = Bukkit.getScoreboardManager().getNewScoreboard();
-        String title = lang.getFor(player, titleKey());
+        // 标题也要过 PAPI：它与正文行同属「玩家自己屏幕上看到的东西」，
+        // 只解析正文会让 titleKey 里的占位符裸奔，而玩家分不出那是哪个开关的问题。
+        String title = placeholders.resolve(player, lang.getFor(player, titleKey()));
         // objective 名带插件前缀，避免与别的插件（TAB、其它侧边栏插件）裸名相撞。
         // registerNewObjective 同名抛 IllegalArgumentException，所以先查一次；
         // 这一帧的 board 是 getNewScoreboard() 新建的，上面必然没有同名 objective，
@@ -655,7 +657,7 @@ public class ArenaScoreboard {
         // 这里必须一并补上——否则玩家切语言后正文会跟上、标题永远停在旧语言。
         // 只在签名未命中的分支执行，静止时零开销；setDisplayName 同样无相等性检查，
         // 所以先比对再写，避免每帧重发一次 Objective 包。
-        String title = lang.getFor(player, titleKey());
+        String title = placeholders.resolve(player, lang.getFor(player, titleKey()));
         if (!title.equals(state.title)) {
             state.title = title;
             state.objective.setDisplayName(title);

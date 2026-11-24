@@ -204,7 +204,7 @@ tab:
 
 Text from `messages.yml` is run through PlaceholderAPI before rendering, so messages may use placeholders like `%player_name%` or `%vault_eco_balance%`. PAPI is a `provided` dependency and is **not bundled** into the JAR; without PAPI the plugin degrades quietly and returns the text unchanged.
 
-The render points that actually apply this are **the sidebar body lines, every line of the tab header/footer, and the name format `player-name` points at**. The sidebar **title** (`scoreboard.title`) is rendered on a different path and is currently **not** PAPI-resolved — a placeholder written into the title is shown verbatim.
+The render points that actually apply this are **the sidebar title, the sidebar body lines, every line of the tab header/footer, and the name format `player-name` points at**. In other words every piece of text this plugin renders supports placeholders; there is no exception field.
 
 **The "context player" used for resolution differs by position** — this is the easiest thing to get wrong:
 
