@@ -170,6 +170,51 @@ scoreboard:
 
 > **关于 `nextWaveSeconds`**：`GameManager` 没有落地休整期剩余秒数，该值返回的是**配置的波次间隔**而非真实倒计时，只在休整期刚开始时相等。默认布局不引用它。
 
+### `display.yml` 的 `tab:` 段 —— 玩家列表（Tab）
+
+```yaml
+tab:
+  enabled: true
+  refresh-ticks: 20          # 头/尾刷新周期 tick，1-200（出厂 20 = 1 秒）
+  header-footer-mode: auto   # auto / always / never（见下）
+  contexts:
+    lobby: true
+    arena: true
+    spectator: true
+```
+
+`player-name.alive/dead/spectator` 指向 `messages.yml` 的名字格式键（值必须是键名，不是字面量文本）。
+
+**`header-footer-mode` —— 与代理侧 TAB 争不争「表头/表尾」**
+
+`sendPlayerListHeaderAndFooter` 在协议层是「每个玩家唯一一份值，没有作者概念」，谁后发谁生效。代理侧装 TAB 的群组服上，TAB 会以很短的周期重发自己的表头，而本插件也每 20 tick 发一次，结果是玩家看到表头每秒整块替换、两层内容互相覆盖。关键事实是**不能指望 TAB 挡掉别人**：TAB 的反覆盖（block 其它插件的 header/footer）在 Velocity 安装下按官方说明是不可用的，本插件发出的每个包都会真的到达客户端。
+
+| 取值 | 行为 | 什么时候选 |
+|------|------|-----------|
+| `auto`（出厂） | 检测到 TAB-Bridge 就不发头/尾，检测不到就照常发 | 默认。单机服没有 TAB-Bridge，所以 `auto` 恒等于 `always`；群组服代理侧跑 TAB 时自动让渡 |
+| `always` | 永远发 | 代理侧 TAB 的 header/footer 已用 `%server%` 条件关掉，想让本插件自己渲染 |
+| `never` | 永远不发，并把此前发过的擦一次 | 运维明知代理在管头/尾时，用来彻底让出 |
+
+`auto` 探测的是 **TAB-Bridge**（子服侧的后端插件），不是 TAB——TAB 是代理插件，子服上永远没有它；判据是 `isPluginEnabled("TAB-Bridge")`。检测到之后本插件停止写这个字段，并把此前写过的内容擦掉一次（发一个空值再清缓存）——只清缓存不发空值会把旧表头永久冻结在玩家屏幕上。
+
+> **别用 `tab.enabled: false` 来「交出 Tab」**：它的语义是「整个 tab 都停」，名字与分带排序一起停，而且**刻意不擦除**已发出的头/尾（只清缓存不再发包），刚关掉时玩家可能还留着一块冻结的旧表头。要让出头/尾用 `header-footer-mode: never`；只想让出某一个上下文用对应的 `contexts.X: false`（它会擦一次头/尾并把名字与排序复位成客户端默认）。
+
+### PlaceholderAPI 占位符支持
+
+`display.yml` 与 `messages.yml` 的文本字段在渲染前都会过一遍 PlaceholderAPI，所以可以在消息里写 `%player_name%`、`%vault_eco_balance%` 这类占位符。PAPI 以 `provided` 引入、**不打包**进 JAR；没装 PAPI 时安静降级，原样返回文本。
+
+**解析用的「上下文玩家」按位置不同**，这是最容易搞错的地方：
+
+- `player-name`（即 `playerListName`）→ **被渲染的那名玩家本人**。名字是目标的全局属性，没有观看者维度。
+- 侧边栏 / 头 / 尾 → **看这份内容的那名玩家**（他自己屏幕上显示什么）。
+
+**两个陷阱：**
+
+- **只装 PlaceholderAPI 不足以让 `%UserPrefix_prefix%` 工作**——那是 UserPrefix 插件注册的扩展，必须在同一台子服上另装 UserPrefix（并让它与代理侧共用同一套 LuckPerms 数据）。PAPI 对未注册的扩展原样返回输入串，所以「装了 PAPI 还是没解析」不是 bug，是缺了对应扩展。
+- **解析不掉的占位符会被剔除，而不是原样发出**：结果里残留的 `%identifier%` 片段会被删掉，并对每个 `(来源文本, token)` 在控制台告警一次（不是每帧刷屏）。`100%`、`50%折扣` 这类不含占位符形状的文本不受影响。
+
+> 出厂配置里一个 `%` 都没有，本插件先扫 `%` 再决定是否调用 PAPI——默认部署下 PAPI 一次都不会被调到。
+
 ## config.yml
 
 内部状态文件，**不含任何游戏参数**（游戏参数见 `game-settings.yml`），只保存语言与部署向导进度，插件自动维护。
