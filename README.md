@@ -531,9 +531,9 @@ Tab 栏也会显示本场信息：头/尾按上下文（大厅 / 对局 / 观战
 - **整个 tab 都交出去**：设 `tab.enabled: false`。名字、分带排序、头/尾一起停。注意它**刻意不擦除**已发出的头/尾——只清缓存不再发包，所以刚关掉的那一刻玩家可能还留着一块冻结的旧表头。要真正清干净请改用 `header-footer-mode: never`。
 - **只让出某一个上下文**：用 `tab.contexts.lobby/arena/spectator` 单独交出大厅 / 对局 / 观战其中一个。关掉后该上下文的名字与排序会复位成客户端默认，头/尾也会擦一次。
 
-`header-footer-mode` 有三个值：`auto`（出厂）、`always`、`never`。`auto` 的行为取决于是否装了解析用的软依赖：检测到 **TAB-Bridge**（子服侧的后端插件）就让渡头/尾，检测不到就照常发——所以单机服上 `auto` 恒等于 `always`，不用代理的部署无需改配置。**群组服代理侧跑 TAB 时 `auto` 已经替你让渡了**，你不需要为此装 PlaceholderAPI 或 UserPrefix，那两个只影响「前缀能不能被解析成文本」，不影响「谁在管头/尾」。反过来说，若你确认代理侧 TAB 的 header/footer 已经用 `%server%` 条件关掉、想让本插件自己发，把它改成 `always` 即可。
+`header-footer-mode` 有三个值：`auto`（出厂）、`always`、`never`。`auto` 的行为取决于子服上有没有 **TAB-Bridge**（子服侧的后端插件）：检测到就让渡头/尾，检测不到就照常发——所以单机服上 `auto` 恒等于 `always`，不用代理的部署无需改配置。**群组服代理侧跑 TAB 时 `auto` 已经替你让渡了**，你不需要为此装 PlaceholderAPI 或 UserPrefix，那两个只影响「前缀能不能被解析成文本」，不影响「谁在管头/尾」。反过来说，若你确认代理侧 TAB 的 header/footer 已经用 `%server%` 条件关掉、想让本插件自己发，把它改成 `always` 即可。
 
-若要让 `messages.yml` / `display.yml` 里的文本支持 PlaceholderAPI 占位符（例如把玩家名前缀配成 `%UserPrefix_prefix%%player%`），装 PlaceholderAPI 即可，本插件会在渲染前解析。注意**只装 PAPI 不足以**让 `%UserPrefix_prefix%` 工作——那是 UserPrefix 插件注册的扩展，必须在同一台子服上另装 UserPrefix；PAPI 对未注册的扩展会原样返回，本插件会把这种残留占位符剔除并在控制台告警一次（不会把裸 `%xxx%` 发到客户端）。
+若要让 `messages.yml` 里的文本（包括 `display.yml` 各行指向的 i18n 键值）支持 PlaceholderAPI 占位符——例如把玩家名前缀配成 `%UserPrefix_prefix%%player%`——装 PlaceholderAPI 即可，本插件会在渲染前解析。注意**只装 PAPI 不足以**让 `%UserPrefix_prefix%` 工作——那是 UserPrefix 插件注册的扩展，必须在同一台子服上另装 UserPrefix；PAPI 对未注册的扩展会原样返回，本插件会把这种残留占位符剔除并在控制台告警一次（不会把裸 `%xxx%` 发到客户端）。
 
 ### 统计与排行榜
 
