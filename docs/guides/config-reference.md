@@ -201,7 +201,9 @@ tab:
 
 ### PlaceholderAPI 占位符支持
 
-`display.yml` 与 `messages.yml` 的文本字段在渲染前都会过一遍 PlaceholderAPI，所以可以在消息里写 `%player_name%`、`%vault_eco_balance%` 这类占位符。PAPI 以 `provided` 引入、**不打包**进 JAR；没装 PAPI 时安静降级，原样返回文本。
+`messages.yml` 的文本在渲染前会过一遍 PlaceholderAPI，所以可以在消息里写 `%player_name%`、`%vault_eco_balance%` 这类占位符。PAPI 以 `provided` 引入、**不打包**进 JAR；没装 PAPI 时安静降级，原样返回文本。
+
+具体生效的渲染点：**侧边栏正文行、Tab 头/尾的每一行、以及 `player-name` 指向的名字格式**。侧边栏的**标题**（`scoreboard.title`）走的是另一条渲染路径，目前**不**经过 PAPI 解析——标题里写占位符会被原样显示。
 
 **解析用的「上下文玩家」按位置不同**，这是最容易搞错的地方：
 
