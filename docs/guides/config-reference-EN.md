@@ -171,6 +171,51 @@ scoreboard:
 
 > **About `nextWaveSeconds`**: `GameManager` does not expose the intermission countdown, so this returns the **configured wave interval**, not a live countdown — the two are equal only at the instant intermission begins. The default layout does not use it.
 
+### The `tab:` section of `display.yml` — player list (tab)
+
+```yaml
+tab:
+  enabled: true
+  refresh-ticks: 20          # header/footer refresh period in ticks, 1-200 (factory 20 = 1 second)
+  header-footer-mode: auto   # auto / always / never (see below)
+  contexts:
+    lobby: true
+    arena: true
+    spectator: true
+```
+
+`player-name.alive/dead/spectator` point at name-format keys in `messages.yml` (a key name, not literal text).
+
+**`header-footer-mode` — whether to fight the proxy-side TAB over the header/footer**
+
+`sendPlayerListHeaderAndFooter` is, at the protocol level, "one value per player, with no notion of an author" — whoever sends last wins. On a proxy network running TAB on the proxy, TAB resends its own header on a very short cycle while this plugin also sends every 20 ticks, so the player sees the header being replaced wholesale every second, two layers overwriting each other. The key fact is that **you cannot rely on TAB to block anyone else**: TAB's anti-override (blocking other plugins' header/footer) is documented as unavailable on a Velocity install, so every packet this plugin sends really does reach the client.
+
+| Value | Behaviour | When to pick it |
+|------|-----------|-----------------|
+| `auto` (factory) | Sends header/footer when TAB-Bridge is absent; does not send when it is present | The default. A standalone server has no TAB-Bridge, so `auto` is identical to `always`; on a proxy network running TAB it hands over automatically |
+| `always` | Always sends | The proxy-side TAB has its header/footer turned off via a `%server%` condition and you want this plugin to render its own |
+| `never` | Never sends, and wipes once what it already sent | You know the proxy manages the header/footer and want to step aside completely |
+
+`auto` probes for **TAB-Bridge** (the backend plugin on the game server), not TAB — TAB is a proxy plugin and never exists on the game server; the check is `isPluginEnabled("TAB-Bridge")`. Once it detects it, this plugin stops writing the field and wipes once what it already wrote (sends an empty value, then clears its cache) — clearing the cache alone without sending would freeze the old header on the player's screen permanently.
+
+> **Do not use `tab.enabled: false` to "hand over the tab list"**: its meaning is "stop the whole tab list" — names and banded sorting stop with it, and it **deliberately does not wipe** the header/footer it already sent (it only drops its cache and stops), so the player can be left holding a frozen piece of old header the moment you flip it. Use `header-footer-mode: never` to give up the header/footer; use the matching `contexts.X: false` to give up just one context (it wipes the header/footer once and resets names and sort order to the client default).
+
+### PlaceholderAPI support
+
+Text fields in `display.yml` and `messages.yml` are run through PlaceholderAPI before rendering, so messages may use placeholders like `%player_name%` or `%vault_eco_balance%`. PAPI is a `provided` dependency and is **not bundled** into the JAR; without PAPI the plugin degrades quietly and returns the text unchanged.
+
+**The "context player" used for resolution differs by position** — this is the easiest thing to get wrong:
+
+- `player-name` (i.e. `playerListName`) → **the player being rendered**. A name is a property of the target and has no viewer dimension.
+- Sidebar / header / footer → **the player viewing that content** (what is displayed on their own screen).
+
+**Two traps:**
+
+- **Installing PlaceholderAPI alone is not enough to make `%UserPrefix_prefix%` work** — that is an expansion registered by the UserPrefix plugin, which must also be installed on the same game server (and share the same LuckPerms data with the proxy). PAPI returns unregistered expansions unchanged, so "I installed PAPI and it still does not resolve" is not a bug; it is a missing expansion.
+- **A placeholder that cannot be resolved is stripped, not sent raw**: any residual `%identifier%` fragment in the result is removed, and one warning is logged per `(source text, token)` pair (not once per frame). Text that merely contains `%` without the placeholder shape — `100%`, `50% off` — is left untouched.
+
+> The factory config contains not a single `%`, and this plugin scans for `%` before deciding whether to call PAPI at all — so a default deployment never calls PAPI once.
+
 ## config.yml
 
 Internal state file — it holds **no game settings** (those live in `game-settings.yml`), only the language and setup-wizard progress. Maintained automatically by the plugin.
